@@ -15,6 +15,11 @@ const PageSizeSchema = Schema.Number.pipe(
   Schema.lessThanOrEqualTo(24)
 )
 
+const NonNegativeNumberSchema = Schema.Number.pipe(
+  Schema.finite(),
+  Schema.nonNegative()
+)
+
 const OrderPageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
@@ -39,6 +44,21 @@ export const ProductListOperationInputSchema = Schema.Struct({
 })
 
 export type ProductListOperationInput = Schema.Schema.Type<typeof ProductListOperationInputSchema>
+
+export const DiscountSortOperationInputSchema = Schema.Literal("best-percent", "best-amount", "price-asc")
+
+export const DiscountedProductsOperationInputSchema = Schema.Struct({
+  categoryId: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true }),
+  minSavingsAmount: Schema.optionalWith(NonNegativeNumberSchema, { exact: true }),
+  minSavingsPercent: Schema.optionalWith(NonNegativeNumberSchema, { exact: true }),
+  pageSize: Schema.optionalWith(PageSizeSchema, { exact: true }),
+  pageToken: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true }),
+  query: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true }),
+  retailerCategoryId: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true }),
+  sort: Schema.optionalWith(DiscountSortOperationInputSchema, { exact: true })
+})
+
+export type DiscountedProductsOperationInput = Schema.Schema.Type<typeof DiscountedProductsOperationInputSchema>
 
 export const CategoryProductsOperationInputSchema = Schema.Struct({
   categoryId: NonEmptyTrimmedStringSchema,

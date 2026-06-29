@@ -63,6 +63,34 @@ const completedOrdersResponse = JSON.stringify({
   }
 })
 
+const discountedProductsResponse = JSON.stringify({
+  productGroups: [{
+    decoratedProducts: [{
+      available: true,
+      brand: "Sanitized Brand",
+      maxQuantityReached: false,
+      name: "Discounted milk",
+      price: {
+        amount: "5.00",
+        currency: "CAD"
+      },
+      productId: "sanitized-discount-product-id",
+      promoPrice: {
+        amount: "4.00",
+        currency: "CAD"
+      },
+      promotions: [{
+        label: "Member price",
+        promotionId: "sanitized-promotion-id"
+      }],
+      quantityInBasket: 0,
+      retailerProductId: "123456EA"
+    }],
+    name: "Promotions",
+    type: "promotion"
+  }]
+})
+
 const fixture = (name: string): Promise<string> =>
   readFile(new URL(`../../voila-sdk/test/fixtures/${name}`, import.meta.url), "utf8")
 
@@ -127,6 +155,7 @@ describe("Voila MCP operations", () => {
       "voila_check_session_health",
       "voila_search_products",
       "voila_get_category_products",
+      "voila_get_discounted_products",
       "voila_get_completed_orders",
       "voila_get_order_details",
       "voila_get_completed_order_items",
@@ -159,6 +188,49 @@ describe("Voila MCP operations", () => {
 
     if (!result.ok) {
       expect(result.error._tag).toBe("VoilaOperationInputInvalid")
+    }
+  })
+
+  it("rejects invalid discounted product operation inputs before loading a session", async () => {
+    for (
+      const input of [
+        {
+          minSavingsAmount: -1
+        },
+        {
+          minSavingsPercent: -1
+        },
+        {
+          pageSize: 25
+        },
+        {
+          sort: "unsupported"
+        }
+      ]
+    ) {
+      let loaded = false
+      const env: OperationEnvironment = {
+        session: {
+          load: async () => {
+            loaded = true
+
+            return Either.right(makeSdkSessionForTest())
+          },
+          save: async () => Either.right(undefined)
+        },
+        transport: {
+          request: async () => Either.left("unused")
+        }
+      }
+
+      const result = await runVoilaOperation("voila_get_discounted_products", input, env)
+
+      expect(result.ok).toBe(false)
+      expect(loaded).toBe(false)
+
+      if (!result.ok) {
+        expect(result.error._tag).toBe("VoilaOperationInputInvalid")
+      }
     }
   })
 
@@ -299,6 +371,48 @@ describe("Voila MCP operations", () => {
       })
       expect(result.value).toHaveProperty("orders")
       expect(JSON.stringify(result.value)).toContain("sanitized-order-id-1")
+    }
+  })
+
+  it("returns normalized discounted products through the SDK registry path", async () => {
+    const paths: Array<string> = []
+    const fake = makeEnvironment({
+      request: async (request) => {
+        paths.push(request.url.pathname)
+
+        return Either.right({
+          body: discountedProductsResponse,
+          headers: {},
+          status: 200
+        })
+      }
+    })
+
+    const result = await runVoilaOperation("voila_get_discounted_products", {
+      minSavingsPercent: 15,
+      pageSize: 3,
+      query: "milk",
+      sort: "best-percent"
+    }, fake.env)
+
+    expect(result.ok).toBe(true)
+    expect(paths).toEqual(["/api/product-listing-pages/v1/pages/promotions"])
+
+    if (result.ok) {
+      expect(result.value).toMatchObject({
+        products: [{
+          discountPrice: {
+            amount: "4.00"
+          },
+          productId: "sanitized-discount-product-id",
+          promotionSummary: "Member price",
+          savingsAmount: 1,
+          savingsPercent: 20
+        }],
+        scan: {
+          pagesScanned: 1
+        }
+      })
     }
   })
 

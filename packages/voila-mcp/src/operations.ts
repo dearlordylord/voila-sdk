@@ -6,6 +6,7 @@ import {
   getCategoryProducts,
   getCompletedOrderItems,
   getCompletedOrders,
+  getDiscountedProducts,
   getOrderDetails,
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
@@ -28,6 +29,8 @@ import {
   CartItemOperationInputSchema,
   type CategoryProductsOperationInput,
   CategoryProductsOperationInputSchema,
+  type DiscountedProductsOperationInput,
+  DiscountedProductsOperationInputSchema,
   EmptyOperationInputSchema,
   type OrderDetailsOperationInput,
   OrderDetailsOperationInputSchema,
@@ -144,6 +147,17 @@ const makeSdkCategoryInput = (input: CategoryProductsOperationInput) => ({
   categoryId: input.categoryId,
   pageSize: input.pageSize ?? defaultPageSize,
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
+})
+
+const makeSdkDiscountInput = (input: DiscountedProductsOperationInput) => ({
+  ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
+  ...(input.minSavingsAmount === undefined ? {} : { minSavingsAmount: input.minSavingsAmount }),
+  ...(input.minSavingsPercent === undefined ? {} : { minSavingsPercent: input.minSavingsPercent }),
+  pageSize: input.pageSize ?? defaultPageSize,
+  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
+  ...(input.query === undefined ? {} : { query: input.query }),
+  ...(input.retailerCategoryId === undefined ? {} : { retailerCategoryId: input.retailerCategoryId }),
+  ...(input.sort === undefined ? {} : { sort: input.sort })
 })
 
 const makeSdkOrderListInput = (input: OrderListOperationInput) => ({
@@ -312,6 +326,17 @@ const runCategoryProducts = async (
     (session, parsed) => getCategoryProducts(session, makeSdkCategoryInput(parsed), env.transport)
   )
 
+const runDiscountedProducts = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    DiscountedProductsOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getDiscountedProducts(session, makeSdkDiscountInput(parsed), env.transport)
+  )
+
 const runGetCart = async (
   input: unknown,
   env: OperationEnvironment
@@ -385,6 +410,8 @@ export const runVoilaOperation = async (
       return runGetCart(input, env)
     case "voila_get_category_products":
       return runCategoryProducts(input, env)
+    case "voila_get_discounted_products":
+      return runDiscountedProducts(input, env)
     case "voila_get_completed_order_items":
       return runCompletedOrderItems(input, env)
     case "voila_get_completed_orders":

@@ -5,6 +5,7 @@ export type VoilaOperationName =
   | "voila_check_session_health"
   | "voila_get_cart"
   | "voila_get_category_products"
+  | "voila_get_discounted_products"
   | "voila_get_completed_order_items"
   | "voila_get_completed_orders"
   | "voila_get_order_details"
@@ -32,6 +33,12 @@ export const voilaOperationDescriptors: ReadonlyArray<VoilaOperationDescriptor> 
     description: "Fetch products for a Voila category id for the current session context.",
     name: "voila_get_category_products",
     title: "Get Category Products"
+  },
+  {
+    description:
+      "Fetch discounted Voila products from promotions. By default returns only meaningful discounts ($0.50 or 10% savings); lower thresholds only when the user asks. Query matches are filtered locally and include scan metadata.",
+    name: "voila_get_discounted_products",
+    title: "Get Discounted Products"
   },
   {
     description: "Fetch completed Voila orders with cursor pagination for the authenticated account.",

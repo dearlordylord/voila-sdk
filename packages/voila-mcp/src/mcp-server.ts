@@ -27,6 +27,17 @@ const categoryProductsInputSchema = {
   pageToken: z.string().trim().min(1).optional()
 }
 
+const discountedProductsInputSchema = {
+  categoryId: z.string().trim().min(1).optional(),
+  minSavingsAmount: z.number().nonnegative().optional(),
+  minSavingsPercent: z.number().nonnegative().optional(),
+  pageSize: z.number().int().min(1).max(24).optional(),
+  pageToken: z.string().trim().min(1).optional(),
+  query: z.string().trim().min(1).optional(),
+  retailerCategoryId: z.string().trim().min(1).optional(),
+  sort: z.enum(["best-percent", "best-amount", "price-asc"]).optional()
+}
+
 const orderListInputSchema = {
   pageSize: z.number().int().min(1).max(50).optional(),
   pageToken: z.string().trim().min(1).optional()
@@ -82,6 +93,7 @@ export const createVoilaMcpServer = (
   const health = descriptorFor("voila_check_session_health")
   const search = descriptorFor("voila_search_products")
   const categoryProducts = descriptorFor("voila_get_category_products")
+  const discountedProducts = descriptorFor("voila_get_discounted_products")
   const completedOrders = descriptorFor("voila_get_completed_orders")
   const orderDetails = descriptorFor("voila_get_order_details")
   const completedOrderItems = descriptorFor("voila_get_completed_order_items")
@@ -106,6 +118,12 @@ export const createVoilaMcpServer = (
     inputSchema: categoryProductsInputSchema,
     title: categoryProducts.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_category_products", input, env)))
+
+  server.registerTool("voila_get_discounted_products", {
+    description: discountedProducts.description,
+    inputSchema: discountedProductsInputSchema,
+    title: discountedProducts.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_get_discounted_products", input, env)))
 
   server.registerTool("voila_get_completed_orders", {
     description: completedOrders.description,

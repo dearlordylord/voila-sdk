@@ -117,6 +117,88 @@ describe("Voila CLI", () => {
     }])
   })
 
+  it("maps JSON discount commands to discounted product operation input", async () => {
+    const fake = makePorts(success({ products: [] }))
+    const result = await runCli([
+      "discounts",
+      "milk",
+      "--min-percent",
+      "15",
+      "--sort",
+      "best-percent",
+      "--page-size",
+      "3",
+      "--session",
+      "/tmp/voila-session.json",
+      "--json"
+    ], fake.ports)
+
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      value: {
+        products: []
+      }
+    })
+    expect(fake.calls).toEqual([{
+      input: {
+        minSavingsPercent: 15,
+        pageSize: 3,
+        query: "milk",
+        sort: "best-percent"
+      },
+      name: "voila_get_discounted_products",
+      options: {
+        sessionPath: "/tmp/voila-session.json"
+      }
+    }])
+  })
+
+  it("renders discounted products as a compact table", async () => {
+    const fake = makePorts(success({
+      products: [{
+        discountPrice: {
+          amount: "4.00",
+          currency: "CAD"
+        },
+        name: "Discounted milk",
+        promotionSummary: "Member price",
+        regularPrice: {
+          amount: "5.00",
+          currency: "CAD"
+        },
+        savingsPercent: 20,
+        savingsPrice: {
+          amount: "1.00",
+          currency: "CAD"
+        }
+      }]
+    }))
+    const result = await runCli(["discounts", "milk"], fake.ports)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Product\tNow\tWas\tSaved\tSave %\tPromo")
+    expect(result.stdout).toContain("Discounted milk\t$4.00\t$5.00\t$1.00\t20.0%\tMember price")
+  })
+
+  it("returns usage errors for invalid discount numeric flags", async () => {
+    for (
+      const args of [
+        ["discounts", "milk", "--min-percent"],
+        ["discounts", "milk", "--min-amount", "-1"],
+        ["discounts", "milk", "--min-percent", "not-a-number"],
+        ["discounts", "milk", "--page-size", "25"]
+      ]
+    ) {
+      const fake = makePorts()
+      const result = await runCli(args, fake.ports)
+
+      expect(result.exitCode).toBe(2)
+      expect(result.stderr).toContain("Usage:")
+      expect(fake.calls).toEqual([])
+    }
+  })
+
   it("maps cart add commands to cart item operation input", async () => {
     const fake = makePorts()
     const result = await runCli([

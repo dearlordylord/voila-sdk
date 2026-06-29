@@ -1,5 +1,6 @@
 import { normalizeCliCartInput, type OperationExecutionResult, type VoilaOperationName } from "@firfi/voila-mcp"
 
+import { makeDiscountsOperationInput, renderDiscountsText } from "./cli-discounts.js"
 import { defaultBrowserProfilePath, defaultSessionPath } from "./defaults.js"
 
 export interface CliOperationOptions {
@@ -41,6 +42,7 @@ const helpText = `Usage:
   voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]
   voila auth status [--session <path>] [--json]
   voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
+  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila orders details <order-id> [--session <path>] [--json]
@@ -208,6 +210,10 @@ const renderText = (name: VoilaOperationName | "auth_login", result: OperationEx
     return "Authenticated session saved.\n"
   }
 
+  if (name === "voila_get_discounted_products") {
+    return renderDiscountsText(result)
+  }
+
   return `${JSON.stringify(result.value, undefined, 2)}\n`
 }
 
@@ -319,6 +325,19 @@ const runCategory = async (
   }, parsed)
 }
 
+const runDiscounts = async (
+  ports: CliPorts,
+  parsed: ParsedOptions
+): Promise<CliRunResult> => {
+  const input = makeDiscountsOperationInput(parsed, usage, parsePositiveInteger)
+
+  if ("exitCode" in input) {
+    return input
+  }
+
+  return runOperation(ports, "voila_get_discounted_products", input, parsed)
+}
+
 const runOrders = async (
   ports: CliPorts,
   parsed: ParsedOptions
@@ -409,6 +428,8 @@ export const runCli = async (
       return runCart(ports, parsed)
     case "category":
       return runCategory(ports, parsed)
+    case "discounts":
+      return runDiscounts(ports, parsed)
     case "orders":
       return runOrders(ports, parsed)
     case "search":
