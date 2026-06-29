@@ -8,7 +8,8 @@ import {
   loginWithBrowser,
   saveSdkSessionSnapshot,
   type SdkSessionSnapshot,
-  type SessionStoragePort
+  type SessionStoragePort,
+  VOILA_BASE_URL
 } from "@firfi/voila-sdk"
 import { Either } from "effect"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
@@ -74,6 +75,10 @@ const readActiveCustomerSession = async (page: Page): Promise<unknown> =>
     return response.json()
   })
 
+const refreshVoilaHomepage = async (page: Page): Promise<void> => {
+  await page.goto(VOILA_BASE_URL, { waitUntil: "domcontentloaded" })
+}
+
 const waitForAuthenticatedSession = async (
   page: Page,
   request: BrowserLoginRequest
@@ -110,6 +115,8 @@ const createPlaywrightPage = (
   readAuthenticated: async () => responseSaysAuthenticated(await readActiveCustomerSession(page)),
   readCookies: (url) => context.cookies(url),
   readInitialState: async () => {
+    await refreshVoilaHomepage(page)
+
     const initialState = extractInitialState(await page.content())
 
     if (Either.isLeft(initialState)) {
