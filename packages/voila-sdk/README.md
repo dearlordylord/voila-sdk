@@ -78,6 +78,7 @@ console.log(search.right.value.products.map((product) => product.name))
 - Delivery destination/context reads and guarded delivery context changes.
 - Slot listing and guarded slot reservation input helpers.
 - Checkout summary/readiness review.
+- Completed order history reads with cursor pagination.
 - Session snapshot save/load helpers.
 
 The SDK does not place orders. Checkout APIs stop at review/readiness so a human can confirm in Voila.
@@ -103,7 +104,7 @@ That file is sensitive and ignored by git. Use it with `loadSdkSessionSnapshot` 
 Import only from the package entrypoint:
 
 ```ts
-import { addCartItems, getCart, searchProducts } from "@firfi/voila-sdk"
+import { addCartItems, getCart, getCompletedOrders, searchProducts } from "@firfi/voila-sdk"
 ```
 
 Deep imports are unsupported. See [docs/public-api.md](docs/public-api.md) for the full public surface and [docs/usage-examples.md](docs/usage-examples.md) for end-to-end examples.

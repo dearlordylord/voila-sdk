@@ -33,8 +33,11 @@ If a tool runs with a guest, expired, missing, or unreadable account session, th
 - `voila_check_session_health`
 - `voila_search_products`
 - `voila_get_category_products`
+- `voila_get_completed_orders`
 - `voila_get_cart`
 - `voila_add_cart_items`
 - `voila_remove_cart_items`
+
+`voila_get_completed_orders` reads completed orders with cursor pagination. It does not expose reorder, checkout, or order placement.
 
 The server does not expose checkout or order-placement tools.

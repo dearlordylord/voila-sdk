@@ -26,6 +26,11 @@ const categoryProductsInputSchema = {
   pageToken: z.string().trim().min(1).optional()
 }
 
+const orderListInputSchema = {
+  pageSize: z.number().int().min(1).max(50).optional(),
+  pageToken: z.string().trim().min(1).optional()
+}
+
 const cartItemsInputSchema = {
   items: z.array(z.object({
     productId: z.string().trim().min(1),
@@ -64,6 +69,7 @@ export const createVoilaMcpServer = (
   const health = descriptorFor("voila_check_session_health")
   const search = descriptorFor("voila_search_products")
   const categoryProducts = descriptorFor("voila_get_category_products")
+  const completedOrders = descriptorFor("voila_get_completed_orders")
   const cart = descriptorFor("voila_get_cart")
   const addCart = descriptorFor("voila_add_cart_items")
   const removeCart = descriptorFor("voila_remove_cart_items")
@@ -85,6 +91,12 @@ export const createVoilaMcpServer = (
     inputSchema: categoryProductsInputSchema,
     title: categoryProducts.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_category_products", input, env)))
+
+  server.registerTool("voila_get_completed_orders", {
+    description: completedOrders.description,
+    inputSchema: orderListInputSchema,
+    title: completedOrders.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_get_completed_orders", input, env)))
 
   server.registerTool("voila_get_cart", {
     description: cart.description,

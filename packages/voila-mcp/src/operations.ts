@@ -4,6 +4,7 @@ import {
   checkSessionHealth,
   getCart,
   getCategoryProducts,
+  getCompletedOrders,
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   parseUnknown,
@@ -24,6 +25,8 @@ import {
   type CategoryProductsOperationInput,
   CategoryProductsOperationInputSchema,
   EmptyOperationInputSchema,
+  type OrderListOperationInput,
+  OrderListOperationInputSchema,
   type ProductListOperationInput,
   ProductListOperationInputSchema
 } from "./operation-schemas.js"
@@ -35,6 +38,7 @@ export type VoilaOperationName =
   | "voila_check_session_health"
   | "voila_get_cart"
   | "voila_get_category_products"
+  | "voila_get_completed_orders"
   | "voila_remove_cart_items"
   | "voila_search_products"
 
@@ -90,6 +94,11 @@ export const voilaOperationDescriptors: ReadonlyArray<VoilaOperationDescriptor> 
     description: "Fetch products for a Voila category id for the current session context.",
     name: "voila_get_category_products",
     title: "Get Category Products"
+  },
+  {
+    description: "Fetch completed Voila orders with cursor pagination for the authenticated account.",
+    name: "voila_get_completed_orders",
+    title: "Get Completed Orders"
   },
   {
     description: "Fetch the current active cart with totals, limited items, unavailable data, and pricing notices.",
@@ -174,6 +183,11 @@ const makeSdkSearchInput = (input: ProductListOperationInput) => ({
 const makeSdkCategoryInput = (input: CategoryProductsOperationInput) => ({
   categoryId: input.categoryId,
   pageSize: input.pageSize ?? defaultPageSize,
+  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
+})
+
+const makeSdkOrderListInput = (input: OrderListOperationInput) => ({
+  ...(input.pageSize === undefined ? {} : { pageSize: input.pageSize }),
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
 })
 
@@ -358,6 +372,37 @@ const runGetCart = async (
   return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
 }
 
+const runCompletedOrders = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> => {
+  const parsed = parseInput(OrderListOperationInputSchema, input)
+
+  if (Either.isLeft(parsed)) {
+    return failure(parsed.left)
+  }
+
+  const snapshot = await loadSession(env)
+
+  if (Either.isLeft(snapshot)) {
+    return failure(snapshot.left, env.authGuidance)
+  }
+
+  const result = await getCompletedOrders(
+    snapshot.right.session,
+    makeSdkOrderListInput(parsed.right),
+    env.transport
+  )
+
+  if (Either.isLeft(result)) {
+    return failure(redactError(result.left), env.authGuidance)
+  }
+
+  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
+
+  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
+}
+
 const runCartItems = async (
   input: unknown,
   env: OperationEnvironment,
@@ -400,6 +445,8 @@ export const runVoilaOperation = async (
       return runGetCart(input, env)
     case "voila_get_category_products":
       return runCategoryProducts(input, env)
+    case "voila_get_completed_orders":
+      return runCompletedOrders(input, env)
     case "voila_remove_cart_items":
       return runCartItems(input, env, removeCartItems)
     case "voila_search_products":

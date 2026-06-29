@@ -128,6 +128,32 @@ describe("Voila CLI", () => {
     }])
   })
 
+  it("maps order list commands to completed order operation input", async () => {
+    const fake = makePorts(success({ orders: [] }))
+    const result = await runCli([
+      "orders",
+      "list",
+      "--page-size",
+      "2",
+      "--page-token",
+      "next-orders",
+      "--session",
+      "/tmp/orders-session.json"
+    ], fake.ports)
+
+    expect(result.exitCode).toBe(0)
+    expect(fake.calls).toEqual([{
+      input: {
+        pageSize: 2,
+        pageToken: "next-orders"
+      },
+      name: "voila_get_completed_orders",
+      options: {
+        sessionPath: "/tmp/orders-session.json"
+      }
+    }])
+  })
+
   it("passes auth login defaults and overrides to the login port", async () => {
     const fake = makePorts(success({ status: "active" }))
     const result = await runCli([

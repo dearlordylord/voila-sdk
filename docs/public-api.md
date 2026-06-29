@@ -26,10 +26,11 @@ import { runVoilaOperation } from "@firfi/voila-mcp"
 - Delivery context: `getDeliveryDestinations`, `getDeliveryDestination`, `getActiveShoppingContext`, `getDeliveryPropositionDetails`, `previewDeliveryContextChange`, `applyDeliveryContextChange`.
 - Slot review and guarded reservation: `getSlotListings`, `makeSlotReservationInputFromSlot`, `reserveSlot`.
 - Checkout review: `getCheckoutSummary`, `decideCheckoutReadiness`.
+- Order history: `getCompletedOrders`.
 
 ## Public Data Contracts
 
-Effect Schema contracts are exported from the package entrypoint for callers that need runtime validation around persisted data or SDK results. This includes session, search, cart, delivery, slot, checkout summary, and checkout readiness schemas.
+Effect Schema contracts are exported from the package entrypoint for callers that need runtime validation around persisted data or SDK results. This includes session, search, cart, delivery, slot, checkout summary, checkout readiness, and completed order schemas.
 
 Transport and storage ports are public so applications can provide their own HTTP, browser, and persistence adapters.
 
@@ -46,6 +47,7 @@ The initial MCP/CLI operation surface is:
 - `voila_check_session_health`
 - `voila_search_products`
 - `voila_get_category_products`
+- `voila_get_completed_orders`
 - `voila_get_cart`
 - `voila_add_cart_items`
 - `voila_remove_cart_items`

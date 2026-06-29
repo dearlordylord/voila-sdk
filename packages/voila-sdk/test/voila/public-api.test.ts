@@ -7,8 +7,10 @@ import type {
   CheckoutReadinessDecision,
   CookieJarPort,
   GetCheckoutSummaryResult,
+  GetCompletedOrdersResult,
   NormalizedCartView,
   NormalizedCheckoutSummary,
+  NormalizedCompletedOrdersResult,
   NormalizedSlotListing,
   SdkSessionSnapshot,
   SessionStoragePort,
@@ -27,6 +29,7 @@ import {
   getCart,
   getCategoryProducts,
   getCheckoutSummary,
+  getCompletedOrders,
   getDeliveryDestination,
   getDeliveryDestinations,
   getDeliveryPropositionDetails,
@@ -36,11 +39,13 @@ import {
   loginWithBrowser,
   makeAuthenticatedSdkSessionSnapshot,
   makeCheckoutSummaryRequest,
+  makeCompletedOrdersRequest,
   makeGuestSdkSessionSnapshot,
   makeSlotListingRequest,
   makeSlotReservationInputFromSlot,
   makeSlotReservationRequest,
   NormalizedCheckoutSummarySchema,
+  NormalizedCompletedOrdersResultSchema,
   previewDeliveryContextChange,
   removeCartItems,
   reserveSlot,
@@ -61,6 +66,8 @@ type PublicResultTypes = {
   readonly checkout: NormalizedCheckoutSummary
   readonly checkoutDecision: CheckoutReadinessDecision
   readonly checkoutResult: GetCheckoutSummaryResult
+  readonly completedOrders: NormalizedCompletedOrdersResult
+  readonly completedOrdersResult: GetCompletedOrdersResult
   readonly session: SdkSessionSnapshot
   readonly slots: NormalizedSlotListing
 }
@@ -95,6 +102,7 @@ describe("public package entrypoint", () => {
       getCart,
       getCategoryProducts,
       getCheckoutSummary,
+      getCompletedOrders,
       getDeliveryDestination,
       getDeliveryDestinations,
       getDeliveryPropositionDetails,
@@ -104,6 +112,7 @@ describe("public package entrypoint", () => {
       loginWithBrowser,
       makeAuthenticatedSdkSessionSnapshot,
       makeCheckoutSummaryRequest,
+      makeCompletedOrdersRequest,
       makeGuestSdkSessionSnapshot,
       makeSlotListingRequest,
       makeSlotReservationInputFromSlot,
@@ -121,6 +130,7 @@ describe("public package entrypoint", () => {
   it("exports documented public schemas", () => {
     expect(SessionSnapshotSchema.ast._tag).toBe("TypeLiteral")
     expect(NormalizedCheckoutSummarySchema.ast._tag).toBe("TypeLiteral")
+    expect(NormalizedCompletedOrdersResultSchema.ast._tag).toBe("TypeLiteral")
     expect(CheckoutReadinessDecisionSchema.ast._tag).toBe("TypeLiteral")
   })
 })

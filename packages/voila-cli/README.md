@@ -15,11 +15,14 @@ voila auth login --session ~/.config/voila/session.json
 voila auth status --json
 voila search "milk" --page-size 12
 voila category products <category-id>
+voila orders list --page-size 20
 voila cart get
 voila cart add <product-uuid> --quantity 1
 voila cart remove <product-uuid> --quantity 1
 ```
 
 `auth login` opens Chromium. Log in manually, then close the browser window to save. The CLI saves after Voila session material and cookies are captured, then validates the saved session.
+
+`orders list` reads completed orders with cursor pagination; pass `--page-token` from the previous response to fetch the next page.
 
 Cart commands use Voila product UUIDs. The CLI does not place orders.

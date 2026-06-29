@@ -4,7 +4,7 @@ Private pnpm workspace for Voila personal grocery automation packages.
 
 ## Packages
 
-- `packages/voila-sdk`: `@firfi/voila-sdk`, the TypeScript SDK for Voila sessions, search, categories, cart, slots, and checkout-readiness helpers.
+- `packages/voila-sdk`: `@firfi/voila-sdk`, the TypeScript SDK for Voila sessions, search, categories, cart, order history, slots, and checkout-readiness helpers.
 - `packages/voila-mcp`: `@firfi/voila-mcp`, a stdio MCP server exposing small auditable tools.
 - `packages/voila-cli`: `@firfi/voila-cli`, a user CLI that reuses the MCP operation registry.
 
@@ -32,6 +32,7 @@ The root package is private. Publishable packages live under `packages/`.
 voila auth login --session ~/.config/voila/session.json
 voila auth status --json
 voila search "milk"
+voila orders list
 voila cart get
 ```
 

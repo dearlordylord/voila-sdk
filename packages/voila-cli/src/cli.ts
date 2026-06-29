@@ -42,6 +42,7 @@ const helpText = `Usage:
   voila auth status [--session <path>] [--json]
   voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
+  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila cart get [--session <path>] [--json]
   voila cart add <product-id> --quantity <n> [--session <path>] [--json]
   voila cart remove <product-id> --quantity <n> [--session <path>] [--json]`
@@ -265,6 +266,23 @@ const runCategory = async (
   }, parsed)
 }
 
+const runOrders = async (
+  ports: CliPorts,
+  parsed: ParsedOptions
+): Promise<CliRunResult> => {
+  if (parsed.positionals[1] !== "list") {
+    return usage("Expected orders list")
+  }
+
+  const page = optionalPageInput(parsed)
+
+  if ("exitCode" in page) {
+    return page
+  }
+
+  return runOperation(ports, "voila_get_completed_orders", page, parsed)
+}
+
 const runCart = async (
   ports: CliPorts,
   parsed: ParsedOptions
@@ -316,6 +334,8 @@ export const runCli = async (
       return runCart(ports, parsed)
     case "category":
       return runCategory(ports, parsed)
+    case "orders":
+      return runOrders(ports, parsed)
     case "search":
       return runSearch(ports, parsed)
     default:

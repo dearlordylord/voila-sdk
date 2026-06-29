@@ -27,6 +27,42 @@ const sampleMetadata = {
   regionId: "region-id"
 }
 
+const completedOrdersResponse = JSON.stringify({
+  data: {
+    completedOrders: {
+      edges: [{
+        node: {
+          orderId: "sanitized-order-id-1",
+          prices: {
+            total: {
+              amount: "42.50",
+              currency: "CAD"
+            }
+          },
+          recurringOrderDefinition: null,
+          region: {
+            regionId: "sanitized-region-id",
+            retailerRegionId: "sanitized-retailer-region-id"
+          },
+          slot: {
+            __typename: "ImportedOrderSlot",
+            end: "2026-05-15T14:00:00-04:00",
+            name: "Imported order address",
+            start: "2026-05-15T13:00:00-04:00",
+            timeZone: "America/Montreal"
+          },
+          status: "DELIVERED"
+        }
+      }],
+      pageInfo: {
+        endCursor: "sanitized-next-order-cursor",
+        hasNextPage: true
+      },
+      retentionPeriod: "P1Y"
+    }
+  }
+})
+
 const fixture = (name: string): Promise<string> =>
   readFile(new URL(`../../voila-sdk/test/fixtures/${name}`, import.meta.url), "utf8")
 
@@ -91,6 +127,7 @@ describe("Voila MCP operations", () => {
       "voila_check_session_health",
       "voila_search_products",
       "voila_get_category_products",
+      "voila_get_completed_orders",
       "voila_get_cart",
       "voila_add_cart_items",
       "voila_remove_cart_items"
@@ -231,6 +268,35 @@ describe("Voila MCP operations", () => {
         }],
         unavailableData: []
       })
+    }
+  })
+
+  it("returns paginated completed orders", async () => {
+    const fake = makeEnvironment({
+      request: async () =>
+        Either.right({
+          body: completedOrdersResponse,
+          headers: {},
+          status: 200
+        })
+    })
+
+    const result = await runVoilaOperation("voila_get_completed_orders", {
+      pageSize: 2,
+      pageToken: "previous-cursor"
+    }, fake.env)
+
+    expect(result.ok).toBe(true)
+
+    if (result.ok) {
+      expect(result.value).toMatchObject({
+        pagination: {
+          hasNextPage: true,
+          nextPageToken: "sanitized-next-order-cursor"
+        }
+      })
+      expect(result.value).toHaveProperty("orders")
+      expect(JSON.stringify(result.value)).toContain("sanitized-order-id-1")
     }
   })
 
