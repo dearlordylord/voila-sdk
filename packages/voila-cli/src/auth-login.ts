@@ -3,19 +3,19 @@ import {
   type BrowserLoginBrowserCookie,
   BrowserLoginBrowserCookieArraySchema,
   checkSessionHealth,
-  extractInitialState,
-  type InitialState,
-  InitialStateSchema,
+  extractInitialStatePayload,
   makeAuthenticatedSdkSessionSnapshot,
   makeSessionSnapshot,
   parseUnknown,
   saveSdkSessionSnapshot,
   type SdkSessionSnapshot,
+  type SessionMetadata,
   type SessionStoragePort,
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "@firfi/voila-sdk"
 import { Either } from "effect"
+import { randomUUID } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import { chromium, type Page } from "playwright"
@@ -26,6 +26,12 @@ const defaultTimeoutMs = 300_000
 const pollIntervalMs = 2_000
 const millisecondsPerSecond = 1000
 const sessionCookieExpires = -1
+const readonlyCsrfFallback = "csrf-not-observed-readonly"
+
+interface CapturedSessionMaterial {
+  readonly csrfToken?: string
+  readonly metadata: SessionMetadata
+}
 
 const failure = (tag: string, message: string): OperationExecutionResult => ({
   error: {
@@ -55,6 +61,8 @@ const delay = (milliseconds: number): Promise<void> =>
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null
+
+const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0
 
 const responseSaysAuthenticated = (response: unknown): boolean => {
   if (!isRecord(response)) {
@@ -122,21 +130,98 @@ const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
   ].join("; ")
 }
 
-const readInitialStateFromRuntime = async (
-  page: Page
-): Promise<Either.Either<InitialState, "missing">> => {
-  const runtimeState = await page.evaluate("window.__INITIAL_STATE__")
+const readNested = (
+  value: unknown,
+  path: ReadonlyArray<string>
+): unknown => {
+  let current = value
 
-  if (runtimeState === undefined || runtimeState === null) {
-    return Either.left("missing")
+  for (const key of path) {
+    if (!isRecord(current)) {
+      return undefined
+    }
+
+    current = current[key]
   }
 
-  return Either.mapLeft(parseUnknown(InitialStateSchema, runtimeState), () => "missing" as const)
+  return current
 }
 
-const readInitialStateFromFetchedHtml = async (
+const pickString = (...values: ReadonlyArray<unknown>): string | undefined => {
+  for (const value of values) {
+    if (typeof value === "string") {
+      return value
+    }
+  }
+
+  return undefined
+}
+
+const normalizeMetadata = (payload: unknown): SessionMetadata | undefined => {
+  const rawMetadata = readNested(payload, ["session", "metadata"])
+  const basketRegionId = readNested(payload, ["data", "basket", "regionId"])
+
+  if (!isRecord(rawMetadata)) {
+    return undefined
+  }
+
+  const assetVersion = pickString(rawMetadata.assetVersion)
+  const regionId = pickString(rawMetadata.regionId, basketRegionId)
+
+  if (!isNonEmptyString(assetVersion) || !isNonEmptyString(regionId)) {
+    return undefined
+  }
+
+  return {
+    assetVersion,
+    clientRouteId: pickString(rawMetadata.clientRouteId) ?? randomUUID(),
+    pageViewId: pickString(rawMetadata.pageViewId) ?? randomUUID(),
+    regionId
+  }
+}
+
+const readCsrfToken = (payload: unknown): string | undefined =>
+  pickString(
+    readNested(payload, ["csrf", "token"]),
+    readNested(payload, ["session", "csrf", "token"])
+  )
+
+const captureSessionMaterial = (payload: unknown): CapturedSessionMaterial | undefined => {
+  const metadata = normalizeMetadata(payload)
+
+  if (metadata === undefined) {
+    return undefined
+  }
+
+  const csrfToken = readCsrfToken(payload)
+
+  return {
+    ...(isNonEmptyString(csrfToken) ? { csrfToken } : {}),
+    metadata
+  }
+}
+
+const readMaterialFromRuntime = async (
   page: Page
-): Promise<Either.Either<InitialState, "missing">> => {
+): Promise<CapturedSessionMaterial | undefined> => {
+  const runtimeState: unknown = await page.evaluate("window.__INITIAL_STATE__")
+
+  if (runtimeState === undefined || runtimeState === null) {
+    return undefined
+  }
+
+  return captureSessionMaterial(runtimeState)
+}
+
+const readMaterialFromHtml = (html: string): CapturedSessionMaterial | undefined => {
+  const payload = extractInitialStatePayload(html)
+
+  return Either.isRight(payload) ? captureSessionMaterial(payload.right) : undefined
+}
+
+const readMaterialFromFetchedHtml = async (
+  page: Page
+): Promise<CapturedSessionMaterial | undefined> => {
   const html = await page.evaluate(async () => {
     const response = await fetch("/", {
       credentials: "include"
@@ -145,33 +230,33 @@ const readInitialStateFromFetchedHtml = async (
     return response.text()
   })
 
-  return Either.mapLeft(extractInitialState(html), () => "missing" as const)
+  return readMaterialFromHtml(html)
 }
 
-const readInitialStateFromBrowser = async (
+const readSessionMaterialFromBrowser = async (
   page: Page
-): Promise<Either.Either<InitialState, "missing">> => {
-  const runtimeState = await readInitialStateFromRuntime(page)
+): Promise<CapturedSessionMaterial | undefined> => {
+  const runtimeState = await readMaterialFromRuntime(page)
 
-  if (Either.isRight(runtimeState)) {
+  if (runtimeState !== undefined) {
     return runtimeState
   }
 
-  const pageHtmlState = Either.mapLeft(extractInitialState(await page.content()), () => "missing" as const)
+  const pageHtmlState = readMaterialFromHtml(await page.content())
 
-  if (Either.isRight(pageHtmlState)) {
+  if (pageHtmlState !== undefined) {
     return pageHtmlState
   }
 
-  return readInitialStateFromFetchedHtml(page)
+  return readMaterialFromFetchedHtml(page)
 }
 
 const makeSessionFromBrowser = async (
   page: Page
 ): Promise<OperationExecutionResult | SdkSessionSnapshot> => {
-  const initialState = await readInitialStateFromBrowser(page)
+  const material = await readSessionMaterialFromBrowser(page)
 
-  if (Either.isLeft(initialState)) {
+  if (material === undefined) {
     return failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
   }
 
@@ -200,13 +285,20 @@ const makeSessionFromBrowser = async (
     return failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
   }
 
-  const session = makeSessionSnapshot(initialState.right.session.metadata, initialState.right.csrf, cookieJar.right)
+  const session = makeSessionSnapshot(
+    material.metadata,
+    { token: material.csrfToken ?? readonlyCsrfFallback },
+    cookieJar.right
+  )
 
   if (Either.isLeft(session)) {
     return failure("VoilaAuthSessionCaptureInvalid", "Voila browser session could not be converted to an SDK session")
   }
 
-  const sdkSession = makeAuthenticatedSdkSessionSnapshot(session.right, "authenticated")
+  const sdkSession = makeAuthenticatedSdkSessionSnapshot(
+    session.right,
+    material.csrfToken === undefined ? "unknown-expiry" : "authenticated"
+  )
 
   return Either.isLeft(sdkSession)
     ? failure("VoilaAuthSessionCaptureInvalid", "Voila browser session could not be converted to an SDK session")
