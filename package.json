@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "rebuild:native": "pnpm install --frozen-lockfile --prefer-offline && pnpm rebuild esbuild unrs-resolver @parcel/watcher rolldown",
+    "rebuild:native": "CI=true pnpm install --frozen-lockfile --prefer-offline && pnpm rebuild esbuild unrs-resolver @parcel/watcher rolldown",
     "smoke:catalog-search": "pnpm --filter @firfi/voila-sdk smoke:catalog-search",
     "smoke:cart": "pnpm --filter @firfi/voila-sdk smoke:cart",
     "smoke:auth-readonly": "pnpm --filter @firfi/voila-sdk smoke:auth-readonly",

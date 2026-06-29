@@ -30,7 +30,7 @@ for (const packageDirectory of packageDirectories) {
   }
 
   console.log(`publish ${name}@${version}`)
-  execFileSync("pnpm", ["--dir", packageDirectory, "publish", "--access", "public"], {
+  execFileSync("pnpm", ["publish", packageDirectory, "--access", "public", "--no-git-checks"], {
     stdio: "inherit"
   })
 }
