@@ -4,6 +4,8 @@ import {
   BrowserLoginBrowserCookieArraySchema,
   checkSessionHealth,
   extractInitialState,
+  type InitialState,
+  InitialStateSchema,
   makeAuthenticatedSdkSessionSnapshot,
   makeSessionSnapshot,
   parseUnknown,
@@ -120,10 +122,54 @@ const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
   ].join("; ")
 }
 
+const readInitialStateFromRuntime = async (
+  page: Page
+): Promise<Either.Either<InitialState, "missing">> => {
+  const runtimeState = await page.evaluate("window.__INITIAL_STATE__")
+
+  if (runtimeState === undefined || runtimeState === null) {
+    return Either.left("missing")
+  }
+
+  return Either.mapLeft(parseUnknown(InitialStateSchema, runtimeState), () => "missing" as const)
+}
+
+const readInitialStateFromFetchedHtml = async (
+  page: Page
+): Promise<Either.Either<InitialState, "missing">> => {
+  const html = await page.evaluate(async () => {
+    const response = await fetch("/", {
+      credentials: "include"
+    })
+
+    return response.text()
+  })
+
+  return Either.mapLeft(extractInitialState(html), () => "missing" as const)
+}
+
+const readInitialStateFromBrowser = async (
+  page: Page
+): Promise<Either.Either<InitialState, "missing">> => {
+  const runtimeState = await readInitialStateFromRuntime(page)
+
+  if (Either.isRight(runtimeState)) {
+    return runtimeState
+  }
+
+  const pageHtmlState = Either.mapLeft(extractInitialState(await page.content()), () => "missing" as const)
+
+  if (Either.isRight(pageHtmlState)) {
+    return pageHtmlState
+  }
+
+  return readInitialStateFromFetchedHtml(page)
+}
+
 const makeSessionFromBrowser = async (
   page: Page
 ): Promise<OperationExecutionResult | SdkSessionSnapshot> => {
-  const initialState = extractInitialState(await page.content())
+  const initialState = await readInitialStateFromBrowser(page)
 
   if (Either.isLeft(initialState)) {
     return failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
