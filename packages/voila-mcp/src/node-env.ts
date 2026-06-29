@@ -11,6 +11,7 @@ import { Either, Schema } from "effect"
 import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 
+import { makeAuthGuidance } from "./auth-guidance.js"
 import { makeGuestSessionSnapshot, type OperationEnvironment, type OperationFailure } from "./operations.js"
 
 const EnvSchema = Schema.Struct({
@@ -166,6 +167,7 @@ export const makeNodeOperationEnvironment = (
   Either.map(
     Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid),
     (config) => ({
+      ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
       session: makeSessionPort(config, transport),
       transport
     })

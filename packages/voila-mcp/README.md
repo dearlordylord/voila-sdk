@@ -10,6 +10,8 @@ The server reads configuration from environment variables:
 - `VOILA_SESSION_WRITE_PATH`: optional path for updated session snapshots. Defaults to `VOILA_AUTH_SESSION_PATH`.
 - `VOILA_GUEST=1`: force guest-session behavior.
 
+If a tool runs with a guest, expired, missing, or unreadable account session, the tool result includes `authGuidance` with the CLI command to run. The MCP server does not launch a browser; run the command, log in in Chromium, close the browser window to save, then retry the MCP request.
+
 ## Client Example
 
 ```json

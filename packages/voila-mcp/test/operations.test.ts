@@ -11,12 +11,14 @@ import { Either } from "effect"
 import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
 
+import { makeAuthGuidance } from "../src/auth-guidance.js"
 import { makeNodeOperationEnvironment } from "../src/node-env.js"
 import { mcpName, type OperationEnvironment, runVoilaOperation, voilaOperationDescriptors } from "../src/operations.js"
 
 const voilaUrl = "https://voila.ca/"
 const csrfToken = "csrf-token"
 const secretNetworkValue = "secret-network-value"
+const sessionPath = "/tmp/voila-session.json"
 
 const sampleMetadata = {
   assetVersion: "asset-version",
@@ -144,6 +146,58 @@ describe("Voila MCP operations", () => {
       if (Either.isRight(session)) {
         expect(session.right.kind).toBe("guest")
       }
+    }
+  })
+
+  it("returns CLI login guidance for guest session health", async () => {
+    const fake = makeEnvironment({
+      request: async () =>
+        Either.right({
+          body: JSON.stringify({
+            authenticated: false
+          }),
+          headers: {},
+          status: 200
+        })
+    })
+    const env: OperationEnvironment = {
+      ...fake.env,
+      authGuidance: makeAuthGuidance(sessionPath)
+    }
+    const result = await runVoilaOperation("voila_check_session_health", {}, env)
+
+    expect(result.ok).toBe(true)
+
+    if (result.ok) {
+      expect(result.authGuidance?.command).toBe(`npx -y @firfi/voila-cli auth login --session ${sessionPath}`)
+      expect(result.authGuidance?.mcpEnv.VOILA_AUTH_SESSION_PATH).toBe(sessionPath)
+      expect(result.authGuidance?.instructions).toContain("close the browser window")
+    }
+  })
+
+  it("returns CLI login guidance when configured session loading fails", async () => {
+    const env: OperationEnvironment = {
+      authGuidance: makeAuthGuidance(sessionPath),
+      session: {
+        load: async () =>
+          Either.left({
+            _tag: "SdkSessionStorageReadFailed",
+            message: "Session could not be read"
+          }),
+        save: async () => Either.right(undefined)
+      },
+      transport: {
+        request: async () => Either.left("unused")
+      }
+    }
+
+    const result = await runVoilaOperation("voila_get_cart", {}, env)
+
+    expect(result.ok).toBe(false)
+
+    if (!result.ok) {
+      expect(result.error.authGuidance?.command).toBe(`npx -y @firfi/voila-cli auth login --session ${sessionPath}`)
+      expect(result.error.authGuidance?.instructions).toContain("retry the MCP request")
     }
   })
 

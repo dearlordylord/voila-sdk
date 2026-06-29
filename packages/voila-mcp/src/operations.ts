@@ -17,6 +17,7 @@ import {
 import type { Schema } from "effect"
 import { Either } from "effect"
 
+import { authGuidanceForHealth, authGuidanceForSnapshot, type OperationAuthGuidance } from "./auth-guidance.js"
 import {
   type CartItemOperationInput,
   CartItemOperationInputSchema,
@@ -45,12 +46,14 @@ export interface VoilaOperationDescriptor {
 
 export interface OperationFailure {
   readonly _tag: string
+  readonly authGuidance?: OperationAuthGuidance
   readonly message: string
   readonly status?: number
 }
 
 export type OperationExecutionResult =
   | {
+    readonly authGuidance?: OperationAuthGuidance
     readonly ok: true
     readonly value: unknown
   }
@@ -65,6 +68,7 @@ export interface OperationSessionPort {
 }
 
 export interface OperationEnvironment {
+  readonly authGuidance?: OperationAuthGuidance
   readonly session: OperationSessionPort
   readonly transport: VoilaTransport
 }
@@ -119,13 +123,17 @@ const bootstrapFailed = (failure: OperationFailure): OperationFailure => ({
   message: failure.message
 })
 
-const success = (value: unknown): OperationExecutionResult => ({
+const success = (value: unknown, authGuidance?: OperationAuthGuidance): OperationExecutionResult => ({
+  ...(authGuidance === undefined ? {} : { authGuidance }),
   ok: true,
   value
 })
 
-const failure = (error: OperationFailure): OperationExecutionResult => ({
-  error,
+const failure = (error: OperationFailure, authGuidance?: OperationAuthGuidance): OperationExecutionResult => ({
+  error: {
+    ...error,
+    ...(authGuidance === undefined ? {} : { authGuidance })
+  },
   ok: false
 })
 
@@ -239,7 +247,7 @@ const runHealth = async (
   const snapshot = await loadSession(env)
 
   if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left)
+    return failure(snapshot.left, env.authGuidance)
   }
 
   const health = await checkSessionHealth(snapshot.right, env.transport)
@@ -258,7 +266,7 @@ const runHealth = async (
     diagnostic: redactSdkSessionSnapshot(health.right.session),
     ...(health.right.status === "retry" ? { reason: health.right.reason } : {}),
     status: health.right.status
-  })
+  }, authGuidanceForHealth(env.authGuidance, health.right))
 }
 
 const runSearch = async (
@@ -274,7 +282,7 @@ const runSearch = async (
   const snapshot = await loadSession(env)
 
   if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left)
+    return failure(snapshot.left, env.authGuidance)
   }
 
   const result = await searchProducts(
@@ -289,7 +297,7 @@ const runSearch = async (
 
   const persisted = await persistResultSession(env, snapshot.right, result.right.session)
 
-  return persisted ?? success(result.right.value)
+  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
 }
 
 const runCategoryProducts = async (
@@ -305,7 +313,7 @@ const runCategoryProducts = async (
   const snapshot = await loadSession(env)
 
   if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left)
+    return failure(snapshot.left, env.authGuidance)
   }
 
   const result = await getCategoryProducts(
@@ -320,7 +328,7 @@ const runCategoryProducts = async (
 
   const persisted = await persistResultSession(env, snapshot.right, result.right.session)
 
-  return persisted ?? success(result.right.value)
+  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
 }
 
 const runGetCart = async (
@@ -336,7 +344,7 @@ const runGetCart = async (
   const snapshot = await loadSession(env)
 
   if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left)
+    return failure(snapshot.left, env.authGuidance)
   }
 
   const result = await getCart(snapshot.right.session, env.transport)
@@ -347,7 +355,7 @@ const runGetCart = async (
 
   const persisted = await persistResultSession(env, snapshot.right, result.right.session)
 
-  return persisted ?? success(result.right.value)
+  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
 }
 
 const runCartItems = async (
@@ -364,7 +372,7 @@ const runCartItems = async (
   const snapshot = await loadSession(env)
 
   if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left)
+    return failure(snapshot.left, env.authGuidance)
   }
 
   const result = await apply(snapshot.right.session, parsed.right.items, env.transport)
@@ -375,7 +383,7 @@ const runCartItems = async (
 
   const persisted = await persistResultSession(env, snapshot.right, result.right.session)
 
-  return persisted ?? success(result.right.value)
+  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
 }
 
 export const runVoilaOperation = async (
