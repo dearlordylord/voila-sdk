@@ -25,7 +25,6 @@
     "README.md"
   ],
   "scripts": {
-    "prebuild": "pnpm rebuild esbuild",
     "prepack": "pnpm build",
     "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node'",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
