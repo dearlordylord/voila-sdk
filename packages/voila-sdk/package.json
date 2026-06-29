@@ -1,6 +1,6 @@
 {
   "name": "@firfi/voila-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript SDK for Voila grocery search, sessions, and cart workflows",
   "type": "module",
   "main": "./dist/src/index.js",

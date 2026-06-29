@@ -42,6 +42,16 @@ Line-count limits are architecture signals. If `max-lines` fails, split the file
 
 Use `pnpm`, not npm. Prefer package scripts over raw commands.
 
+## Publish Readiness
+
+When the user asks to publish or prepare a publish, bump every changed publishable package before finishing. The user-facing publish path must stay one command:
+
+```bash
+pnpm release:publish
+```
+
+Do not leave the user to manually edit package versions. After bumping, run the release checks, commit, and push so the user only has to run the one publish command on their host.
+
 ## Verification
 
 Run before considering work complete:
