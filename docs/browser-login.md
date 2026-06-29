@@ -11,7 +11,7 @@ PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright-voila \
 voila auth login --session ~/.config/voila/session.json
 ```
 
-The CLI opens a persistent Playwright profile at `~/.cache/voila/browser-profile` by default. Override it with `--profile <dir>`. The command saves only after the SDK captures an authenticated session and validates session health.
+The CLI opens a persistent Playwright profile at `~/.cache/voila/browser-profile` by default. Override it with `--profile <dir>`. Log in manually, then close the browser window to save. The command saves only after authenticated account evidence is observed and session health validates; a guest/signed-out page is rejected.
 
 On a host with a graphical browser session, run:
 

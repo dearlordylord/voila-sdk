@@ -286,14 +286,6 @@ describe("session health", () => {
         status: "AUTHENTICATED"
       },
       name: "authenticated status"
-    },
-    {
-      body: {
-        cartId: "sanitized-cart-id",
-        regionId: "sanitized-region-id",
-        type: "CART"
-      },
-      name: "current active cart session response"
     }
   ])("accepts $name as authenticated evidence", async ({ body }) => {
     const result = await checkSessionHealth(
@@ -305,6 +297,26 @@ describe("session health", () => {
 
     if (Either.isRight(result)) {
       expect(result.right.status).toBe("active")
+      expect(result.right.session.kind).toBe("authenticated")
+    }
+  })
+
+  it("does not accept guest cart session identifiers as authenticated evidence", async () => {
+    const result = await checkSessionHealth(
+      makeAuthenticatedSnapshot(),
+      makeResponseTransport(makeResponse(
+        JSON.stringify({
+          cartId: "sanitized-cart-id",
+          regionId: "sanitized-region-id",
+          type: "CART"
+        })
+      )).transport
+    )
+
+    expect(Either.isRight(result)).toBe(true)
+
+    if (Either.isRight(result)) {
+      expect(result.right.status).toBe("reauth-required")
       expect(result.right.session.kind).toBe("authenticated")
     }
   })

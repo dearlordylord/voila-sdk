@@ -35,7 +35,7 @@ voila search "milk"
 voila cart get
 ```
 
-The CLI default session path is `~/.config/voila/session.json`. Browser login uses a persistent Playwright profile at `~/.cache/voila/browser-profile` unless `--profile` is provided.
+The CLI default session path is `~/.config/voila/session.json`. Browser login uses a persistent Playwright profile at `~/.cache/voila/browser-profile` unless `--profile` is provided; log in manually and close the browser window to save.
 
 ## Verification
 

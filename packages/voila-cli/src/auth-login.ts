@@ -33,6 +33,11 @@ interface CapturedSessionMaterial {
   readonly metadata: SessionMetadata
 }
 
+interface CapturedBrowserSession {
+  readonly cookies: ReadonlyArray<BrowserLoginBrowserCookie>
+  readonly material: CapturedSessionMaterial
+}
+
 const failure = (tag: string, message: string): OperationExecutionResult => ({
   error: {
     _tag: tag,
@@ -77,7 +82,7 @@ const responseSaysAuthenticated = (response: unknown): boolean => {
     return true
   }
 
-  return typeof response.cartId === "string" && typeof response.regionId === "string"
+  return typeof response.status === "string" && response.status.toLowerCase() === "authenticated"
 }
 
 const readActiveCustomerSession = async (page: Page): Promise<unknown> =>
@@ -89,29 +94,81 @@ const readActiveCustomerSession = async (page: Page): Promise<unknown> =>
     return response.json()
   })
 
-const refreshVoilaHomepage = async (page: Page): Promise<void> => {
-  await page.goto(VOILA_BASE_URL, { waitUntil: "domcontentloaded" })
+const pageIsClosed = (page: Page): boolean => {
+  try {
+    return page.isClosed()
+  } catch {
+    return true
+  }
 }
 
-const waitForAuthenticatedSession = async (
+const captureBrowserSession = async (
+  page: Page
+): Promise<CapturedBrowserSession | undefined> => {
+  if (pageIsClosed(page)) {
+    return undefined
+  }
+
+  const material = await readSessionMaterialFromBrowser(page)
+
+  if (material === undefined) {
+    return undefined
+  }
+
+  const cookies = Either.mapLeft(
+    parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.context().cookies(VOILA_BASE_URL)),
+    () => failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
+  )
+
+  if (Either.isLeft(cookies)) {
+    return undefined
+  }
+
+  return {
+    cookies: cookies.right,
+    material
+  }
+}
+
+const waitForAuthenticatedCapture = async (
   page: Page,
   timeoutMs: number
-): Promise<boolean> => {
+): Promise<CapturedBrowserSession | OperationExecutionResult> => {
   const attempts = Math.max(1, Math.ceil(timeoutMs / pollIntervalMs))
+  let authenticatedObserved = false
+  let latestCapture: CapturedBrowserSession | undefined
 
   for (let remaining = attempts; remaining > 0; remaining -= 1) {
-    try {
-      if (responseSaysAuthenticated(await readActiveCustomerSession(page))) {
-        return true
+    if (pageIsClosed(page)) {
+      if (!authenticatedObserved) {
+        return failure("VoilaAuthNotAuthenticated", "Browser closed before an authenticated Voila account was observed")
       }
-    } catch {
-      // Keep polling until timeout; transient fetch failures are expected while the page navigates.
+
+      return latestCapture === undefined
+        ? failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
+        : latestCapture
+    }
+
+    if (!authenticatedObserved) {
+      try {
+        authenticatedObserved = responseSaysAuthenticated(await readActiveCustomerSession(page))
+      } catch {
+        // Keep polling until timeout; transient fetch failures are expected while the page navigates.
+      }
+    }
+
+    if (authenticatedObserved) {
+      const capture = await captureBrowserSession(page)
+
+      if (capture !== undefined) {
+        latestCapture = capture
+      }
     }
 
     await delay(pollIntervalMs)
   }
 
-  return false
+  return failure("VoilaAuthTimedOut", "Interactive browser login timed out")
 }
 
 const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
@@ -251,27 +308,12 @@ const readSessionMaterialFromBrowser = async (
   return readMaterialFromFetchedHtml(page)
 }
 
-const makeSessionFromBrowser = async (
-  page: Page
-): Promise<OperationExecutionResult | SdkSessionSnapshot> => {
-  const material = await readSessionMaterialFromBrowser(page)
-
-  if (material === undefined) {
-    return failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
-  }
-
-  const cookies = Either.mapLeft(
-    parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.context().cookies(VOILA_BASE_URL)),
-    () => failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
-  )
-
-  if (Either.isLeft(cookies)) {
-    return cookies.left
-  }
-
+const makeSessionFromBrowserCapture = (
+  capture: CapturedBrowserSession
+): OperationExecutionResult | SdkSessionSnapshot => {
   const jar = toughCookieJarPort.create()
 
-  for (const cookie of cookies.right) {
+  for (const cookie of capture.cookies) {
     try {
       jar.setCookieSync(makeCookieHeader(cookie), VOILA_BASE_URL)
     } catch {
@@ -286,8 +328,8 @@ const makeSessionFromBrowser = async (
   }
 
   const session = makeSessionSnapshot(
-    material.metadata,
-    { token: material.csrfToken ?? readonlyCsrfFallback },
+    capture.material.metadata,
+    { token: capture.material.csrfToken ?? readonlyCsrfFallback },
     cookieJar.right
   )
 
@@ -297,7 +339,7 @@ const makeSessionFromBrowser = async (
 
   const sdkSession = makeAuthenticatedSdkSessionSnapshot(
     session.right,
-    material.csrfToken === undefined ? "unknown-expiry" : "authenticated"
+    capture.material.csrfToken === undefined ? "unknown-expiry" : "authenticated"
   )
 
   return Either.isLeft(sdkSession)
@@ -338,19 +380,20 @@ export const loginWithPlaywright = async (
       return failure("VoilaAuthOpenFailed", "Voila could not be opened in Chromium")
     }
 
-    const authenticated = await waitForAuthenticatedSession(page, options.timeoutMs ?? defaultTimeoutMs)
+    process.stdout.write([
+      "Opened Voila in Chromium.",
+      "Log in manually, then close the browser window to save the authenticated session.",
+      "If the page still shows Sign in, the CLI will not save it as authenticated.",
+      ""
+    ].join("\n"))
 
-    if (!authenticated) {
-      return failure("VoilaAuthTimedOut", "Interactive browser login timed out")
+    const capture = await waitForAuthenticatedCapture(page, options.timeoutMs ?? defaultTimeoutMs)
+
+    if ("ok" in capture) {
+      return capture
     }
 
-    try {
-      await refreshVoilaHomepage(page)
-    } catch {
-      return failure("VoilaAuthHomepageRefreshFailed", "Voila authenticated homepage could not be refreshed")
-    }
-
-    const session = await makeSessionFromBrowser(page)
+    const session = await makeSessionFromBrowserCapture(capture)
 
     if ("ok" in session) {
       return session

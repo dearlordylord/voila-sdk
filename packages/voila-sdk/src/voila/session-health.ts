@@ -64,7 +64,6 @@ const responseSaysAuthenticated = (response: ActiveCustomerSessionResponse): boo
   || response.isAuthenticated === true
   || response.customer?.authenticated === true
   || response.status?.toLowerCase() === "authenticated"
-  || (typeof response.cartId === "string" && typeof response.regionId === "string")
 
 const makeSdkSnapshotWithSession = (
   previous: SdkSessionSnapshot,
