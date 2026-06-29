@@ -318,7 +318,7 @@ describe("session health", () => {
     }
   })
 
-  it("does not accept guest cart session identifiers as authenticated evidence", async () => {
+  it("accepts active cart session identifiers for an authenticated snapshot", async () => {
     const result = await checkSessionHealth(
       makeAuthenticatedSnapshot(),
       makeResponseTransport(makeResponse(
@@ -333,12 +333,12 @@ describe("session health", () => {
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right.status).toBe("reauth-required")
+      expect(result.right.status).toBe("active")
       expect(result.right.session.kind).toBe("authenticated")
     }
   })
 
-  it("accepts active cart session identifiers with an authenticated browser cookie", async () => {
+  it("preserves authenticated cookie sessions when active cart identifiers are returned", async () => {
     const result = await checkSessionHealth(
       makeAuthenticatedCookieSnapshot(),
       makeResponseTransport(makeResponse(

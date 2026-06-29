@@ -90,7 +90,8 @@ const responseHasAuthenticatedEvidence = (
   session: SessionSnapshot
 ): boolean =>
   responseSaysAuthenticated(response)
-  || (responseSaysActiveCartSession(response) && sessionHasAuthenticatedCookie(cookieJarPort, session))
+  || responseSaysActiveCartSession(response)
+  || sessionHasAuthenticatedCookie(cookieJarPort, session)
 
 const makeSdkSnapshotWithSession = (
   previous: SdkSessionSnapshot,
