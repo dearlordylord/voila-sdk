@@ -1,0 +1,46 @@
+{
+  "cartId": "sanitized-missing-slot-cart-id",
+  "checkout": {
+    "basketAboveThreshold": true,
+    "canCheckout": false,
+    "checkoutRestrictions": [
+      {
+        "code": "DELIVERY_SLOT_REQUIRED",
+        "message": "Select a delivery slot before checkout",
+        "severity": "BLOCKING"
+      }
+    ],
+    "minimumCheckoutThreshold": {
+      "amount": "50.00",
+      "currency": "CAD"
+    },
+    "shippingGroupType": "HOME_DELIVERY",
+    "shippingGroupTypeDisplayName": "Home delivery"
+  },
+  "charges": {
+    "smallOrder": {
+      "finalPrice": {
+        "amount": "0.00",
+        "currency": "CAD"
+      }
+    }
+  },
+  "totals": {
+    "finalPrice": {
+      "amount": "72.30",
+      "currency": "CAD"
+    },
+    "itemPriceAfterPromos": {
+      "amount": "72.30",
+      "currency": "CAD"
+    },
+    "itemsRetailPrice": {
+      "amount": "75.50",
+      "currency": "CAD"
+    },
+    "savingsPrice": {
+      "amount": "3.20",
+      "currency": "CAD"
+    }
+  }
+}

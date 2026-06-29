@@ -1,0 +1,21 @@
+[
+  {
+    "addressId": "sanitized-address-id",
+    "customerAccountId": "sanitized-account-id",
+    "deliverability": "DELIVERABLE",
+    "deliveryDestinationId": "sanitized-delivery-destination-id",
+    "deliveryInstructions": "sanitized-delivery-instructions",
+    "deliveryMethod": "HOME_DELIVERY",
+    "formattedAddress": "sanitized-formatted-address",
+    "name": "sanitized-address-nickname",
+    "resolvedRegionId": "sanitized-region-id"
+  },
+  {
+    "addressId": "sanitized-undeliverable-address-id",
+    "deliverability": "UNDELIVERABLE",
+    "deliveryDestinationId": "sanitized-undeliverable-delivery-destination-id",
+    "deliveryMethod": "HOME_DELIVERY",
+    "formattedAddress": "sanitized-undeliverable-formatted-address",
+    "regionId": "sanitized-fallback-region-id"
+  }
+]

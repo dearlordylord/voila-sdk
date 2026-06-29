@@ -1,0 +1,24 @@
+[
+  {
+    "deliveryMethod": "HOME_DELIVERY",
+    "deliveryPropositionId": "sanitized-home-proposition-id",
+    "details": {
+      "iconUrl": "https://voila.ca/static/sanitized-home-icon.svg",
+      "name": "Scheduled home delivery"
+    },
+    "isDefault": true,
+    "propositionType": "SCHEDULED",
+    "regionId": "sanitized-home-region-id"
+  },
+  {
+    "deliveryMethod": "CUSTOMER_COLLECTION",
+    "deliveryPropositionId": "sanitized-collection-proposition-id",
+    "details": {
+      "iconUrl": "https://voila.ca/static/sanitized-collection-icon.svg",
+      "name": "Collection"
+    },
+    "isDefault": false,
+    "propositionType": "SCHEDULED",
+    "regionId": "sanitized-collection-region-id"
+  }
+]

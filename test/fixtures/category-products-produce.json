@@ -1,0 +1,93 @@
+{
+  "category": {
+    "categoryId": "sanitized-category-produce",
+    "name": "Fruits & Vegetables",
+    "retailerCategoryId": "retailer-category-produce",
+    "urlPath": "/aisles/fruits-vegetables"
+  },
+  "filters": [
+    {
+      "id": "brand",
+      "label": "Brand",
+      "options": [
+        {
+          "count": 7,
+          "id": "fresh-farms",
+          "label": "Fresh Farms",
+          "selected": true
+        },
+        {
+          "count": 3,
+          "id": "market-best",
+          "label": "Market Best"
+        }
+      ]
+    },
+    {
+      "id": "dietary",
+      "label": "Dietary",
+      "options": [
+        {
+          "id": "organic",
+          "label": "Organic",
+          "selected": false
+        }
+      ]
+    }
+  ],
+  "nextPageToken": "sanitized-category-next-page-token",
+  "productGroups": [
+    {
+      "decoratedProducts": [
+        {
+          "available": true,
+          "brand": "Fresh Farms",
+          "image": {
+            "description": "Fresh Farms strawberries",
+            "src": "https://voila.ca/images/sanitized-strawberries.jpg"
+          },
+          "maxQuantityReached": false,
+          "name": "Fresh Farms Strawberries 454 g",
+          "packSizeDescription": "454g",
+          "price": {
+            "amount": "4.99",
+            "currency": "CAD"
+          },
+          "productId": "sanitized-strawberries-product-id",
+          "quantityInBasket": 2,
+          "retailerProductId": "111222EA",
+          "unitPrice": {
+            "price": {
+              "amount": "1.10",
+              "currency": "CAD"
+            },
+            "unit": "fop.price.per.100g",
+            "unitName": "PER_100G"
+          }
+        }
+      ],
+      "name": "Featured in Fruits & Vegetables",
+      "type": "featured"
+    },
+    {
+      "products": [
+        {
+          "available": false,
+          "brand": "Market Best",
+          "maxQuantityReached": true,
+          "name": "Market Best Blueberries 170 g",
+          "packSizeDescription": "170g",
+          "price": {
+            "amount": "3.49",
+            "currency": "CAD"
+          },
+          "productId": "sanitized-blueberries-product-id",
+          "quantityInBasket": 0,
+          "retailerProductId": "333444EA"
+        }
+      ],
+      "type": "standard"
+    }
+  ],
+  "totalProducts": 19
+}

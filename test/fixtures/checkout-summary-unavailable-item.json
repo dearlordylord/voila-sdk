@@ -1,0 +1,64 @@
+{
+  "cartId": "sanitized-unavailable-cart-id",
+  "checkout": {
+    "basketAboveThreshold": true,
+    "canCheckout": false,
+    "checkoutRestrictions": [
+      {
+        "code": "UNAVAILABLE_ITEMS",
+        "message": "Review unavailable items before checkout",
+        "severity": "BLOCKING"
+      }
+    ],
+    "delivery": {
+      "endTime": "2026-07-01T10:00:00-04:00",
+      "expiryTime": "2026-07-01T07:45:00-04:00",
+      "price": {
+        "amount": "3.99",
+        "currency": "CAD"
+      },
+      "slotId": "sanitized-slot-id",
+      "startTime": "2026-07-01T08:00:00-04:00",
+      "timeZoneId": "America/Toronto"
+    },
+    "shippingGroupType": "HOME_DELIVERY"
+  },
+  "limitedItems": [
+    {
+      "code": "MAX_QUANTITY",
+      "message": "A cart item is quantity limited",
+      "productId": "sanitized-limited-product-id",
+      "severity": "WARNING"
+    }
+  ],
+  "pricingNotifications": [
+    {
+      "code": "PRICE_CHANGED",
+      "message": "A product price changed",
+      "productId": "sanitized-price-change-product-id",
+      "severity": "INFO"
+    }
+  ],
+  "substitutions": [
+    {
+      "code": "SUBSTITUTION_REVIEW_REQUIRED",
+      "message": "Review substitution preferences",
+      "productId": "sanitized-substitution-product-id",
+      "severity": "WARNING"
+    }
+  ],
+  "totals": {
+    "finalPrice": {
+      "amount": "31.10",
+      "currency": "CAD"
+    }
+  },
+  "unavailableData": [
+    {
+      "code": "UNAVAILABLE",
+      "message": "A product is unavailable",
+      "productId": "sanitized-unavailable-product-id",
+      "severity": "WARNING"
+    }
+  ]
+}

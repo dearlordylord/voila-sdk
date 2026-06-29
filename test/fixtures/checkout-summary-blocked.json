@@ -1,0 +1,30 @@
+{
+  "cartId": "sanitized-blocked-cart-id",
+  "checkout": {
+    "basketAboveThreshold": false,
+    "canCheckout": false,
+    "checkoutRestrictions": [
+      {
+        "code": "EMPTY_CART",
+        "message": "Cart must contain items before checkout",
+        "severity": "BLOCKING"
+      }
+    ],
+    "minimumCheckoutThreshold": {
+      "amount": "50.00",
+      "currency": "CAD"
+    },
+    "shippingGroupType": "HOME_DELIVERY",
+    "shippingGroupTypeDisplayName": "Home delivery"
+  },
+  "totals": {
+    "finalPrice": {
+      "amount": "0.00",
+      "currency": "CAD"
+    },
+    "itemsRetailPrice": {
+      "amount": "0.00",
+      "currency": "CAD"
+    }
+  }
+}

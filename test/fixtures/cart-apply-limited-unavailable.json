@@ -1,0 +1,80 @@
+{
+  "basketUpdateResult": {
+    "itemGroups": [
+      {
+        "items": [
+          {
+            "finalPrice": {
+              "amount": "4.99",
+              "currency": "CAD"
+            },
+            "maxQuantityReached": true,
+            "price": {
+              "amount": "4.99",
+              "currency": "CAD"
+            },
+            "productId": "sanitized-strawberries-product-id",
+            "quantity": 1
+          },
+          {
+            "finalPrice": {
+              "amount": "0.00",
+              "currency": "CAD"
+            },
+            "maxQuantityReached": false,
+            "price": {
+              "amount": "3.49",
+              "currency": "CAD"
+            },
+            "productId": "sanitized-blueberries-product-id",
+            "quantity": 0
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "itemPriceAfterPromos": {
+        "amount": "4.99",
+        "currency": "CAD"
+      },
+      "itemsRetailPrice": {
+        "amount": "4.99",
+        "currency": "CAD"
+      },
+      "savingsPrice": {
+        "amount": "0.00",
+        "currency": "CAD"
+      },
+      "taxation": "TAX_EXCLUDED"
+    }
+  },
+  "limitedItems": [
+    {
+      "code": "MAX_QUANTITY",
+      "message": "Only one strawberry package can be added",
+      "productId": "sanitized-strawberries-product-id",
+      "quantity": 1,
+      "reason": "MAX_QUANTITY",
+      "severity": "WARNING"
+    }
+  ],
+  "limitedPromotionIds": [
+    "sanitized-promo-id"
+  ],
+  "pricingNotifications": [
+    {
+      "code": "PRICE_CHANGED",
+      "message": "A product price changed while applying the cart delta",
+      "productId": "sanitized-strawberries-product-id",
+      "severity": "INFO"
+    }
+  ],
+  "unavailableData": [
+    {
+      "code": "UNAVAILABLE",
+      "message": "Blueberries are unavailable",
+      "productId": "sanitized-blueberries-product-id",
+      "severity": "WARNING"
+    }
+  ]
+}

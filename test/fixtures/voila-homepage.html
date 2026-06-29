@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Sanitized Voila Fixture</title>
+  </head>
+  <body>
+    <main id="root"></main>
+    <script>
+      window.unrelatedBefore = {
+        "contains": "braces before the initial state"
+      };
+    </script>
+    <script>
+      window.__INITIAL_STATE__ = {
+        "csrf": {
+          "token": "sanitized-csrf-token"
+        },
+        "data": {
+          "basket": {
+            "basketId": "sanitized-basket-id",
+            "itemGroups": [],
+            "regionId": "sanitized-region-id",
+            "totals": {
+              "itemPriceAfterPromos": {
+                "amount": "0.00",
+                "currency": "CAD"
+              },
+              "itemsRetailPrice": {
+                "amount": "0.00",
+                "currency": "CAD"
+              },
+              "savingsPrice": {
+                "amount": "0.00",
+                "currency": "CAD"
+              },
+              "taxation": "TAX_EXCLUDED"
+            }
+          },
+          "categories": [
+            {
+              "categoryId": "sanitized-category-produce",
+              "categories": [
+                {
+                  "categoryId": "sanitized-category-fresh-fruit",
+                  "name": "Fresh Fruit",
+                  "retailerCategoryId": "retailer-category-fruit",
+                  "urlPath": "fresh-fruit"
+                },
+                {
+                  "categoryId": "sanitized-category-fresh-vegetables",
+                  "name": "Fresh Vegetables",
+                  "retailerCategoryId": "retailer-category-vegetables",
+                  "urlPath": "fresh-vegetables"
+                }
+              ],
+              "name": "Fruits & Vegetables",
+              "retailerCategoryId": "retailer-category-produce",
+              "urlPath": "/aisles/fruits-vegetables"
+            }
+          ]
+        },
+        "session": {
+          "metadata": {
+            "assetVersion": "sanitized-asset-version",
+            "clientRouteId": "sanitized-client-route-id",
+            "pageViewId": "sanitized-page-view-id",
+            "regionId": "sanitized-region-id"
+          }
+        }
+      };
+    </script>
+    <script>
+      window.unrelatedAfter = {
+        "contains": "braces after the initial state"
+      };
+    </script>
+  </body>
+</html>

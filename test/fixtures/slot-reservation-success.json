@@ -1,0 +1,22 @@
+{
+  "confirmationData": {
+    "draftBasketId": "sanitized-draft-basket-id",
+    "invalidVouchers": [],
+    "regionChanged": false,
+    "slotRegionId": "sanitized-region-id",
+    "totalChanged": false
+  },
+  "slot": {
+    "expiryTime": "2026-07-01T07:45:00-04:00",
+    "minimumCheckoutThreshold": {
+      "amount": "50.00",
+      "currency": "CAD"
+    },
+    "originalMinimumCheckoutThreshold": {
+      "amount": "50.00",
+      "currency": "CAD"
+    },
+    "slotId": "sanitized-slot-id",
+    "timeZoneId": "America/Toronto"
+  }
+}

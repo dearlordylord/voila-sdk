@@ -1,0 +1,60 @@
+{
+  "nextPageToken": "sanitized-next-page-token",
+  "productGroups": [
+    {
+      "decoratedProducts": [
+        {
+          "available": true,
+          "brand": "Lactantia",
+          "image": {
+            "description": "Lactantia PurFiltre 2% milk carton",
+            "src": "https://voila.ca/images/sanitized-milk.jpg"
+          },
+          "maxQuantityReached": false,
+          "name": "Lactantia PurFiltre 2% Milk Partially Skimmed 2 L",
+          "packSizeDescription": "2L",
+          "price": {
+            "amount": "5.69",
+            "currency": "CAD"
+          },
+          "productId": "b952bad2-3d09-4b7f-831a-87ad31eaad3f",
+          "quantityInBasket": 1,
+          "retailerProductId": "243255EA",
+          "unitPrice": {
+            "price": {
+              "amount": "0.28",
+              "currency": "CAD"
+            },
+            "unit": "fop.price.per.100ml",
+            "unitName": "PER_100ML"
+          }
+        }
+      ],
+      "name": "Top results",
+      "type": "featured"
+    },
+    {
+      "products": [
+        {
+          "available": false,
+          "brand": "Natrel",
+          "maxQuantityReached": true,
+          "name": "Natrel Lactose Free Milk 1 L",
+          "packSizeDescription": "1L",
+          "price": {
+            "amount": "4.49",
+            "currency": "CAD"
+          },
+          "productId": "sanitized-second-product-id",
+          "quantityInBasket": 0,
+          "retailerProductId": "987654EA"
+        }
+      ],
+      "type": "standard"
+    },
+    {
+      "type": "empty"
+    }
+  ],
+  "totalProducts": 42
+}

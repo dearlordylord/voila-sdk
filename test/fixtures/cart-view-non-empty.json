@@ -1,0 +1,92 @@
+{
+  "basket": {
+    "basketId": "sanitized-basket-id",
+    "itemGroups": [
+      {
+        "items": [
+          {
+            "available": true,
+            "finalPrice": {
+              "amount": "9.98",
+              "currency": "CAD"
+            },
+            "imageUrl": "https://voila.ca/images/sanitized-strawberries.jpg",
+            "maxQuantityReached": false,
+            "name": "Fresh Farms Strawberries 454 g",
+            "price": {
+              "amount": "4.99",
+              "currency": "CAD"
+            },
+            "productId": "sanitized-strawberries-product-id",
+            "quantity": 2,
+            "retailerProductId": "111222EA"
+          },
+          {
+            "available": false,
+            "finalPrice": {
+              "amount": "0.00",
+              "currency": "CAD"
+            },
+            "maxQuantityReached": true,
+            "name": "Market Best Blueberries 170 g",
+            "price": {
+              "amount": "3.49",
+              "currency": "CAD"
+            },
+            "productId": "sanitized-blueberries-product-id",
+            "quantity": 1,
+            "retailerProductId": "333444EA",
+            "unavailable": true
+          }
+        ],
+        "name": "Fruits & Vegetables"
+      }
+    ],
+    "totals": {
+      "itemPriceAfterPromos": {
+        "amount": "8.88",
+        "currency": "CAD"
+      },
+      "itemsRetailPrice": {
+        "amount": "12.34",
+        "currency": "CAD"
+      },
+      "savingsPrice": {
+        "amount": "3.46",
+        "currency": "CAD"
+      },
+      "taxation": "TAX_EXCLUDED"
+    }
+  },
+  "checkoutRestrictions": [
+    {
+      "code": "DELIVERY_SLOT_REQUIRED",
+      "message": "Select a delivery slot before checkout",
+      "severity": "BLOCKING"
+    }
+  ],
+  "limitedItems": [
+    {
+      "code": "MAX_QUANTITY",
+      "message": "Blueberries are limited to one item",
+      "productId": "sanitized-blueberries-product-id",
+      "severity": "WARNING"
+    }
+  ],
+  "pricingNotifications": [
+    {
+      "code": "PRICE_CHANGED",
+      "message": "A product price changed since it was added",
+      "productId": "sanitized-strawberries-product-id",
+      "severity": "INFO"
+    }
+  ],
+  "unavailableData": [
+    {
+      "code": "UNAVAILABLE",
+      "message": "Blueberries are unavailable",
+      "productId": "sanitized-blueberries-product-id",
+      "severity": "WARNING"
+    }
+  ]
+}

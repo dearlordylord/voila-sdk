@@ -1,0 +1,41 @@
+{
+  "destinationCartProposition": {
+    "assignedCheckoutGroups": [
+      {
+        "limitedItems": [
+          {
+            "actualAmount": 0,
+            "expectedAmount": 1,
+            "name": "Sanitized unavailable product",
+            "productId": "sanitized-limited-product-id",
+            "quantity": 1
+          }
+        ],
+        "products": [
+          {
+            "name": "Sanitized destination product",
+            "productId": "sanitized-destination-product-id",
+            "quantity": 2
+          }
+        ]
+      }
+    ],
+    "cartPropositionId": "sanitized-destination-cart-proposition-id",
+    "regionId": "sanitized-destination-region-id"
+  },
+  "originCartProposition": {
+    "assignedCheckoutGroups": [
+      {
+        "products": [
+          {
+            "name": "Sanitized origin product",
+            "productId": "sanitized-origin-product-id",
+            "quantity": 1
+          }
+        ]
+      }
+    ],
+    "cartPropositionId": "sanitized-origin-cart-proposition-id",
+    "regionId": "sanitized-origin-region-id"
+  }
+}

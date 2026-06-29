@@ -1,0 +1,64 @@
+{
+  "carriers": [
+    {
+      "carrierId": "sanitized-carrier-id",
+      "carrierName": "Voila delivery",
+      "daysMapping": [
+        {
+          "day": "2026-07-01",
+          "slotIds": [
+            "sanitized-slot-id"
+          ],
+          "slotListingId": "sanitized-slot-listing-id"
+        }
+      ],
+      "gridSlots": [
+        {
+          "day": "2026-07-01",
+          "slots": [
+            {
+              "attributes": [
+                "AVAILABLE",
+                "STANDARD"
+              ],
+              "deliveryPrice": {
+                "amount": "3.99",
+                "currency": "CAD"
+              },
+              "slotId": "sanitized-slot-id",
+              "slotWindow": {
+                "endTime": "2026-07-01T10:00:00-04:00",
+                "startTime": "2026-07-01T08:00:00-04:00"
+              },
+              "timeZoneId": "America/Toronto",
+              "type": "STANDARD"
+            },
+            {
+              "attributes": [
+                "AVAILABLE",
+                "ON_DEMAND"
+              ],
+              "deliveryPrice": {
+                "amount": "7.99",
+                "currency": "CAD"
+              },
+              "onDemandProperties": {
+                "collectionTimeInMinutes": 15,
+                "deliveryTimeInMinutes": 90
+              },
+              "slotId": "sanitized-on-demand-slot-id",
+              "title": "Fast delivery",
+              "type": "ON_DEMAND"
+            }
+          ]
+        }
+      ],
+      "title": "Home delivery"
+    }
+  ],
+  "days": [
+    {
+      "date": "2026-07-01"
+    }
+  ]
+}

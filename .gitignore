@@ -1,0 +1,12 @@
+node_modules
+.reference
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.local
+.env.production
+.pnpm-store/
+.DS_Store
+CLAUDE.local.md
+local-session-snapshots/

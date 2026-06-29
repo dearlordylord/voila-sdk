@@ -1,0 +1,31 @@
+{
+  "basket": {
+    "basketId": "sanitized-empty-basket-id",
+    "itemGroups": [],
+    "totals": {
+      "itemPriceAfterPromos": {
+        "amount": "0.00",
+        "currency": "CAD"
+      },
+      "itemsRetailPrice": {
+        "amount": "0.00",
+        "currency": "CAD"
+      },
+      "savingsPrice": {
+        "amount": "0.00",
+        "currency": "CAD"
+      },
+      "taxation": "TAX_EXCLUDED"
+    }
+  },
+  "checkoutRestrictions": [
+    {
+      "code": "EMPTY_CART",
+      "message": "Cart must contain items before checkout",
+      "severity": "BLOCKING"
+    }
+  ],
+  "limitedItems": [],
+  "pricingNotifications": [],
+  "unavailableData": []
+}

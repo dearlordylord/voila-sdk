@@ -1,0 +1,66 @@
+{
+  "cartId": "sanitized-ready-cart-id",
+  "checkoutCorrelationId": "sanitized-checkout-correlation-id",
+  "orderId": "sanitized-order-id",
+  "checkout": {
+    "basketAboveThreshold": true,
+    "canCheckout": true,
+    "checkoutRestrictions": [],
+    "delivery": {
+      "deliveryPriceChanged": false,
+      "endTime": "2026-07-01T10:00:00-04:00",
+      "expiryTime": "2026-07-01T07:45:00-04:00",
+      "price": {
+        "amount": "3.99",
+        "currency": "CAD"
+      },
+      "slotId": "sanitized-slot-id",
+      "startTime": "2026-07-01T08:00:00-04:00",
+      "timeZoneId": "America/Toronto"
+    },
+    "minimumCheckoutThreshold": {
+      "amount": "50.00",
+      "currency": "CAD"
+    },
+    "shippingGroupType": "HOME_DELIVERY",
+    "shippingGroupTypeDisplayName": "Home delivery"
+  },
+  "charges": {
+    "carrierBag": {
+      "finalPrice": {
+        "amount": "0.10",
+        "currency": "CAD"
+      }
+    },
+    "delivery": {
+      "price": {
+        "amount": "3.99",
+        "currency": "CAD"
+      }
+    },
+    "smallOrder": {
+      "finalPrice": {
+        "amount": "0.00",
+        "currency": "CAD"
+      }
+    }
+  },
+  "totals": {
+    "finalPrice": {
+      "amount": "84.09",
+      "currency": "CAD"
+    },
+    "itemPriceAfterPromos": {
+      "amount": "80.00",
+      "currency": "CAD"
+    },
+    "itemsRetailPrice": {
+      "amount": "86.50",
+      "currency": "CAD"
+    },
+    "savingsPrice": {
+      "amount": "6.50",
+      "currency": "CAD"
+    }
+  }
+}

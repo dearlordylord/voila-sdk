@@ -1,0 +1,48 @@
+{
+  "basketUpdateResult": {
+    "itemGroups": [
+      {
+        "items": [
+          {
+            "finalPrice": {
+              "amount": "8.88",
+              "currency": "CAD"
+            },
+            "maxQuantityReached": false,
+            "price": {
+              "amount": "4.99",
+              "currency": "CAD"
+            },
+            "productId": "sanitized-strawberries-product-id",
+            "quantity": 2
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "itemPriceAfterPromos": {
+        "amount": "8.88",
+        "currency": "CAD"
+      },
+      "itemsRetailPrice": {
+        "amount": "9.98",
+        "currency": "CAD"
+      },
+      "savingsPrice": {
+        "amount": "1.10",
+        "currency": "CAD"
+      },
+      "taxation": "TAX_EXCLUDED"
+    }
+  },
+  "limitedItems": [],
+  "limitedPromotionIds": [],
+  "pricingNotifications": [
+    {
+      "code": "PROMO_APPLIED",
+      "message": "A promotion was applied",
+      "severity": "INFO"
+    }
+  ],
+  "unavailableData": []
+}

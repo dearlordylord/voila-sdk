@@ -1,0 +1,12 @@
+set -e
+
+echo "Running lint-staged..."
+pnpm exec lint-staged
+
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "Running gitleaks to check for secrets..."
+  gitleaks protect --verbose --staged
+  echo "No secrets detected"
+else
+  echo "gitleaks not installed; skipping secrets scan"
+fi
