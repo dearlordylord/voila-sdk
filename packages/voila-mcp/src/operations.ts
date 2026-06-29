@@ -4,7 +4,9 @@ import {
   checkSessionHealth,
   getCart,
   getCategoryProducts,
+  getCompletedOrderItems,
   getCompletedOrders,
+  getOrderDetails,
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   parseUnknown,
@@ -13,40 +15,36 @@ import {
   type SdkSessionSnapshot,
   searchProducts,
   type SessionSnapshot,
+  type VoilaJsonResult,
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import type { Schema } from "effect"
 import { Either } from "effect"
 
 import { authGuidanceForHealth, authGuidanceForSnapshot, type OperationAuthGuidance } from "./auth-guidance.js"
+import { type VoilaOperationName } from "./operation-descriptors.js"
 import {
   type CartItemOperationInput,
   CartItemOperationInputSchema,
   type CategoryProductsOperationInput,
   CategoryProductsOperationInputSchema,
   EmptyOperationInputSchema,
+  type OrderDetailsOperationInput,
+  OrderDetailsOperationInputSchema,
+  type OrderItemsOperationInput,
+  OrderItemsOperationInputSchema,
   type OrderListOperationInput,
   OrderListOperationInputSchema,
   type ProductListOperationInput,
   ProductListOperationInputSchema
 } from "./operation-schemas.js"
 
-export const mcpName = "io.github.dearlordylord/voila-mcp"
-
-export type VoilaOperationName =
-  | "voila_add_cart_items"
-  | "voila_check_session_health"
-  | "voila_get_cart"
-  | "voila_get_category_products"
-  | "voila_get_completed_orders"
-  | "voila_remove_cart_items"
-  | "voila_search_products"
-
-export interface VoilaOperationDescriptor {
-  readonly description: string
-  readonly name: VoilaOperationName
-  readonly title: string
-}
+export {
+  mcpName,
+  type VoilaOperationDescriptor,
+  voilaOperationDescriptors,
+  type VoilaOperationName
+} from "./operation-descriptors.js"
 
 export interface OperationFailure {
   readonly _tag: string
@@ -78,44 +76,6 @@ export interface OperationEnvironment {
 }
 
 const defaultPageSize = 12
-
-export const voilaOperationDescriptors: ReadonlyArray<VoilaOperationDescriptor> = [
-  {
-    description: "Check whether the configured Voila session is active, retryable, expired, or guest-only.",
-    name: "voila_check_session_health",
-    title: "Check Session Health"
-  },
-  {
-    description: "Search Voila products by text query for the current session context.",
-    name: "voila_search_products",
-    title: "Search Products"
-  },
-  {
-    description: "Fetch products for a Voila category id for the current session context.",
-    name: "voila_get_category_products",
-    title: "Get Category Products"
-  },
-  {
-    description: "Fetch completed Voila orders with cursor pagination for the authenticated account.",
-    name: "voila_get_completed_orders",
-    title: "Get Completed Orders"
-  },
-  {
-    description: "Fetch the current active cart with totals, limited items, unavailable data, and pricing notices.",
-    name: "voila_get_cart",
-    title: "Get Cart"
-  },
-  {
-    description: "Add product quantity deltas to the active cart using Voila product UUIDs.",
-    name: "voila_add_cart_items",
-    title: "Add Cart Items"
-  },
-  {
-    description: "Remove product quantity deltas from the active cart using Voila product UUIDs.",
-    name: "voila_remove_cart_items",
-    title: "Remove Cart Items"
-  }
-]
 
 const inputInvalid = (): OperationFailure => ({
   _tag: "VoilaOperationInputInvalid",
@@ -191,6 +151,18 @@ const makeSdkOrderListInput = (input: OrderListOperationInput) => ({
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
 })
 
+const makeSdkOrderDetailsInput = (input: OrderDetailsOperationInput) => ({
+  orderId: input.orderId
+})
+
+const makeSdkOrderItemsInput = (input: OrderItemsOperationInput) => ({
+  ...(input.fromDate === undefined ? {} : { fromDate: input.fromDate }),
+  ...(input.maxOrders === undefined ? {} : { maxOrders: input.maxOrders }),
+  ...(input.pageSize === undefined ? {} : { pageSize: input.pageSize }),
+  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
+  ...(input.toDate === undefined ? {} : { toDate: input.toDate })
+})
+
 const updateSdkSession = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot
@@ -248,6 +220,41 @@ const persistResultSession = async (
   return Either.isLeft(saved) ? failure(saved.left) : undefined
 }
 
+type SessionOperationExecutor<A> = (
+  session: SessionSnapshot,
+  input: A
+) => Promise<Either.Either<VoilaJsonResult<unknown>, unknown>>
+
+const runSessionOperation = async <A, I>(
+  schema: Schema.Schema<A, I, never>,
+  input: unknown,
+  env: OperationEnvironment,
+  execute: SessionOperationExecutor<A>,
+  authGuidanceOnFailure = false
+): Promise<OperationExecutionResult> => {
+  const parsed = parseInput(schema, input)
+
+  if (Either.isLeft(parsed)) {
+    return failure(parsed.left)
+  }
+
+  const snapshot = await loadSession(env)
+
+  if (Either.isLeft(snapshot)) {
+    return failure(snapshot.left, env.authGuidance)
+  }
+
+  const result = await execute(snapshot.right.session, parsed.right)
+
+  if (Either.isLeft(result)) {
+    return failure(redactError(result.left), authGuidanceOnFailure ? env.authGuidance : undefined)
+  }
+
+  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
+
+  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
+}
+
 const runHealth = async (
   input: unknown,
   env: OperationEnvironment
@@ -286,150 +293,83 @@ const runHealth = async (
 const runSearch = async (
   input: unknown,
   env: OperationEnvironment
-): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(ProductListOperationInputSchema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const result = await searchProducts(
-    snapshot.right.session,
-    makeSdkSearchInput(parsed.right),
-    env.transport
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    ProductListOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => searchProducts(session, makeSdkSearchInput(parsed), env.transport)
   )
-
-  if (Either.isLeft(result)) {
-    return failure(redactError(result.left))
-  }
-
-  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
-
-  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
-}
 
 const runCategoryProducts = async (
   input: unknown,
   env: OperationEnvironment
-): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(CategoryProductsOperationInputSchema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const result = await getCategoryProducts(
-    snapshot.right.session,
-    makeSdkCategoryInput(parsed.right),
-    env.transport
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    CategoryProductsOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getCategoryProducts(session, makeSdkCategoryInput(parsed), env.transport)
   )
-
-  if (Either.isLeft(result)) {
-    return failure(redactError(result.left))
-  }
-
-  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
-
-  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
-}
 
 const runGetCart = async (
   input: unknown,
   env: OperationEnvironment
-): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(EmptyOperationInputSchema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const result = await getCart(snapshot.right.session, env.transport)
-
-  if (Either.isLeft(result)) {
-    return failure(redactError(result.left))
-  }
-
-  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
-
-  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
-}
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    EmptyOperationInputSchema,
+    input,
+    env,
+    (session) => getCart(session, env.transport)
+  )
 
 const runCompletedOrders = async (
   input: unknown,
   env: OperationEnvironment
-): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(OrderListOperationInputSchema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const result = await getCompletedOrders(
-    snapshot.right.session,
-    makeSdkOrderListInput(parsed.right),
-    env.transport
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    OrderListOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getCompletedOrders(session, makeSdkOrderListInput(parsed), env.transport),
+    true
   )
 
-  if (Either.isLeft(result)) {
-    return failure(redactError(result.left), env.authGuidance)
-  }
+const runOrderDetails = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    OrderDetailsOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getOrderDetails(session, makeSdkOrderDetailsInput(parsed), env.transport),
+    true
+  )
 
-  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
-
-  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
-}
+const runCompletedOrderItems = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    OrderItemsOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getCompletedOrderItems(session, makeSdkOrderItemsInput(parsed), env.transport),
+    true
+  )
 
 const runCartItems = async (
   input: unknown,
   env: OperationEnvironment,
   apply: typeof addCartItems
-): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(CartItemOperationInputSchema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const result = await apply(snapshot.right.session, parsed.right.items, env.transport)
-
-  if (Either.isLeft(result)) {
-    return failure(redactError(result.left))
-  }
-
-  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
-
-  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
-}
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    CartItemOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => apply(session, parsed.items, env.transport)
+  )
 
 export const runVoilaOperation = async (
   name: VoilaOperationName,
@@ -445,8 +385,12 @@ export const runVoilaOperation = async (
       return runGetCart(input, env)
     case "voila_get_category_products":
       return runCategoryProducts(input, env)
+    case "voila_get_completed_order_items":
+      return runCompletedOrderItems(input, env)
     case "voila_get_completed_orders":
       return runCompletedOrders(input, env)
+    case "voila_get_order_details":
+      return runOrderDetails(input, env)
     case "voila_remove_cart_items":
       return runCartItems(input, env, removeCartItems)
     case "voila_search_products":

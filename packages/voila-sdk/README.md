@@ -79,6 +79,8 @@ console.log(search.right.value.products.map((product) => product.name))
 - Slot listing and guarded slot reservation input helpers.
 - Checkout summary/readiness review.
 - Completed order history reads with cursor pagination.
+- Completed order detail reads with item groups, quantities, prices, and substitution/missing/return status.
+- Completed-order item aggregation for questions like "what did I order last month?"
 - Session snapshot save/load helpers.
 
 The SDK does not place orders. Checkout APIs stop at review/readiness so a human can confirm in Voila.
@@ -104,7 +106,7 @@ That file is sensitive and ignored by git. Use it with `loadSdkSessionSnapshot` 
 Import only from the package entrypoint:
 
 ```ts
-import { addCartItems, getCart, getCompletedOrders, searchProducts } from "@firfi/voila-sdk"
+import { addCartItems, getCart, getCompletedOrderItems, getCompletedOrders, getOrderDetails, searchProducts } from "@firfi/voila-sdk"
 ```
 
 Deep imports are unsupported. See [docs/public-api.md](docs/public-api.md) for the full public surface and [docs/usage-examples.md](docs/usage-examples.md) for end-to-end examples.
@@ -153,9 +155,9 @@ npm publish
 
 The package tarball intentionally contains only `package.json`, `README.md`, `LICENSE`, and `dist/src/**`. See [docs/release.md](docs/release.md).
 
-## Future MCP
+## MCP And CLI
 
-The current package is library-first. The codebase is prepared for a future MCP server by keeping all Voila behavior behind typed SDK functions and explicit ports. The MCP package/server should be added later as a separate entrypoint or package that depends on this SDK surface rather than duplicating endpoint logic. See [docs/mcp-readiness.md](docs/mcp-readiness.md).
+The workspace also publishes `@firfi/voila-mcp` and `@firfi/voila-cli`. Both use this SDK for Voila endpoint behavior; MCP owns the shared operation registry and the CLI reuses it. See [docs/mcp-readiness.md](docs/mcp-readiness.md).
 
 ## Safety
 

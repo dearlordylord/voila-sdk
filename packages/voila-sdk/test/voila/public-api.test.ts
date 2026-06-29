@@ -7,10 +7,14 @@ import type {
   CheckoutReadinessDecision,
   CookieJarPort,
   GetCheckoutSummaryResult,
+  GetCompletedOrderItemsResult,
   GetCompletedOrdersResult,
+  GetOrderDetailsResult,
   NormalizedCartView,
   NormalizedCheckoutSummary,
+  NormalizedCompletedOrderItemsResult,
   NormalizedCompletedOrdersResult,
+  NormalizedOrderDetailsResult,
   NormalizedSlotListing,
   SdkSessionSnapshot,
   SessionStoragePort,
@@ -29,11 +33,13 @@ import {
   getCart,
   getCategoryProducts,
   getCheckoutSummary,
+  getCompletedOrderItems,
   getCompletedOrders,
   getDeliveryDestination,
   getDeliveryDestinations,
   getDeliveryPropositionDetails,
   getInitialStateCategories,
+  getOrderDetails,
   getSlotListings,
   loadSdkSessionSnapshot,
   loginWithBrowser,
@@ -45,7 +51,9 @@ import {
   makeSlotReservationInputFromSlot,
   makeSlotReservationRequest,
   NormalizedCheckoutSummarySchema,
+  NormalizedCompletedOrderItemsResultSchema,
   NormalizedCompletedOrdersResultSchema,
+  NormalizedOrderDetailsResultSchema,
   previewDeliveryContextChange,
   removeCartItems,
   reserveSlot,
@@ -66,8 +74,12 @@ type PublicResultTypes = {
   readonly checkout: NormalizedCheckoutSummary
   readonly checkoutDecision: CheckoutReadinessDecision
   readonly checkoutResult: GetCheckoutSummaryResult
+  readonly completedOrderItems: NormalizedCompletedOrderItemsResult
+  readonly completedOrderItemsResult: GetCompletedOrderItemsResult
   readonly completedOrders: NormalizedCompletedOrdersResult
   readonly completedOrdersResult: GetCompletedOrdersResult
+  readonly orderDetails: NormalizedOrderDetailsResult
+  readonly orderDetailsResult: GetOrderDetailsResult
   readonly session: SdkSessionSnapshot
   readonly slots: NormalizedSlotListing
 }
@@ -102,11 +114,13 @@ describe("public package entrypoint", () => {
       getCart,
       getCategoryProducts,
       getCheckoutSummary,
+      getCompletedOrderItems,
       getCompletedOrders,
       getDeliveryDestination,
       getDeliveryDestinations,
       getDeliveryPropositionDetails,
       getInitialStateCategories,
+      getOrderDetails,
       getSlotListings,
       loadSdkSessionSnapshot,
       loginWithBrowser,
@@ -130,7 +144,9 @@ describe("public package entrypoint", () => {
   it("exports documented public schemas", () => {
     expect(SessionSnapshotSchema.ast._tag).toBe("TypeLiteral")
     expect(NormalizedCheckoutSummarySchema.ast._tag).toBe("TypeLiteral")
+    expect(NormalizedCompletedOrderItemsResultSchema.ast._tag).toBe("TypeLiteral")
     expect(NormalizedCompletedOrdersResultSchema.ast._tag).toBe("TypeLiteral")
+    expect(NormalizedOrderDetailsResultSchema.ast._tag).toBe("TypeLiteral")
     expect(CheckoutReadinessDecisionSchema.ast._tag).toBe("TypeLiteral")
   })
 })

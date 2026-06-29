@@ -132,6 +132,8 @@ Observed baseline endpoints:
 - `GET /api/cart/v2/carts/active/cart-view`
 - `GET /api/customersessions/v2/sessions/active`
 - `GET /api/ecomslots/v2/slots`
+- `POST /graphql` for completed order history.
+- `GET /api/order/v6/orders/{orderId}/decorated` for completed order item details.
 
 Treat endpoint schemas as versioned by tests. When a live response shape changes, update the Effect Schema and tests together.
 

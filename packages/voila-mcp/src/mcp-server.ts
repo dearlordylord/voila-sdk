@@ -13,6 +13,7 @@ import {
 } from "./operations.js"
 
 const emptyInputSchema = {}
+const isoDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
 
 const productListInputSchema = {
   pageSize: z.number().int().min(1).max(24).optional(),
@@ -29,6 +30,18 @@ const categoryProductsInputSchema = {
 const orderListInputSchema = {
   pageSize: z.number().int().min(1).max(50).optional(),
   pageToken: z.string().trim().min(1).optional()
+}
+
+const orderDetailsInputSchema = {
+  orderId: z.string().trim().min(1)
+}
+
+const orderItemsInputSchema = {
+  fromDate: isoDateInput.optional(),
+  maxOrders: z.number().int().min(1).max(50).optional(),
+  pageSize: z.number().int().min(1).max(50).optional(),
+  pageToken: z.string().trim().min(1).optional(),
+  toDate: isoDateInput.optional()
 }
 
 const cartItemsInputSchema = {
@@ -70,6 +83,8 @@ export const createVoilaMcpServer = (
   const search = descriptorFor("voila_search_products")
   const categoryProducts = descriptorFor("voila_get_category_products")
   const completedOrders = descriptorFor("voila_get_completed_orders")
+  const orderDetails = descriptorFor("voila_get_order_details")
+  const completedOrderItems = descriptorFor("voila_get_completed_order_items")
   const cart = descriptorFor("voila_get_cart")
   const addCart = descriptorFor("voila_add_cart_items")
   const removeCart = descriptorFor("voila_remove_cart_items")
@@ -97,6 +112,18 @@ export const createVoilaMcpServer = (
     inputSchema: orderListInputSchema,
     title: completedOrders.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_completed_orders", input, env)))
+
+  server.registerTool("voila_get_order_details", {
+    description: orderDetails.description,
+    inputSchema: orderDetailsInputSchema,
+    title: orderDetails.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_get_order_details", input, env)))
+
+  server.registerTool("voila_get_completed_order_items", {
+    description: completedOrderItems.description,
+    inputSchema: orderItemsInputSchema,
+    title: completedOrderItems.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_get_completed_order_items", input, env)))
 
   server.registerTool("voila_get_cart", {
     description: cart.description,

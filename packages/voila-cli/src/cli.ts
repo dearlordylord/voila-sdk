@@ -43,6 +43,8 @@ const helpText = `Usage:
   voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
+  voila orders details <order-id> [--session <path>] [--json]
+  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]
   voila cart get [--session <path>] [--json]
   voila cart add <product-id> --quantity <n> [--session <path>] [--json]
   voila cart remove <product-id> --quantity <n> [--session <path>] [--json]`
@@ -101,10 +103,30 @@ const ok = (stdout: string): CliRunResult => ({
   stdout
 })
 
-const fail = (result: OperationExecutionResult): CliRunResult => ({
+const renderFailureText = (result: OperationExecutionResult): string => {
+  if (result.ok) {
+    return ""
+  }
+
+  const guidance = result.error.authGuidance
+  const base = `${result.error._tag}: ${result.error.message}\n`
+
+  if (guidance === undefined) {
+    return base
+  }
+
+  return [
+    base,
+    `${guidance.message}\n`,
+    `${guidance.instructions}\n`,
+    `Login command: ${guidance.command}\n`
+  ].join("")
+}
+
+const fail = (result: OperationExecutionResult, json: boolean): CliRunResult => ({
   exitCode: failureExitCode,
-  stderr: result.ok ? "" : `${result.error._tag}: ${result.error.message}\n`,
-  stdout: ""
+  stderr: json ? "" : renderFailureText(result),
+  stdout: json ? `${JSON.stringify(result, undefined, 2)}\n` : ""
 })
 
 const getSessionPath = (parsed: ParsedOptions): string => parsed.options.get("session") ?? defaultSessionPath()
@@ -146,6 +168,37 @@ const optionalPageInput = (parsed: ParsedOptions) => {
   }
 }
 
+const optionalOrderItemsInput = (parsed: ParsedOptions) => {
+  const page = optionalPageInput(parsed)
+
+  if ("exitCode" in page) {
+    return page
+  }
+
+  const maxOrdersOption = parsed.options.get("max-orders")
+
+  if (maxOrdersOption === undefined) {
+    return {
+      ...page,
+      ...(parsed.options.get("from-date") === undefined ? {} : { fromDate: parsed.options.get("from-date") }),
+      ...(parsed.options.get("to-date") === undefined ? {} : { toDate: parsed.options.get("to-date") })
+    }
+  }
+
+  const maxOrders = parsePositiveInteger(maxOrdersOption, "--max-orders")
+
+  if (typeof maxOrders !== "number") {
+    return maxOrders
+  }
+
+  return {
+    ...page,
+    maxOrders,
+    ...(parsed.options.get("from-date") === undefined ? {} : { fromDate: parsed.options.get("from-date") }),
+    ...(parsed.options.get("to-date") === undefined ? {} : { toDate: parsed.options.get("to-date") })
+  }
+}
+
 const renderText = (name: VoilaOperationName | "auth_login", result: OperationExecutionResult): string => {
   if (!result.ok) {
     return ""
@@ -164,7 +217,7 @@ const render = (
   json: boolean
 ): CliRunResult => {
   if (!result.ok) {
-    return fail(result)
+    return fail(result, json)
   }
 
   if (json) {
@@ -270,8 +323,30 @@ const runOrders = async (
   ports: CliPorts,
   parsed: ParsedOptions
 ): Promise<CliRunResult> => {
-  if (parsed.positionals[1] !== "list") {
-    return usage("Expected orders list")
+  const subcommand = parsed.positionals[1]
+
+  if (subcommand === "details") {
+    const orderId = parsed.positionals[2]
+
+    if (orderId === undefined) {
+      return usage("Missing order id")
+    }
+
+    return runOperation(ports, "voila_get_order_details", { orderId }, parsed)
+  }
+
+  if (subcommand === "items") {
+    const input = optionalOrderItemsInput(parsed)
+
+    if ("exitCode" in input) {
+      return input
+    }
+
+    return runOperation(ports, "voila_get_completed_order_items", input, parsed)
+  }
+
+  if (subcommand !== "list") {
+    return usage("Expected orders list, orders details, or orders items")
   }
 
   const page = optionalPageInput(parsed)

@@ -149,8 +149,13 @@ describe("completed order history", () => {
 
     expect(Either.isRight(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const result = normalizeCompletedOrdersResponse(parsed.right)
+    if (
+      Either.isRight(parsed)
+      && parsed.right.data !== undefined
+      && parsed.right.data !== null
+      && parsed.right.data.completedOrders !== null
+    ) {
+      const result = normalizeCompletedOrdersResponse(parsed.right.data.completedOrders)
 
       expect(result.pagination).toEqual({
         hasNextPage: true,
@@ -236,8 +241,13 @@ describe("completed order history", () => {
 
     expect(Either.isRight(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const result = normalizeCompletedOrdersResponse(parsed.right)
+    if (
+      Either.isRight(parsed)
+      && parsed.right.data !== undefined
+      && parsed.right.data !== null
+      && parsed.right.data.completedOrders !== null
+    ) {
+      const result = normalizeCompletedOrdersResponse(parsed.right.data.completedOrders)
 
       expect(result.orders).toHaveLength(1)
       expect(result.orders[0]).toMatchObject({
@@ -294,6 +304,43 @@ describe("completed order history", () => {
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("CompletedOrdersInputInvalid")
+    }
+  })
+
+  it("returns typed redacted errors for completed order GraphQL errors", async () => {
+    const result = await getCompletedOrders(
+      makeSession(),
+      {},
+      makeResponseTransport(makeCompletedOrdersResponse(JSON.stringify({
+        errors: [{
+          message: "secret-account-required-detail"
+        }]
+      }))).transport
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    expect(JSON.stringify(result)).not.toContain("secret-account-required-detail")
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("CompletedOrdersGraphqlError")
+    }
+  })
+
+  it("returns typed errors when completed orders are unavailable in the GraphQL envelope", async () => {
+    const result = await getCompletedOrders(
+      makeSession(),
+      {},
+      makeResponseTransport(makeCompletedOrdersResponse(JSON.stringify({
+        data: {
+          completedOrders: null
+        }
+      }))).transport
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("CompletedOrdersUnavailable")
     }
   })
 

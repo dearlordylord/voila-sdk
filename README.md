@@ -33,6 +33,8 @@ voila auth login --session ~/.config/voila/session.json
 voila auth status --json
 voila search "milk"
 voila orders list
+voila orders details <order-id>
+voila orders items --from-date 2026-06-01 --to-date 2026-06-30
 voila cart get
 ```
 

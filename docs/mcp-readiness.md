@@ -10,7 +10,7 @@ The SDK owns Voila endpoint behavior:
 - Effect Schema response decoding
 - session snapshot parsing and persistence helpers
 - cookie and CSRF propagation
-- search, category reads, cart reads, and cart mutations
+- search, category reads, cart reads, cart mutations, and completed order reads
 
 The MCP package owns:
 
@@ -55,6 +55,9 @@ Client config:
 - `voila_check_session_health`
 - `voila_search_products`
 - `voila_get_category_products`
+- `voila_get_completed_orders`
+- `voila_get_order_details`
+- `voila_get_completed_order_items`
 - `voila_get_cart`
 - `voila_add_cart_items`
 - `voila_remove_cart_items`

@@ -34,10 +34,16 @@ If a tool runs with a guest, expired, missing, or unreadable account session, th
 - `voila_search_products`
 - `voila_get_category_products`
 - `voila_get_completed_orders`
+- `voila_get_order_details`
+- `voila_get_completed_order_items`
 - `voila_get_cart`
 - `voila_add_cart_items`
 - `voila_remove_cart_items`
 
 `voila_get_completed_orders` reads completed orders with cursor pagination. It does not expose reorder, checkout, or order placement.
+
+`voila_get_order_details` reads item-level details for one completed order, including received, substituted, missing, returned, and at-risk item groups when Voila returns them.
+
+`voila_get_completed_order_items` aggregates received items across completed orders, optionally filtered by `fromDate` and `toDate`, so a client can answer questions such as what the user ordered last month.
 
 The server does not expose checkout or order-placement tools.

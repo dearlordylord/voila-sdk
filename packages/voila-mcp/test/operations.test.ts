@@ -128,6 +128,8 @@ describe("Voila MCP operations", () => {
       "voila_search_products",
       "voila_get_category_products",
       "voila_get_completed_orders",
+      "voila_get_order_details",
+      "voila_get_completed_order_items",
       "voila_get_cart",
       "voila_add_cart_items",
       "voila_remove_cart_items"
@@ -297,6 +299,36 @@ describe("Voila MCP operations", () => {
       })
       expect(result.value).toHaveProperty("orders")
       expect(JSON.stringify(result.value)).toContain("sanitized-order-id-1")
+    }
+  })
+
+  it("returns CLI login guidance for completed order GraphQL failures", async () => {
+    const fake = makeEnvironment({
+      request: async () =>
+        Either.right({
+          body: JSON.stringify({
+            errors: [{
+              message: "secret-account-required-detail"
+            }]
+          }),
+          headers: {},
+          status: 200
+        })
+    })
+    const env: OperationEnvironment = {
+      ...fake.env,
+      authGuidance: makeAuthGuidance(sessionPath)
+    }
+
+    const result = await runVoilaOperation("voila_get_completed_orders", {}, env)
+
+    expect(result.ok).toBe(false)
+    expect(JSON.stringify(result)).not.toContain("secret-account-required-detail")
+
+    if (!result.ok) {
+      expect(result.error._tag).toBe("CompletedOrdersGraphqlError")
+      expect(result.error.authGuidance?.command).toBe(`npx -y @firfi/voila-cli auth login --session ${sessionPath}`)
+      expect(result.error.authGuidance?.instructions).toContain("retry the MCP request")
     }
   })
 

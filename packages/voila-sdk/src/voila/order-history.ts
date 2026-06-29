@@ -4,6 +4,7 @@ import {
   type NormalizedCompletedOrder,
   type NormalizedCompletedOrdersResult,
   type RawCompletedOrderNode,
+  type RawCompletedOrdersConnection,
   type RawCompletedOrdersGraphqlResponse,
   RawCompletedOrdersGraphqlResponseSchema,
   type RawCompletedOrderSlot,
@@ -15,12 +16,21 @@ import type { CompletedOrdersRequestError } from "./order-urls.js"
 import { makeCompletedOrdersRequest } from "./order-urls.js"
 import type { CookieJarPort } from "./session-snapshot.js"
 
-export type CompletedOrdersResponseNormalizationError = {
-  readonly _tag: "CompletedOrdersResponseSchemaMismatch"
+export type CompletedOrdersGraphqlError = {
+  readonly _tag: "CompletedOrdersGraphqlError"
   readonly message: string
 }
 
-export type GetCompletedOrdersError = CompletedOrdersRequestError | VoilaSdkError
+export type CompletedOrdersUnavailableError = {
+  readonly _tag: "CompletedOrdersUnavailable"
+  readonly message: string
+}
+
+export type GetCompletedOrdersError =
+  | CompletedOrdersGraphqlError
+  | CompletedOrdersRequestError
+  | CompletedOrdersUnavailableError
+  | VoilaSdkError
 
 export type GetCompletedOrdersResult = VoilaJsonResult<NormalizedCompletedOrdersResult>
 
@@ -82,9 +92,8 @@ const normalizeCompletedOrder = (order: RawCompletedOrderNode): NormalizedComple
 })
 
 export const normalizeCompletedOrdersResponse = (
-  response: RawCompletedOrdersGraphqlResponse
+  connection: RawCompletedOrdersConnection
 ): NormalizedCompletedOrdersResult => {
-  const connection = response.data.completedOrders
   const orders = connection.edges.flatMap((edge) =>
     edge?.node === undefined || edge.node === null
       ? []
@@ -99,6 +108,34 @@ export const normalizeCompletedOrdersResponse = (
       ...(connection.retentionPeriod === undefined ? {} : { retentionPeriod: connection.retentionPeriod })
     }
   }
+}
+
+const graphqlError = (): CompletedOrdersGraphqlError => ({
+  _tag: "CompletedOrdersGraphqlError",
+  message: "Voila completed orders returned a GraphQL error; account login may be required"
+})
+
+const completedOrdersUnavailable = (): CompletedOrdersUnavailableError => ({
+  _tag: "CompletedOrdersUnavailable",
+  message: "Voila completed orders are unavailable for the current session"
+})
+
+const getCompletedOrdersConnection = (
+  response: RawCompletedOrdersGraphqlResponse
+): Either.Either<RawCompletedOrdersConnection, CompletedOrdersGraphqlError | CompletedOrdersUnavailableError> => {
+  if (response.errors !== undefined && response.errors.length > 0) {
+    return Either.left(graphqlError())
+  }
+
+  if (
+    response.data === undefined
+    || response.data === null
+    || response.data.completedOrders === null
+  ) {
+    return Either.left(completedOrdersUnavailable())
+  }
+
+  return Either.right(response.data.completedOrders)
 }
 
 export const getCompletedOrders = async (
@@ -121,8 +158,12 @@ export const getCompletedOrders = async (
     cookieJarPort
   )
 
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeCompletedOrdersResponse(result.value)
-  }))
+  return Either.flatMap(
+    response,
+    (result) =>
+      Either.map(getCompletedOrdersConnection(result.value), (connection) => ({
+        session: result.session,
+        value: normalizeCompletedOrdersResponse(connection)
+      }))
+  )
 }

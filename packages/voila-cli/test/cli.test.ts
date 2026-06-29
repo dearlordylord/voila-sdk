@@ -16,6 +16,22 @@ const failure = (tag: string): OperationExecutionResult => ({
   ok: false
 })
 
+const authGuidanceFailure = (): OperationExecutionResult => ({
+  error: {
+    _tag: "CompletedOrdersGraphqlError",
+    authGuidance: {
+      command: "npx -y @firfi/voila-cli auth login --session /tmp/session.json",
+      instructions: "Run login, close the browser window, then retry.",
+      mcpEnv: {
+        VOILA_AUTH_SESSION_PATH: "/tmp/session.json"
+      },
+      message: "Voila account session is required."
+    },
+    message: "Voila completed orders returned a GraphQL error; account login may be required"
+  },
+  ok: false
+})
+
 const makePorts = (
   result: OperationExecutionResult = success({ status: "ok" })
 ): {
@@ -154,6 +170,60 @@ describe("Voila CLI", () => {
     }])
   })
 
+  it("maps order detail commands to order detail operation input", async () => {
+    const fake = makePorts(success({ items: [] }))
+    const result = await runCli([
+      "orders",
+      "details",
+      "sanitized-order-id-1",
+      "--session",
+      "/tmp/orders-session.json"
+    ], fake.ports)
+
+    expect(result.exitCode).toBe(0)
+    expect(fake.calls).toEqual([{
+      input: {
+        orderId: "sanitized-order-id-1"
+      },
+      name: "voila_get_order_details",
+      options: {
+        sessionPath: "/tmp/orders-session.json"
+      }
+    }])
+  })
+
+  it("maps completed order item commands to aggregate operation input", async () => {
+    const fake = makePorts(success({ items: [] }))
+    const result = await runCli([
+      "orders",
+      "items",
+      "--from-date",
+      "2026-06-01",
+      "--to-date",
+      "2026-06-30",
+      "--page-size",
+      "5",
+      "--max-orders",
+      "4",
+      "--session",
+      "/tmp/orders-session.json"
+    ], fake.ports)
+
+    expect(result.exitCode).toBe(0)
+    expect(fake.calls).toEqual([{
+      input: {
+        fromDate: "2026-06-01",
+        maxOrders: 4,
+        pageSize: 5,
+        toDate: "2026-06-30"
+      },
+      name: "voila_get_completed_order_items",
+      options: {
+        sessionPath: "/tmp/orders-session.json"
+      }
+    }])
+  })
+
   it("passes auth login defaults and overrides to the login port", async () => {
     const fake = makePorts(success({ status: "active" }))
     const result = await runCli([
@@ -183,5 +253,33 @@ describe("Voila CLI", () => {
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toBe("VoilaUnauthorizedSession: failed\n")
     expect(result.stdout).toBe("")
+  })
+
+  it("renders auth guidance for text failures", async () => {
+    const fake = makePorts(authGuidanceFailure())
+    const result = await runCli(["orders", "list", "--session", "/tmp/session.json"], fake.ports)
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain("CompletedOrdersGraphqlError")
+    expect(result.stderr).toContain("Voila account session is required.")
+    expect(result.stderr).toContain("Login command: npx -y @firfi/voila-cli auth login --session /tmp/session.json")
+    expect(result.stdout).toBe("")
+  })
+
+  it("renders complete typed failures in JSON mode", async () => {
+    const fake = makePorts(authGuidanceFailure())
+    const result = await runCli(["orders", "list", "--session", "/tmp/session.json", "--json"], fake.ports)
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toBe("")
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      error: {
+        _tag: "CompletedOrdersGraphqlError",
+        authGuidance: {
+          command: "npx -y @firfi/voila-cli auth login --session /tmp/session.json"
+        }
+      },
+      ok: false
+    })
   })
 })

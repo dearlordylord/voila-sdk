@@ -1,6 +1,13 @@
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@firfi/voila-cli": new URL("packages/voila-cli/src/index.ts", import.meta.url).pathname,
+      "@firfi/voila-mcp": new URL("packages/voila-mcp/src/index.ts", import.meta.url).pathname,
+      "@firfi/voila-sdk": new URL("packages/voila-sdk/src/index.ts", import.meta.url).pathname
+    }
+  },
   test: {
     globals: true,
     environment: "node",

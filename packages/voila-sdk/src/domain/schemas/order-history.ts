@@ -54,6 +54,14 @@ const RawOrderDeliveryDestinationSchema = Schema.asSchema(
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
+export const RawCompletedOrdersGraphqlErrorSchema = Schema.asSchema(
+  Schema.Struct({
+    message: Schema.String
+  }).pipe(Schema.extend(UnknownStringRecordSchema))
+)
+
+export type RawCompletedOrdersGraphqlError = Schema.Schema.Type<typeof RawCompletedOrdersGraphqlErrorSchema>
+
 export const RawInternalCompletedOrderSlotSchema = Schema.asSchema(
   Schema.Struct({
     __typename: Schema.Literal("InternalOrderSlot"),
@@ -110,22 +118,34 @@ export const RawCompletedOrderNodeSchema = Schema.asSchema(
 
 export type RawCompletedOrderNode = Schema.Schema.Type<typeof RawCompletedOrderNodeSchema>
 
+const RawCompletedOrdersConnectionSchema = Schema.asSchema(
+  Schema.Struct({
+    edges: Schema.Array(Schema.NullOr(
+      Schema.Struct({
+        node: Schema.NullOr(RawCompletedOrderNodeSchema)
+      }).pipe(Schema.extend(UnknownStringRecordSchema))
+    )),
+    pageInfo: Schema.Struct({
+      endCursor: Schema.NullOr(Schema.String),
+      hasNextPage: Schema.Boolean
+    }).pipe(Schema.extend(UnknownStringRecordSchema)),
+    retentionPeriod: Schema.optionalWith(Schema.String, { exact: true })
+  }).pipe(Schema.extend(UnknownStringRecordSchema))
+)
+
+export type RawCompletedOrdersConnection = Schema.Schema.Type<typeof RawCompletedOrdersConnectionSchema>
+
 export const RawCompletedOrdersGraphqlResponseSchema = Schema.asSchema(
   Schema.Struct({
-    data: Schema.Struct({
-      completedOrders: Schema.Struct({
-        edges: Schema.Array(Schema.NullOr(
-          Schema.Struct({
-            node: Schema.NullOr(RawCompletedOrderNodeSchema)
-          }).pipe(Schema.extend(UnknownStringRecordSchema))
-        )),
-        pageInfo: Schema.Struct({
-          endCursor: Schema.NullOr(Schema.String),
-          hasNextPage: Schema.Boolean
-        }).pipe(Schema.extend(UnknownStringRecordSchema)),
-        retentionPeriod: Schema.optionalWith(Schema.String, { exact: true })
-      }).pipe(Schema.extend(UnknownStringRecordSchema))
-    }).pipe(Schema.extend(UnknownStringRecordSchema))
+    data: Schema.optionalWith(
+      Schema.NullOr(
+        Schema.Struct({
+          completedOrders: Schema.NullOr(RawCompletedOrdersConnectionSchema)
+        }).pipe(Schema.extend(UnknownStringRecordSchema))
+      ),
+      { exact: true }
+    ),
+    errors: Schema.optionalWith(Schema.Array(RawCompletedOrdersGraphqlErrorSchema), { exact: true })
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
