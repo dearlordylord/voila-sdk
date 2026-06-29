@@ -26,6 +26,7 @@ const defaultTimeoutMs = 300_000
 const pollIntervalMs = 2_000
 const millisecondsPerSecond = 1000
 const sessionCookieExpires = -1
+const authenticatedCookieName = "userEmail"
 const readonlyCsrfFallback = "csrf-not-observed-readonly"
 
 interface CapturedSessionMaterial {
@@ -85,6 +86,9 @@ const responseSaysAuthenticated = (response: unknown): boolean => {
   return typeof response.status === "string" && response.status.toLowerCase() === "authenticated"
 }
 
+const cookiesSayAuthenticated = (cookies: ReadonlyArray<BrowserLoginBrowserCookie>): boolean =>
+  cookies.some((cookie) => cookie.name === authenticatedCookieName)
+
 const readActiveCustomerSession = async (page: Page): Promise<unknown> =>
   page.evaluate(async () => {
     const response = await fetch("/api/customersessions/v2/sessions/active", {
@@ -130,6 +134,21 @@ const captureBrowserSession = async (
   }
 }
 
+const readBrowserCookies = async (
+  page: Page
+): Promise<ReadonlyArray<BrowserLoginBrowserCookie> | undefined> => {
+  if (pageIsClosed(page)) {
+    return undefined
+  }
+
+  const cookies = Either.mapLeft(
+    parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.context().cookies(VOILA_BASE_URL)),
+    () => failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
+  )
+
+  return Either.isRight(cookies) ? cookies.right : undefined
+}
+
 const waitForAuthenticatedCapture = async (
   page: Page,
   timeoutMs: number
@@ -149,6 +168,12 @@ const waitForAuthenticatedCapture = async (
         : latestCapture
     }
 
+    const cookies = await readBrowserCookies(page)
+
+    if (cookies !== undefined && cookiesSayAuthenticated(cookies)) {
+      authenticatedObserved = true
+    }
+
     if (!authenticatedObserved) {
       try {
         authenticatedObserved = responseSaysAuthenticated(await readActiveCustomerSession(page))
@@ -157,11 +182,13 @@ const waitForAuthenticatedCapture = async (
       }
     }
 
-    if (authenticatedObserved) {
-      const capture = await captureBrowserSession(page)
+    const capture = await captureBrowserSession(page)
 
-      if (capture !== undefined) {
-        latestCapture = capture
+    if (capture !== undefined) {
+      latestCapture = capture
+
+      if (cookiesSayAuthenticated(capture.cookies)) {
+        authenticatedObserved = true
       }
     }
 

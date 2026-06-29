@@ -20,6 +20,7 @@ import {
 import { assertDecodeFailure } from "../helpers/property.js"
 
 const csrfToken = "csrf-token"
+const authenticatedCookieName = "userEmail"
 const secretCookieValue = "secret-cookie-value"
 const secretTransportPayload = "secret-transport-payload"
 const secretAccountHint = "secret@example.test"
@@ -31,9 +32,13 @@ const sampleMetadata = {
   regionId: "region-id"
 }
 
-const makeSession = (token: string = csrfToken): SessionSnapshot => {
+const makeSession = (token: string = csrfToken, authenticatedCookieValue?: string): SessionSnapshot => {
   const jar = toughCookieJarPort.create()
   jar.setCookieSync(`voila-session=${secretCookieValue}; Path=/; Secure`, VOILA_BASE_URL)
+
+  if (authenticatedCookieValue !== undefined) {
+    jar.setCookieSync(`${authenticatedCookieName}=${authenticatedCookieValue}; Path=/; Secure`, VOILA_BASE_URL)
+  }
 
   const cookieJar = serializeCookieJar(jar)
 
@@ -88,6 +93,18 @@ const makeEmptyCookieGuestSnapshot = (): SdkSessionSnapshot => {
 
 const makeAuthenticatedSnapshot = (token: string = csrfToken): SdkSessionSnapshot => {
   const snapshot = makeAuthenticatedSdkSessionSnapshot(makeSession(token), "unknown-expiry", {
+    emailHint: secretAccountHint
+  })
+
+  if (Either.isLeft(snapshot)) {
+    throw new Error("Expected authenticated SDK session snapshot creation to succeed")
+  }
+
+  return snapshot.right
+}
+
+const makeAuthenticatedCookieSnapshot = (): SdkSessionSnapshot => {
+  const snapshot = makeAuthenticatedSdkSessionSnapshot(makeSession(csrfToken, "redacted-user"), "unknown-expiry", {
     emailHint: secretAccountHint
   })
 
@@ -317,6 +334,26 @@ describe("session health", () => {
 
     if (Either.isRight(result)) {
       expect(result.right.status).toBe("reauth-required")
+      expect(result.right.session.kind).toBe("authenticated")
+    }
+  })
+
+  it("accepts active cart session identifiers with an authenticated browser cookie", async () => {
+    const result = await checkSessionHealth(
+      makeAuthenticatedCookieSnapshot(),
+      makeResponseTransport(makeResponse(
+        JSON.stringify({
+          cartId: "sanitized-cart-id",
+          regionId: "sanitized-region-id",
+          type: "CART"
+        })
+      )).transport
+    )
+
+    expect(Either.isRight(result)).toBe(true)
+
+    if (Either.isRight(result)) {
+      expect(result.right.status).toBe("active")
       expect(result.right.session.kind).toBe("authenticated")
     }
   })

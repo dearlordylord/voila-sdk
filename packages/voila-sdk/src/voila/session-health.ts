@@ -45,6 +45,7 @@ type ActiveCustomerSessionRequestResult =
   }
 
 const emptyStringLength = 0
+const authenticatedCookieName = "userEmail"
 const forbiddenStatus = 403
 const setCookieHeader = "set-cookie"
 const successStatusMax = 300
@@ -65,6 +66,32 @@ const responseSaysAuthenticated = (response: ActiveCustomerSessionResponse): boo
   || response.customer?.authenticated === true
   || response.status?.toLowerCase() === "authenticated"
 
+const responseSaysActiveCartSession = (response: ActiveCustomerSessionResponse): boolean =>
+  typeof response.cartId === "string" && typeof response.regionId === "string"
+
+const sessionHasAuthenticatedCookie = (
+  cookieJarPort: CookieJarPort,
+  session: SessionSnapshot
+): boolean => {
+  const jar = cookieJarPort.deserialize(session.cookieJar)
+
+  if (Either.isLeft(jar)) {
+    return false
+  }
+
+  return jar.right
+    .getCookiesSync(makeActiveCustomerSessionRequest().url.href)
+    .some((cookie) => cookie.key === authenticatedCookieName)
+}
+
+const responseHasAuthenticatedEvidence = (
+  cookieJarPort: CookieJarPort,
+  response: ActiveCustomerSessionResponse,
+  session: SessionSnapshot
+): boolean =>
+  responseSaysAuthenticated(response)
+  || (responseSaysActiveCartSession(response) && sessionHasAuthenticatedCookie(cookieJarPort, session))
+
 const makeSdkSnapshotWithSession = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot
@@ -77,11 +104,12 @@ const makeSdkSnapshotWithSession = (
     : Either.mapLeft(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid)
 
 const makeActiveSession = (
+  cookieJarPort: CookieJarPort,
   previous: SdkSessionSnapshot,
   response: ActiveCustomerSessionResponse,
   session: SessionSnapshot
 ): Either.Either<SessionHealth, CheckSessionHealthError> => {
-  if (previous.kind === "authenticated" && !responseSaysAuthenticated(response)) {
+  if (previous.kind === "authenticated" && !responseHasAuthenticatedEvidence(cookieJarPort, response, session)) {
     return makeReauthRequired(previous, session)
   }
 
@@ -289,7 +317,7 @@ export const checkSessionHealth = async (
 
   switch (result._tag) {
     case "ActiveCustomerSessionOk":
-      return makeActiveSession(snapshot, result.value, result.session)
+      return makeActiveSession(cookieJarPort ?? toughCookieJarPort, snapshot, result.value, result.session)
     case "ActiveCustomerSessionRetry":
       return Either.flatMap(
         makeSdkSnapshotWithSession(snapshot, result.session),
