@@ -1,0 +1,63 @@
+{
+  "name": "@firfi/voila-mcp",
+  "version": "0.1.0",
+  "description": "MCP stdio server for Voila grocery workflows",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/types/index.d.ts",
+  "bin": {
+    "voila-mcp": "./dist/bin.cjs"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist/*.cjs",
+    "dist/*.mjs",
+    "dist/types/**/*.d.ts",
+    "dist/types/**/*.d.ts.map",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "prepack": "pnpm build",
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node'",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "package:audit": "pnpm build && node ../../scripts/audit-package.mjs . bin",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config ../../vitest.config.ts"
+  },
+  "keywords": [
+    "voila",
+    "mcp",
+    "groceries",
+    "automation"
+  ],
+  "author": "firfi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/dearlordylord/voila-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dearlordylord/voila-sdk/issues"
+  },
+  "homepage": "https://github.com/dearlordylord/voila-sdk#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@firfi/voila-sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "effect": "^3.19.15",
+    "zod": "^4.4.3"
+  }
+}

@@ -4,6 +4,15 @@ Authenticated sessions must be captured through an interactive browser. The SDK 
 
 ## Host Capture
 
+The preferred user-facing flow is now the CLI:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright-voila \
+voila auth login --session ~/.config/voila/session.json
+```
+
+The CLI opens a persistent Playwright profile at `~/.cache/voila/browser-profile` by default. Override it with `--profile <dir>`. The command saves only after the SDK captures an authenticated session and validates session health.
+
 On a host with a graphical browser session, run:
 
 ```bash

@@ -74,6 +74,7 @@ describe("public package entrypoint", () => {
         "import('@firfi/voila-sdk').then((sdk) => console.log(typeof sdk.searchProducts))"
       ],
       {
+        cwd: new URL("../..", import.meta.url),
         encoding: "utf8"
       }
     )

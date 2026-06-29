@@ -1,32 +1,8 @@
 {
-  "compilerOptions": {
-    "incremental": true,
-    "composite": true,
-    "target": "ES2022",
-    "lib": ["ES2023"],
-    "module": "NodeNext",
-    "moduleDetection": "force",
-    "moduleResolution": "NodeNext",
-    "verbatimModuleSyntax": true,
-    "rewriteRelativeImportExtensions": true,
-    "strict": true,
-    "exactOptionalPropertyTypes": true,
-    "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "types": ["node"],
-    "outDir": "dist",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "skipLibCheck": true,
-    "plugins": [
-      {
-        "name": "@effect/language-service"
-      }
-    ]
-  },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "files": [],
+  "references": [
+    { "path": "./packages/voila-sdk" },
+    { "path": "./packages/voila-mcp" },
+    { "path": "./packages/voila-cli" }
+  ]
 }

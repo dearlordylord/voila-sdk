@@ -10,15 +10,25 @@ Voila does not publish a documented third-party customer API. This SDK uses the 
 
 Never place an order without an explicit caller confirmation step based on the latest server checkout summary.
 
+## Workspace Layout
+
+The root package is private. Publishable packages live under `packages/`:
+
+- `packages/voila-sdk`: `@firfi/voila-sdk`.
+- `packages/voila-mcp`: `@firfi/voila-mcp`, stdio MCP server.
+- `packages/voila-cli`: `@firfi/voila-cli`, user CLI.
+
+The MCP package owns the shared operation registry used by both MCP tools and CLI commands.
+
 ## Project Harness
 
 This project follows the `../hulymcp` TypeScript/Effect quality harness. These components are mandatory:
 
 1. Test coverage (`vitest.config.ts`): v8 provider, 99% thresholds, `test:coverage` script.
-2. Code duplication (`.jscpd.json` + `jscpd src` in `lint`): threshold 2%, console reporter.
+2. Code duplication (`.jscpd.json` + `jscpd packages/*/src` in `lint`): threshold 2%, console reporter.
 3. Circular dependency detection (`madge --circular` in `circular`, wired into `check-all`).
 4. Pre-commit hooks (`.husky/pre-commit`): lint-staged plus secrets scanning when `gitleaks` is installed.
-5. `pnpm check-all`: build + typecheck + circular + lint + test coverage.
+5. `pnpm check-all`: build + typecheck + circular + lint + fixture audit + test coverage.
 6. Effect testing: use Effect-aware patterns and keep side effects behind ports/layers.
 7. ESLint: Effect dprint formatting, functional rules, cast bans, mock bans, property-test placement.
 8. Property tests: `fast-check` imports belong in `*.property.test.ts` only.
@@ -38,6 +48,12 @@ Run before considering work complete:
 
 ```bash
 pnpm check-all
+```
+
+For publish readiness, also run:
+
+```bash
+pnpm package:audit
 ```
 
 For live endpoint changes, also run a controlled manual smoke test against a throwaway/guest session. Never run live cart mutation tests against a real account unless the test is explicitly designed to clean up and the caller asked for it.

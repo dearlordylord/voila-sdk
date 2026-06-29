@@ -87,16 +87,16 @@ export default [
 
   ...tseslint.configs.recommended.map((config) => ({
     ...config,
-    files: ["src/**/*.ts", "test/**/*.ts"]
+    files: ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts"]
   })),
 
   ...effectEslint.configs.dprint.map((config) => ({
     ...config,
-    files: ["src/**/*.ts", "test/**/*.ts"]
+    files: ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts"]
   })),
 
   {
-    files: ["src/**/*.ts", "test/**/*.ts"],
+    files: ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts"],
 
     plugins: {
       functional,
@@ -190,7 +190,7 @@ export default [
   },
 
   {
-    files: ["src/**/*.ts"],
+    files: ["packages/*/src/**/*.ts"],
     plugins: {
       "import-x": importX
     },
@@ -210,7 +210,7 @@ export default [
   },
 
   {
-    files: ["src/domain/schemas/**/*.ts"],
+    files: ["packages/*/src/domain/schemas/**/*.ts"],
     rules: {
       "import-x/no-unused-modules": "off"
     }
@@ -228,8 +228,8 @@ export default [
   },
 
   {
-    files: ["test/**/*.test.ts", "test/**/*.spec.ts"],
-    ignores: ["test/**/*.property.test.ts", "test/**/*.property.spec.ts"],
+    files: ["packages/*/test/**/*.test.ts", "packages/*/test/**/*.spec.ts"],
+    ignores: ["packages/*/test/**/*.property.test.ts", "packages/*/test/**/*.property.spec.ts"],
     rules: {
       "no-restricted-syntax": ["error", ...nonPropertyTestRestrictedSyntaxSelectors]
     }

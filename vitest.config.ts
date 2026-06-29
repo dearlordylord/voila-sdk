@@ -4,16 +4,20 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "packages/*/test/**/*.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
       exclude: [
         "node_modules/",
-        "test/",
+        "**/dist/**",
+        "packages/*/test/",
+        "packages/voila-cli/src/**",
+        "packages/voila-mcp/src/**",
         "**/*.test.ts",
         "**/*.config.ts",
-        "src/index.ts"
+        "packages/*/src/index.ts",
+        "packages/*/src/bin.ts"
       ],
       thresholds: {
         branches: 99,

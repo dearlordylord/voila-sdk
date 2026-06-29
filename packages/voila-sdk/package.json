@@ -1,0 +1,68 @@
+{
+  "name": "@firfi/voila-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Voila grocery search, sessions, and cart workflows",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src"
+  ],
+  "scripts": {
+    "prepack": "pnpm build",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config ../../vitest.config.ts",
+    "test:watch": "vitest --config ../../vitest.config.ts",
+    "smoke:catalog-search": "tsx test/live/catalog-search.smoke.ts",
+    "smoke:cart": "tsx test/live/cart.smoke.ts",
+    "smoke:auth-readonly": "tsx test/live/auth-readonly.smoke.ts",
+    "auth:capture": "bash ../../scripts/host-auth-capture.sh",
+    "drift:audit": "tsx test/live/drift-audit.smoke.ts",
+    "fixtures:audit": "node ../../scripts/audit-fixtures.mjs test/fixtures",
+    "lint": "find src test -name '*.ts' -print0 | xargs -0 eslint && jscpd src",
+    "lint:fix": "find src test -name '*.ts' -print0 | xargs -0 eslint --fix",
+    "format": "find src test -name '*.ts' -print0 | xargs -0 eslint --fix --rule '@effect/dprint: error'",
+    "check-format": "find src test -name '*.ts' -print0 | xargs -0 eslint --rule '@effect/dprint: error'",
+    "circular": "madge --extensions ts --circular src",
+    "package:audit": "pnpm build && node ../../scripts/audit-package.mjs . sdk",
+    "release:check": "pnpm check-all && pnpm package:audit",
+    "check-all": "pnpm build && pnpm typecheck && pnpm circular && pnpm lint && pnpm fixtures:audit && pnpm test:coverage"
+  },
+  "keywords": [
+    "voila",
+    "groceries",
+    "sdk",
+    "effect",
+    "typescript"
+  ],
+  "packageManager": "pnpm@10.29.3",
+  "author": "firfi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/dearlordylord/voila-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dearlordylord/voila-sdk/issues"
+  },
+  "homepage": "https://github.com/dearlordylord/voila-sdk#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "effect": "^3.19.15",
+    "tough-cookie": "^6.0.0"
+  }
+}

@@ -1,14 +1,14 @@
 # Release
 
-Use this checklist before publishing `@firfi/voila-sdk` to npm.
+Use this checklist before publishing public packages from `master`.
 
-## Preconditions
+## Packages
 
-- `package.json` has the intended version.
-- `README.md` describes the current public API, safety model, live smoke flags, and auth capture flow.
-- `docs/public-api.md` matches the exported package surface.
-- No local session snapshots, browser profiles, fixture refresh scratch files, or generated coverage reports are staged.
-- Live endpoint drift was either checked or intentionally deferred with a reason.
+- `@firfi/voila-sdk`
+- `@firfi/voila-mcp`
+- `@firfi/voila-cli`
+
+The root `voila-workspace` package is private.
 
 ## Required Gate
 
@@ -16,12 +16,7 @@ Use this checklist before publishing `@firfi/voila-sdk` to npm.
 pnpm release:check
 ```
 
-This runs:
-
-- `pnpm check-all`
-- `pnpm package:audit`
-
-`pnpm package:audit` builds the SDK and verifies the `npm pack --dry-run` file list.
+This runs build, typecheck, circular dependency detection, lint plus duplication checks, fixture audit, coverage, and per-package tarball audits.
 
 ## Optional Live Checks
 
@@ -36,25 +31,42 @@ VOILA_DRIFT_AUDIT=1 pnpm drift:audit
 
 The authenticated smoke is read-only. Do not run authenticated mutation checks unless the caller explicitly asks for them.
 
-## Publish
+## Local Publish Dry Run
 
 ```bash
-npm publish
+pnpm release:local
 ```
 
-The package is scoped and `publishConfig.access` is public. `prepublishOnly` runs `pnpm release:check`.
+This runs the full release gate and then performs recursive npm publish dry runs for public workspace packages.
 
-## Tarball Contract
+## Tarball Contracts
 
-The npm tarball intentionally includes only:
+SDK tarball:
 
 - `package.json`
 - `README.md`
 - `LICENSE`
 - `dist/src/**`
 
-It must not include source TypeScript, tests, local sessions, browser profiles, fixtures outside compiled declarations, coverage output, or TypeScript build metadata.
+MCP and CLI tarballs:
 
-## Rollback
+- `package.json`
+- `README.md`
+- `LICENSE`
+- `dist/index.cjs`
+- `dist/index.mjs`
+- `dist/bin.cjs`
+- `dist/types/**/*.d.ts`
+- `dist/types/**/*.d.ts.map`
 
-If a bad version is published, prefer a new patch release that fixes the issue. Avoid unpublish flows unless the version contains secrets or legally sensitive material.
+Tarballs must not include source TypeScript, tests, local sessions, browser profiles, coverage output, or TypeScript build metadata.
+
+## Publish
+
+Publish from `master` after `pnpm release:check` passes:
+
+```bash
+pnpm -r --filter './packages/*' publish
+```
+
+All packages are scoped and use `publishConfig.access: public`.

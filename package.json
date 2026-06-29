@@ -1,80 +1,46 @@
 {
-  "name": "@firfi/voila-sdk",
+  "name": "voila-workspace",
   "version": "0.1.0",
-  "description": "TypeScript SDK for Voila grocery search, sessions, and cart workflows",
+  "private": true,
+  "description": "Private workspace for Voila SDK, MCP server, and CLI packages",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
-  "sideEffects": false,
-  "exports": {
-    ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
-    }
-  },
-  "files": [
-    "dist/src"
-  ],
   "scripts": {
     "prepare": "husky",
-    "prepack": "pnpm build",
-    "prepublishOnly": "pnpm release:check",
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm -r --filter './packages/*' build",
+    "typecheck": "pnpm -r --filter './packages/*' typecheck",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "smoke:catalog-search": "tsx test/live/catalog-search.smoke.ts",
-    "smoke:cart": "tsx test/live/cart.smoke.ts",
-    "smoke:auth-readonly": "tsx test/live/auth-readonly.smoke.ts",
-    "auth:capture": "bash scripts/host-auth-capture.sh",
-    "drift:audit": "tsx test/live/drift-audit.smoke.ts",
-    "fixtures:audit": "node scripts/audit-fixtures.mjs",
-    "lint": "find src test -name '*.ts' -print0 | xargs -0 eslint && jscpd src",
-    "lint:fix": "find src test -name '*.ts' -print0 | xargs -0 eslint --fix",
-    "format": "find src test -name '*.ts' -print0 | xargs -0 eslint --fix --rule '@effect/dprint: error'",
-    "check-format": "find src test -name '*.ts' -print0 | xargs -0 eslint --rule '@effect/dprint: error'",
-    "circular": "madge --extensions ts --circular src",
-    "package:audit": "pnpm build && node scripts/audit-package.mjs",
+    "smoke:catalog-search": "pnpm --filter @firfi/voila-sdk smoke:catalog-search",
+    "smoke:cart": "pnpm --filter @firfi/voila-sdk smoke:cart",
+    "smoke:auth-readonly": "pnpm --filter @firfi/voila-sdk smoke:auth-readonly",
+    "auth:capture": "pnpm --filter @firfi/voila-sdk auth:capture",
+    "drift:audit": "pnpm --filter @firfi/voila-sdk drift:audit",
+    "fixtures:audit": "node scripts/audit-fixtures.mjs packages/voila-sdk/test/fixtures",
+    "lint": "find packages -path '*/dist' -prune -o -path '*/node_modules' -prune -o -name '*.ts' -print0 | xargs -0 eslint && jscpd packages/*/src",
+    "lint:fix": "find packages -path '*/dist' -prune -o -path '*/node_modules' -prune -o -name '*.ts' -print0 | xargs -0 eslint --fix",
+    "format": "find packages -path '*/dist' -prune -o -path '*/node_modules' -prune -o -name '*.ts' -print0 | xargs -0 eslint --fix --rule '@effect/dprint: error'",
+    "check-format": "find packages -path '*/dist' -prune -o -path '*/node_modules' -prune -o -name '*.ts' -print0 | xargs -0 eslint --rule '@effect/dprint: error'",
+    "circular": "madge --extensions ts --circular packages/*/src",
+    "package:audit": "pnpm -r --filter './packages/*' package:audit",
     "release:check": "pnpm check-all && pnpm package:audit",
+    "release:local": "pnpm release:check && pnpm -r --filter './packages/*' publish --dry-run",
+    "release:publish": "pnpm release:check && node scripts/publish-if-needed.mjs",
     "check-all": "pnpm build && pnpm typecheck && pnpm circular && pnpm lint && pnpm fixtures:audit && pnpm test:coverage"
   },
-  "keywords": [
-    "voila",
-    "groceries",
-    "sdk",
-    "effect",
-    "typescript"
-  ],
   "packageManager": "pnpm@10.29.3",
-  "author": "firfi",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+ssh://git@github.com/dearlordylord/voila-sdk.git"
-  },
-  "bugs": {
-    "url": "https://github.com/dearlordylord/voila-sdk/issues"
-  },
-  "homepage": "https://github.com/dearlordylord/voila-sdk#readme",
   "engines": {
     "node": ">=20"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "dependencies": {
-    "effect": "^3.19.15",
-    "tough-cookie": "^6.0.0"
   },
   "devDependencies": {
     "@effect/eslint-plugin": "^0.3.2",
     "@effect/language-service": "^0.73.1",
     "@effect/vitest": "latest",
     "@eslint/compat": "^2.0.2",
-    "@types/node": "^25.1.0",
     "@typescript-eslint/parser": "^8.54.0",
+    "@types/node": "^25.1.0",
     "@vitest/coverage-v8": "latest",
+    "esbuild": "^0.27.1",
     "eslint": "^9.39.2",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-functional": "^9.0.2",
@@ -93,7 +59,7 @@
     "vitest": "latest"
   },
   "lint-staged": {
-    "*.ts": "eslint --fix"
+    "packages/**/*.ts": "eslint --fix"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

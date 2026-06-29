@@ -1,0 +1,66 @@
+{
+  "name": "@firfi/voila-cli",
+  "version": "0.1.0",
+  "description": "Command line interface for Voila grocery workflows",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/types/index.d.ts",
+  "bin": {
+    "voila": "./dist/bin.cjs"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist/*.cjs",
+    "dist/*.mjs",
+    "dist/types/**/*.d.ts",
+    "dist/types/**/*.d.ts.map",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "prepack": "pnpm build",
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs --external:playwright --external:chromium-bidi/* && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:playwright --external:chromium-bidi/* && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' --external:playwright --external:chromium-bidi/*",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "package:audit": "pnpm build && node ../../scripts/audit-package.mjs . bin",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config ../../vitest.config.ts"
+  },
+  "keywords": [
+    "voila",
+    "groceries",
+    "cli",
+    "automation"
+  ],
+  "author": "firfi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/dearlordylord/voila-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dearlordylord/voila-sdk/issues"
+  },
+  "homepage": "https://github.com/dearlordylord/voila-sdk#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.72.0",
+    "@effect/platform": "^0.93.6",
+    "@effect/platform-node": "^0.99.0",
+    "@firfi/voila-mcp": "workspace:*",
+    "@firfi/voila-sdk": "workspace:*",
+    "effect": "^3.19.15",
+    "playwright": "^1.57.0"
+  }
+}
