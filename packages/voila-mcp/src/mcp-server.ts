@@ -14,50 +14,73 @@ import {
 
 const emptyInputSchema = {}
 const isoDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
+const nonEmptyInput = z.string().trim().min(1)
+
+const activeShoppingContextInputSchema = {
+  regionId: nonEmptyInput.optional()
+}
+
+const slotListingsInputSchema = {
+  deliveryDestinationId: nonEmptyInput,
+  displayConfiguration: z.enum(["DELIVERY_METHOD", "CARRIER"]).optional(),
+  numberOfDays: z.number().int().positive().optional(),
+  regionId: nonEmptyInput,
+  shippingGroupType: nonEmptyInput.optional(),
+  viewingLocation: nonEmptyInput.optional()
+}
+
+const slotReservationInputSchema = {
+  allowReservationOverwrite: z.literal(true),
+  confirmSlotReservation: z.literal(true),
+  deliveryDestinationId: nonEmptyInput,
+  externalAddress: z.record(z.string(), z.unknown()).optional(),
+  regionId: nonEmptyInput,
+  slotId: nonEmptyInput
+}
 
 const productListInputSchema = {
   pageSize: z.number().int().min(1).max(24).optional(),
-  pageToken: z.string().trim().min(1).optional(),
-  query: z.string().trim().min(1)
+  pageToken: nonEmptyInput.optional(),
+  query: nonEmptyInput
 }
 
 const categoryProductsInputSchema = {
-  categoryId: z.string().trim().min(1),
+  categoryId: nonEmptyInput,
   pageSize: z.number().int().min(1).max(24).optional(),
-  pageToken: z.string().trim().min(1).optional()
+  pageToken: nonEmptyInput.optional()
 }
 
 const discountedProductsInputSchema = {
-  categoryId: z.string().trim().min(1).optional(),
+  categoryId: nonEmptyInput.optional(),
   minSavingsAmount: z.number().nonnegative().optional(),
   minSavingsPercent: z.number().nonnegative().optional(),
   pageSize: z.number().int().min(1).max(24).optional(),
-  pageToken: z.string().trim().min(1).optional(),
-  query: z.string().trim().min(1).optional(),
-  retailerCategoryId: z.string().trim().min(1).optional(),
+  pageToken: nonEmptyInput.optional(),
+  query: nonEmptyInput.optional(),
+  retailerCategoryId: nonEmptyInput.optional(),
   sort: z.enum(["best-percent", "best-amount", "price-asc"]).optional()
 }
 
 const orderListInputSchema = {
   pageSize: z.number().int().min(1).max(50).optional(),
-  pageToken: z.string().trim().min(1).optional()
+  pageToken: nonEmptyInput.optional()
 }
 
 const orderDetailsInputSchema = {
-  orderId: z.string().trim().min(1)
+  orderId: nonEmptyInput
 }
 
 const orderItemsInputSchema = {
   fromDate: isoDateInput.optional(),
   maxOrders: z.number().int().min(1).max(50).optional(),
   pageSize: z.number().int().min(1).max(50).optional(),
-  pageToken: z.string().trim().min(1).optional(),
+  pageToken: nonEmptyInput.optional(),
   toDate: isoDateInput.optional()
 }
 
 const cartItemsInputSchema = {
   items: z.array(z.object({
-    productId: z.string().trim().min(1),
+    productId: nonEmptyInput,
     quantity: z.number().int().positive()
   })).min(1)
 }
@@ -91,6 +114,9 @@ export const createVoilaMcpServer = (
     version
   })
   const health = descriptorFor("voila_check_session_health")
+  const activeShoppingContext = descriptorFor("voila_get_active_shopping_context")
+  const slotListings = descriptorFor("voila_get_slot_listings")
+  const reserveSlot = descriptorFor("voila_reserve_slot")
   const search = descriptorFor("voila_search_products")
   const categoryProducts = descriptorFor("voila_get_category_products")
   const discountedProducts = descriptorFor("voila_get_discounted_products")
@@ -106,6 +132,24 @@ export const createVoilaMcpServer = (
     inputSchema: emptyInputSchema,
     title: health.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_check_session_health", input, env)))
+
+  server.registerTool("voila_get_active_shopping_context", {
+    description: activeShoppingContext.description,
+    inputSchema: activeShoppingContextInputSchema,
+    title: activeShoppingContext.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_get_active_shopping_context", input, env)))
+
+  server.registerTool("voila_get_slot_listings", {
+    description: slotListings.description,
+    inputSchema: slotListingsInputSchema,
+    title: slotListings.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_get_slot_listings", input, env)))
+
+  server.registerTool("voila_reserve_slot", {
+    description: reserveSlot.description,
+    inputSchema: slotReservationInputSchema,
+    title: reserveSlot.title
+  }, async (input) => makeToolResult(await runVoilaOperation("voila_reserve_slot", input, env)))
 
   server.registerTool("voila_search_products", {
     description: search.description,

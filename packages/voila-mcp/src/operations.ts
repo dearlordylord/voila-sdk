@@ -2,17 +2,20 @@ import {
   addCartItems,
   bootstrapGuestSession,
   checkSessionHealth,
+  getActiveShoppingContext,
   getCart,
   getCategoryProducts,
   getCompletedOrderItems,
   getCompletedOrders,
   getDiscountedProducts,
   getOrderDetails,
+  getSlotListings,
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   parseUnknown,
   redactSdkSessionSnapshot,
   removeCartItems,
+  reserveSlot,
   type SdkSessionSnapshot,
   searchProducts,
   type SessionSnapshot,
@@ -25,22 +28,30 @@ import { Either } from "effect"
 import { authGuidanceForHealth, authGuidanceForSnapshot, type OperationAuthGuidance } from "./auth-guidance.js"
 import { type VoilaOperationName } from "./operation-descriptors.js"
 import {
+  ActiveShoppingContextOperationInputSchema,
   type CartItemOperationInput,
   CartItemOperationInputSchema,
-  type CategoryProductsOperationInput,
   CategoryProductsOperationInputSchema,
-  type DiscountedProductsOperationInput,
   DiscountedProductsOperationInputSchema,
   EmptyOperationInputSchema,
-  type OrderDetailsOperationInput,
   OrderDetailsOperationInputSchema,
-  type OrderItemsOperationInput,
   OrderItemsOperationInputSchema,
-  type OrderListOperationInput,
   OrderListOperationInputSchema,
-  type ProductListOperationInput,
-  ProductListOperationInputSchema
+  ProductListOperationInputSchema,
+  SlotListingsOperationInputSchema,
+  SlotReservationOperationInputSchema
 } from "./operation-schemas.js"
+import {
+  makeSdkActiveShoppingContextInput,
+  makeSdkCategoryInput,
+  makeSdkDiscountInput,
+  makeSdkOrderDetailsInput,
+  makeSdkOrderItemsInput,
+  makeSdkOrderListInput,
+  makeSdkSearchInput,
+  makeSdkSlotListingsInput,
+  makeSdkSlotReservationInput
+} from "./sdk-operation-inputs.js"
 
 export {
   mcpName,
@@ -77,8 +88,6 @@ export interface OperationEnvironment {
   readonly session: OperationSessionPort
   readonly transport: VoilaTransport
 }
-
-const defaultPageSize = 12
 
 const inputInvalid = (): OperationFailure => ({
   _tag: "VoilaOperationInputInvalid",
@@ -136,46 +145,6 @@ const parseInput = <A, I>(
   schema: Schema.Schema<A, I, never>,
   input: unknown
 ): Either.Either<A, OperationFailure> => Either.mapLeft(parseUnknown(schema, input), inputInvalid)
-
-const makeSdkSearchInput = (input: ProductListOperationInput) => ({
-  pageSize: input.pageSize ?? defaultPageSize,
-  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
-  query: input.query
-})
-
-const makeSdkCategoryInput = (input: CategoryProductsOperationInput) => ({
-  categoryId: input.categoryId,
-  pageSize: input.pageSize ?? defaultPageSize,
-  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
-})
-
-const makeSdkDiscountInput = (input: DiscountedProductsOperationInput) => ({
-  ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
-  ...(input.minSavingsAmount === undefined ? {} : { minSavingsAmount: input.minSavingsAmount }),
-  ...(input.minSavingsPercent === undefined ? {} : { minSavingsPercent: input.minSavingsPercent }),
-  pageSize: input.pageSize ?? defaultPageSize,
-  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
-  ...(input.query === undefined ? {} : { query: input.query }),
-  ...(input.retailerCategoryId === undefined ? {} : { retailerCategoryId: input.retailerCategoryId }),
-  ...(input.sort === undefined ? {} : { sort: input.sort })
-})
-
-const makeSdkOrderListInput = (input: OrderListOperationInput) => ({
-  ...(input.pageSize === undefined ? {} : { pageSize: input.pageSize }),
-  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
-})
-
-const makeSdkOrderDetailsInput = (input: OrderDetailsOperationInput) => ({
-  orderId: input.orderId
-})
-
-const makeSdkOrderItemsInput = (input: OrderItemsOperationInput) => ({
-  ...(input.fromDate === undefined ? {} : { fromDate: input.fromDate }),
-  ...(input.maxOrders === undefined ? {} : { maxOrders: input.maxOrders }),
-  ...(input.pageSize === undefined ? {} : { pageSize: input.pageSize }),
-  ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
-  ...(input.toDate === undefined ? {} : { toDate: input.toDate })
-})
 
 const updateSdkSession = (
   previous: SdkSessionSnapshot,
@@ -337,6 +306,39 @@ const runDiscountedProducts = async (
     (session, parsed) => getDiscountedProducts(session, makeSdkDiscountInput(parsed), env.transport)
   )
 
+const runActiveShoppingContext = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    ActiveShoppingContextOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getActiveShoppingContext(session, makeSdkActiveShoppingContextInput(parsed), env.transport)
+  )
+
+const runSlotListings = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    SlotListingsOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => getSlotListings(session, makeSdkSlotListingsInput(parsed), env.transport)
+  )
+
+const runReserveSlot = async (
+  input: unknown,
+  env: OperationEnvironment
+): Promise<OperationExecutionResult> =>
+  runSessionOperation(
+    SlotReservationOperationInputSchema,
+    input,
+    env,
+    (session, parsed) => reserveSlot(session, makeSdkSlotReservationInput(parsed), env.transport)
+  )
+
 const runGetCart = async (
   input: unknown,
   env: OperationEnvironment
@@ -406,6 +408,8 @@ export const runVoilaOperation = async (
       return runCartItems(input, env, addCartItems)
     case "voila_check_session_health":
       return runHealth(input, env)
+    case "voila_get_active_shopping_context":
+      return runActiveShoppingContext(input, env)
     case "voila_get_cart":
       return runGetCart(input, env)
     case "voila_get_category_products":
@@ -418,8 +422,12 @@ export const runVoilaOperation = async (
       return runCompletedOrders(input, env)
     case "voila_get_order_details":
       return runOrderDetails(input, env)
+    case "voila_get_slot_listings":
+      return runSlotListings(input, env)
     case "voila_remove_cart_items":
       return runCartItems(input, env, removeCartItems)
+    case "voila_reserve_slot":
+      return runReserveSlot(input, env)
     case "voila_search_products":
       return runSearch(input, env)
   }

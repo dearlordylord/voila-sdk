@@ -68,6 +68,8 @@ pnpm package:audit
 
 For live endpoint changes, also run a controlled manual smoke test against a throwaway/guest session. Never run live cart mutation tests against a real account unless the test is explicitly designed to clean up and the caller asked for it.
 
+For feature work, run a self-review subagent loop before considering the work complete. Ask the reviewer to look for correctness bugs, safety regressions, missing tests, instruction violations, and integration risks. Address actionable findings or explicitly document why they are not being taken.
+
 ## Type Safety
 
 Type casts (`as T`) are banned. Avoid them. All data crossing system boundaries must be strongly typed with Effect Schema.

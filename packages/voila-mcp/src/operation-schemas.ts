@@ -20,6 +20,12 @@ const NonNegativeNumberSchema = Schema.Number.pipe(
   Schema.nonNegative()
 )
 
+const PositiveIntegerSchema = Schema.Number.pipe(
+  Schema.finite(),
+  Schema.int(),
+  Schema.positive()
+)
+
 const OrderPageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
@@ -33,9 +39,43 @@ const QuantitySchema = Schema.Number.pipe(
   Schema.greaterThan(0)
 )
 
+const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
+
 export const EmptyOperationInputSchema = Schema.Struct({})
 
 export type EmptyOperationInput = Schema.Schema.Type<typeof EmptyOperationInputSchema>
+
+export const ActiveShoppingContextOperationInputSchema = Schema.Struct({
+  regionId: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true })
+})
+
+export type ActiveShoppingContextOperationInput = Schema.Schema.Type<
+  typeof ActiveShoppingContextOperationInputSchema
+>
+
+export const SlotDisplayConfigurationOperationInputSchema = Schema.Literal("DELIVERY_METHOD", "CARRIER")
+
+export const SlotListingsOperationInputSchema = Schema.Struct({
+  deliveryDestinationId: NonEmptyTrimmedStringSchema,
+  displayConfiguration: Schema.optionalWith(SlotDisplayConfigurationOperationInputSchema, { exact: true }),
+  numberOfDays: Schema.optionalWith(PositiveIntegerSchema, { exact: true }),
+  regionId: NonEmptyTrimmedStringSchema,
+  shippingGroupType: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true }),
+  viewingLocation: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true })
+})
+
+export type SlotListingsOperationInput = Schema.Schema.Type<typeof SlotListingsOperationInputSchema>
+
+export const SlotReservationOperationInputSchema = Schema.Struct({
+  allowReservationOverwrite: Schema.Literal(true),
+  confirmSlotReservation: Schema.Literal(true),
+  deliveryDestinationId: NonEmptyTrimmedStringSchema,
+  externalAddress: Schema.optionalWith(UnknownStringRecordSchema, { exact: true }),
+  regionId: NonEmptyTrimmedStringSchema,
+  slotId: NonEmptyTrimmedStringSchema
+})
+
+export type SlotReservationOperationInput = Schema.Schema.Type<typeof SlotReservationOperationInputSchema>
 
 export const ProductListOperationInputSchema = Schema.Struct({
   pageSize: Schema.optionalWith(PageSizeSchema, { exact: true }),
