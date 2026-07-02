@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 
 import {
@@ -15,6 +16,18 @@ import {
 const emptyInputSchema = {}
 const isoDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
 const nonEmptyInput = z.string().trim().min(1)
+const readOnlyAnnotations: ToolAnnotations = {
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+  readOnlyHint: true
+}
+const mutationAnnotations: ToolAnnotations = {
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: true,
+  readOnlyHint: false
+}
 
 const activeShoppingContextInputSchema = {
   regionId: nonEmptyInput.optional()
@@ -128,78 +141,91 @@ export const createVoilaMcpServer = (
   const removeCart = descriptorFor("voila_remove_cart_items")
 
   server.registerTool("voila_check_session_health", {
+    annotations: readOnlyAnnotations,
     description: health.description,
     inputSchema: emptyInputSchema,
     title: health.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_check_session_health", input, env)))
 
   server.registerTool("voila_get_active_shopping_context", {
+    annotations: readOnlyAnnotations,
     description: activeShoppingContext.description,
     inputSchema: activeShoppingContextInputSchema,
     title: activeShoppingContext.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_active_shopping_context", input, env)))
 
   server.registerTool("voila_get_slot_listings", {
+    annotations: readOnlyAnnotations,
     description: slotListings.description,
     inputSchema: slotListingsInputSchema,
     title: slotListings.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_slot_listings", input, env)))
 
   server.registerTool("voila_reserve_slot", {
+    annotations: mutationAnnotations,
     description: reserveSlot.description,
     inputSchema: slotReservationInputSchema,
     title: reserveSlot.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_reserve_slot", input, env)))
 
   server.registerTool("voila_search_products", {
+    annotations: readOnlyAnnotations,
     description: search.description,
     inputSchema: productListInputSchema,
     title: search.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_search_products", input, env)))
 
   server.registerTool("voila_get_category_products", {
+    annotations: readOnlyAnnotations,
     description: categoryProducts.description,
     inputSchema: categoryProductsInputSchema,
     title: categoryProducts.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_category_products", input, env)))
 
   server.registerTool("voila_get_discounted_products", {
+    annotations: readOnlyAnnotations,
     description: discountedProducts.description,
     inputSchema: discountedProductsInputSchema,
     title: discountedProducts.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_discounted_products", input, env)))
 
   server.registerTool("voila_get_completed_orders", {
+    annotations: readOnlyAnnotations,
     description: completedOrders.description,
     inputSchema: orderListInputSchema,
     title: completedOrders.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_completed_orders", input, env)))
 
   server.registerTool("voila_get_order_details", {
+    annotations: readOnlyAnnotations,
     description: orderDetails.description,
     inputSchema: orderDetailsInputSchema,
     title: orderDetails.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_order_details", input, env)))
 
   server.registerTool("voila_get_completed_order_items", {
+    annotations: readOnlyAnnotations,
     description: completedOrderItems.description,
     inputSchema: orderItemsInputSchema,
     title: completedOrderItems.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_completed_order_items", input, env)))
 
   server.registerTool("voila_get_cart", {
+    annotations: readOnlyAnnotations,
     description: cart.description,
     inputSchema: emptyInputSchema,
     title: cart.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_get_cart", input, env)))
 
   server.registerTool("voila_add_cart_items", {
+    annotations: mutationAnnotations,
     description: addCart.description,
     inputSchema: cartItemsInputSchema,
     title: addCart.title
   }, async (input) => makeToolResult(await runVoilaOperation("voila_add_cart_items", input, env)))
 
   server.registerTool("voila_remove_cart_items", {
+    annotations: mutationAnnotations,
     description: removeCart.description,
     inputSchema: cartItemsInputSchema,
     title: removeCart.title

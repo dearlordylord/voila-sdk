@@ -1,7 +1,8 @@
 {
   "name": "@firfi/voila-mcp",
   "version": "0.1.5",
-  "description": "MCP stdio server for Voila grocery workflows",
+  "description": "Voila MCP server for safe personal grocery search, cart, slots, and order-history workflows",
+  "mcpName": "io.github.dearlordylord/voila-mcp",
   "type": "module",
   "main": "./dist/index.cjs",
   "types": "./dist/types/index.d.ts",
@@ -33,10 +34,17 @@
     "test:coverage": "vitest run --coverage --config ../../vitest.config.ts"
   },
   "keywords": [
-    "voila",
     "mcp",
+    "model-context-protocol",
+    "voila",
     "groceries",
-    "automation"
+    "grocery",
+    "cart",
+    "shopping",
+    "e-commerce",
+    "automation",
+    "claude",
+    "llm"
   ],
   "author": "firfi",
   "license": "MIT",
