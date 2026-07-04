@@ -1,6 +1,6 @@
 {
   "name": "@firfi/voila-mcp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Voila MCP server for safe personal grocery search, cart, slots, and order-history workflows",
   "mcpName": "io.github.dearlordylord/voila-mcp",
   "type": "module",
@@ -26,10 +26,11 @@
     "README.md"
   ],
   "scripts": {
-    "prepack": "pnpm build",
-    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node'",
+    "prepack": "pnpm build && pnpm verify-version",
+    "build": "PKG_VERSION=$(node -p \"require('./package.json').version\") && tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\" && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\" && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\"",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
-    "package:audit": "pnpm build && node ../../scripts/audit-package.mjs . bin",
+    "verify-version": "node -e \"const v=require('./package.json').version; const d=require('fs').readFileSync('dist/bin.cjs','utf8'); if(!d.includes('\\\"'+v+'\\\"'))throw new Error('dist version mismatch: expected '+v)\"",
+    "package:audit": "pnpm build && pnpm verify-version && node ../../scripts/audit-package.mjs . bin",
     "test": "vitest run --config ../../vitest.config.ts",
     "test:coverage": "vitest run --coverage --config ../../vitest.config.ts"
   },

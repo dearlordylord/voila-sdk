@@ -12,6 +12,7 @@ import {
   voilaOperationDescriptors,
   type VoilaOperationName
 } from "./operations.js"
+import { packageVersion } from "./package-version.js"
 
 const emptyInputSchema = {}
 const isoDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -120,7 +121,7 @@ const descriptorFor = (name: VoilaOperationName): VoilaOperationDescriptor => {
 
 export const createVoilaMcpServer = (
   env: OperationEnvironment,
-  version = "0.1.0"
+  version = packageVersion
 ): McpServer => {
   const server = new McpServer({
     name: mcpName,

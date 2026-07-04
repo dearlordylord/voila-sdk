@@ -3,6 +3,7 @@ import { Either, Schema } from "effect"
 import { startHttpServer } from "./mcp-http-server.js"
 import { startStdioServer } from "./mcp-server.js"
 import { makeNodeOperationEnvironment } from "./node-env.js"
+import { packageVersion } from "./package-version.js"
 
 const defaultHttpHost = "127.0.0.1"
 const defaultHttpPath = "/mcp"
@@ -115,7 +116,7 @@ const main = async (): Promise<void> => {
       host: runtime.right.httpHost,
       path: runtime.right.httpPath,
       port: runtime.right.httpPort
-    })
+    }, packageVersion)
 
     process.stderr.write(
       `Voila MCP HTTP server listening on ${runtime.right.httpHost}:${runtime.right.httpPort}${runtime.right.httpPath}\n`
@@ -126,7 +127,7 @@ const main = async (): Promise<void> => {
     return
   }
 
-  await startStdioServer(env.right)
+  await startStdioServer(env.right, packageVersion)
 }
 
 main().catch((error: unknown) => {
