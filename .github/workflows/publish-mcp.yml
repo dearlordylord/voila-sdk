@@ -1,6 +1,12 @@
 name: Publish to MCP Registry
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to publish, without the leading v"
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -24,6 +30,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "20"
+          package-manager-cache: false
           registry-url: "https://registry.npmjs.org"
 
       - name: Enable pnpm
@@ -37,7 +44,12 @@ jobs:
 
       - name: Verify release tag
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_VERSION="${{ inputs.version }}"
+          else
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
           PACKAGE_VERSION="$(node -p "require('./packages/voila-mcp/package.json').version")"
           SERVER_VERSION="$(node -p "require('./server.json').version")"
 
