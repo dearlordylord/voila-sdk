@@ -1,0 +1,107 @@
+name: Publish to MCP Registry
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      CI: "true"
+      HUSKY: "0"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.29.3 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./packages/voila-mcp/package.json').version")"
+          SERVER_VERSION="$(node -p "require('./server.json').version")"
+
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Tag version $TAG_VERSION does not match @firfi/voila-mcp version $PACKAGE_VERSION" >&2
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$SERVER_VERSION" ]; then
+            echo "Tag version $TAG_VERSION does not match server.json version $SERVER_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Run release checks
+        run: pnpm release:check
+
+      - name: Publish npm packages
+        run: node scripts/publish-if-needed.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify npm package is available
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./packages/voila-mcp/package.json').version")"
+          npm view "@firfi/voila-mcp@$PACKAGE_VERSION" version
+
+      - name: Check MCP Registry version
+        id: registry_version
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs"
+
+          const serverJson = JSON.parse(readFileSync("server.json", "utf-8"))
+          const serverName = encodeURIComponent(serverJson.name)
+          const serverVersion = encodeURIComponent(serverJson.version)
+          const url = `https://registry.modelcontextprotocol.io/v0.1/servers/${serverName}/versions/${serverVersion}`
+          const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+
+          if (response.status === 200) {
+            appendFileSync(process.env.GITHUB_OUTPUT, "exists=true\n")
+            console.log(`${serverJson.name}@${serverJson.version} is already published`)
+            process.exit(0)
+          }
+
+          if (response.status === 404) {
+            appendFileSync(process.env.GITHUB_OUTPUT, "exists=false\n")
+            console.log(`${serverJson.name}@${serverJson.version} is not published yet`)
+            process.exit(0)
+          }
+
+          console.error(`Unexpected MCP Registry response ${response.status} from ${url}`)
+          console.error(await response.text())
+          process.exit(1)
+          NODE
+
+      - name: Install mcp-publisher
+        if: steps.registry_version.outputs.exists != 'true'
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        if: steps.registry_version.outputs.exists != 'true'
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        if: steps.registry_version.outputs.exists != 'true'
+        run: ./mcp-publisher publish
