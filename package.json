@@ -24,10 +24,12 @@
     "check-format": "find packages -path '*/dist' -prune -o -path '*/node_modules' -prune -o -name '*.ts' -print0 | xargs -0 eslint --rule '@effect/dprint: error'",
     "circular": "madge --extensions ts --circular packages/*/src",
     "package:audit": "pnpm -r --filter './packages/*' package:audit",
+    "sync-registry-metadata": "node scripts/sync-registry-metadata.mjs",
+    "verify-registry-metadata": "node scripts/sync-registry-metadata.mjs --check",
     "release:check": "pnpm check-all && pnpm package:audit",
     "release:local": "pnpm release:check && pnpm -r --filter './packages/*' publish --dry-run",
     "release:publish": "pnpm rebuild:native && pnpm release:check && node scripts/publish-if-needed.mjs",
-    "check-all": "pnpm rebuild:native && pnpm build && pnpm typecheck && pnpm circular && pnpm lint && pnpm fixtures:audit && pnpm test:coverage"
+    "check-all": "pnpm rebuild:native && pnpm build && pnpm typecheck && pnpm circular && pnpm verify-registry-metadata && pnpm lint && pnpm fixtures:audit && pnpm test:coverage"
   },
   "packageManager": "pnpm@10.29.3",
   "engines": {
@@ -38,9 +40,10 @@
     "@effect/language-service": "^0.73.1",
     "@effect/vitest": "latest",
     "@eslint/compat": "^2.0.2",
-    "@typescript-eslint/parser": "^8.54.0",
     "@types/node": "^25.1.0",
+    "@typescript-eslint/parser": "^8.54.0",
     "@vitest/coverage-v8": "latest",
+    "effect": "^3.19.15",
     "esbuild": "^0.27.1",
     "eslint": "^9.39.2",
     "eslint-import-resolver-typescript": "^4.4.4",

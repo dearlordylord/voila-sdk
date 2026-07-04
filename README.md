@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
-[![Glama score](https://glama.ai/mcp/servers/@dearlordylord/voila-sdk/badges/score.svg)](https://glama.ai/mcp/servers/@dearlordylord/voila-sdk)
+[![Glama score](https://glama.ai/mcp/servers/dearlordylord/voila-sdk/badges/score.svg)](https://glama.ai/mcp/servers/dearlordylord/voila-sdk)
 
 **Voila MCP** is a Model Context Protocol server for safe personal Voila grocery automation. It exposes small, auditable tools for product search, category browsing, discounts, delivery slots, cart deltas, and completed order history without exposing checkout or order placement.
 
