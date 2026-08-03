@@ -62,6 +62,11 @@ export type VoilaSdkError =
     readonly status: 401 | 403
   }
   | {
+    readonly _tag: "VoilaRequestBlocked"
+    readonly message: string
+    readonly status: number
+  }
+  | {
     readonly _tag: "VoilaNon2xxResponse"
     readonly message: string
     readonly status: number
@@ -81,6 +86,7 @@ const forbiddenStatus = 403
 const successStatusMin = 200
 const successStatusMax = 300
 const setCookieHeader = "set-cookie"
+const blockedBodyMarker = "request blocked"
 
 const missingCsrfToken = (): VoilaSdkError => ({
   _tag: "VoilaMissingCsrfToken",
@@ -114,6 +120,12 @@ const unauthorizedSession = (status: 401 | 403): VoilaSdkError => ({
   status
 })
 
+const requestBlocked = (status: number): VoilaSdkError => ({
+  _tag: "VoilaRequestBlocked",
+  message: "Voila request was blocked",
+  status
+})
+
 const non2xxResponse = (status: number): VoilaSdkError => ({
   _tag: "VoilaNon2xxResponse",
   message: "Voila returned a non-success response",
@@ -134,6 +146,9 @@ const isSuccessStatus = (status: number): boolean => status >= successStatusMin 
 
 const isUnauthorizedStatus = (status: number): status is 401 | 403 =>
   status === unauthorizedStatus || status === forbiddenStatus
+
+const isBlockedResponse = (response: VoilaTransportResponse): boolean =>
+  response.body.toLowerCase().includes(blockedBodyMarker)
 
 const makeRequestHeaders = (
   request: VoilaHttpRequest,
@@ -221,6 +236,10 @@ export const requestVoilaJson = async <A, I>(
 
   if (Either.isLeft(response)) {
     return Either.left(networkFailure(response.left))
+  }
+
+  if (!isSuccessStatus(response.right.status) && isBlockedResponse(response.right)) {
+    return Either.left(requestBlocked(response.right.status))
   }
 
   if (isUnauthorizedStatus(response.right.status)) {

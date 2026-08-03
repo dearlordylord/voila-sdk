@@ -362,6 +362,33 @@ describe("requestVoilaJson", () => {
     }
   })
 
+  it.each([403, 503])("returns a blocked error for a non-success %s body marked blocked", async (status) => {
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      {
+        method: "GET",
+        url: voilaUrl
+      },
+      makeResponseTransport({
+        body:
+          "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY><H1>403 ERROR</H1>Request blocked.</BODY></HTML>",
+        headers: { server: "WAF" },
+        status
+      }).transport
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("VoilaRequestBlocked")
+
+      if (result.left._tag === "VoilaRequestBlocked") {
+        expect(result.left.status).toBe(status)
+      }
+    }
+  })
+
   it("returns a typed error for non-2xx responses", async () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
