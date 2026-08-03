@@ -125,6 +125,9 @@ importers:
       effect:
         specifier: ^3.19.15
         version: 3.21.4
+      top-user-agents:
+        specifier: ^2.1.125
+        version: 2.1.125
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -3197,6 +3200,9 @@ packages:
 
   toml@3.0.0:
     resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
+
+  top-user-agents@2.1.125:
+    resolution: {integrity: sha512-ujKnjPekpKsUisd5hfw5DxKyudHEwbo+KOe3AkUblDARTlvze/hlWM0OKDhZLJnppZxXirf/ONPj5216H73i9A==}
 
   tough-cookie@6.0.1:
     resolution: {integrity: sha512-LktZQb3IeoUWB9lqR5EWTHgW/VTITCXg4D21M+lvybRVdylLrRMnqaIONLVb5mav8vM19m44HIcGq4qASeu2Qw==}
@@ -6614,6 +6620,8 @@ snapshots:
   token-stream@1.0.0: {}
 
   toml@3.0.0: {}
+
+  top-user-agents@2.1.125: {}
 
   tough-cookie@6.0.1:
     dependencies:
