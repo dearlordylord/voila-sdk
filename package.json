@@ -36,7 +36,7 @@
     "verify-registry-metadata": "node scripts/sync-registry-metadata.mjs --check",
     "release:check": "pnpm check-all && pnpm validate-registry-schema && pnpm package:audit",
     "release:local": "pnpm release:check && pnpm -r --filter './packages/*' publish --dry-run",
-    "release:publish": "pnpm rebuild:native && pnpm release:check && node scripts/publish-registry-tag.mjs --check && node scripts/publish-if-needed.mjs && node scripts/publish-registry-tag.mjs",
+    "release:publish": "node scripts/publish-registry-tag.mjs --check && pnpm verify-registry-metadata && pnpm validate-registry-schema && node scripts/publish-if-needed.mjs && node scripts/publish-registry-tag.mjs",
     "check-all": "node scripts/run-quality-gate.mjs"
   },
   "packageManager": "pnpm@10.29.3",

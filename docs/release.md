@@ -61,12 +61,22 @@ MCP and CLI tarballs:
 
 Tarballs must not include source TypeScript, tests, local sessions, browser profiles, coverage output, or TypeScript build metadata.
 
+## Prepare a Release
+
+Before handing publication to the npm-authenticated host:
+
+1. Bump every changed publishable package and synchronize `server.json`.
+2. Run `pnpm release:check` in the development container.
+3. Commit and push the prepared release to `master`.
+
+The development container owns native tooling installation and the full quality gate. Do not make the host publish command reinstall or rebuild workspace tooling.
+
 ## Publish
 
-Publish from `master` after `pnpm release:check` passes:
+From the clean, prepared `master` worktree on the npm-authenticated host, run exactly:
 
 ```bash
-pnpm -r --filter './packages/*' publish
+pnpm release:publish
 ```
 
-All packages are scoped and use `publishConfig.access: public`.
+This command does not install dependencies, rebuild package artifacts or native tooling, or repeat the full development quality gate. It refuses a dirty worktree, verifies MCP registry metadata and schema, publishes only package versions not already present on npm, and then creates and pushes the MCP release tag. It publishes the artifacts already built and audited by the preparation gate with package lifecycle scripts disabled.
