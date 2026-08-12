@@ -146,6 +146,21 @@ const initializeAndListTools = async (
   return toolsFrom(await tools.json())
 }
 
+const expectEmptyToolExecution = async (id: number, response: Response): Promise<void> => {
+  expect(response.status).toBe(httpOk)
+  expect(await response.json()).toMatchObject({
+    id,
+    jsonrpc: "2.0",
+    result: {
+      content: [{
+        text: expect.stringContaining("Session is unavailable in this protocol test"),
+        type: "text"
+      }],
+      isError: true
+    }
+  })
+}
+
 afterEach(async () => {
   const servers = startedServers.splice(0)
 
@@ -255,5 +270,40 @@ describe("Voila MCP HTTP server", () => {
         isError: true
       }
     })
+  })
+
+  it("executes empty-input tools with explicit and omitted arguments", async () => {
+    const server = await createHttpServer(inertEnvironment, {
+      host: "127.0.0.1",
+      port: 0
+    })
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve)
+    })
+    startedServers.push(server)
+
+    const baseUrl = `http://127.0.0.1:${serverPort(server)}`
+    const sessionId = await initializeSession(baseUrl, 20)
+    const explicitArguments = await postMcp(`${baseUrl}/mcp`, {
+      id: 21,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        arguments: {},
+        name: "voila_get_cart"
+      }
+    }, sessionId)
+    const omittedArguments = await postMcp(`${baseUrl}/mcp`, {
+      id: 22,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "voila_get_cart"
+      }
+    }, sessionId)
+
+    await expectEmptyToolExecution(21, explicitArguments)
+    await expectEmptyToolExecution(22, omittedArguments)
   })
 })
