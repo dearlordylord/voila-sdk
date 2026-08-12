@@ -24,34 +24,25 @@ const sampleMetadata = {
 const completedOrdersResponse = {
   data: {
     completedOrders: {
-      edges: [{
-        node: {
-          orderId: "sanitized-order-id-1",
-          prices: {
-            total: {
-              amount: "10.00",
-              currency: "CAD"
-            }
-          },
-          recurringOrderDefinition: null,
-          region: {
-            regionId: "region-id",
-            retailerRegionId: "retailer-region-id"
-          },
-          slot: {
-            __typename: "ImportedOrderSlot",
-            end: "2026-06-10T10:00:00-04:00",
-            name: "Home",
-            start: "2026-06-10T09:00:00-04:00",
-            timeZone: "America/Montreal"
-          },
-          status: "DELIVERED"
+      edges: [
+        {
+          node: {
+            orderId: "sanitized-order-id-1",
+            prices: { total: { amount: "10.00", currency: "CAD" } },
+            recurringOrderDefinition: null,
+            region: { regionId: "region-id", retailerRegionId: "retailer-region-id" },
+            slot: {
+              __typename: "ImportedOrderSlot",
+              end: "2026-06-10T10:00:00-04:00",
+              name: "Home",
+              start: "2026-06-10T09:00:00-04:00",
+              timeZone: "America/Montreal"
+            },
+            status: "DELIVERED"
+          }
         }
-      }],
-      pageInfo: {
-        endCursor: null,
-        hasNextPage: false
-      }
+      ],
+      pageInfo: { endCursor: null, hasNextPage: false }
     }
   }
 }
@@ -60,25 +51,12 @@ const decoratedOrderResponse = {
   entities: {
     order: {
       "sanitized-order-id-1": {
-        items: [{
-          product: "product-1",
-          quantity: 3,
-          totalPrice: {
-            amount: "7.50",
-            currency: "CAD"
-          }
-        }],
+        items: [{ product: "product-1", quantity: 3, totalPrice: { amount: "7.50", currency: "CAD" } }],
         orderId: "sanitized-order-id-1",
         status: "DELIVERED"
       }
     },
-    product: {
-      "product-1": {
-        name: "Bananas",
-        productId: "product-1",
-        retailerProductId: "retailer-product-1"
-      }
-    }
+    product: { "product-1": { name: "Bananas", productId: "product-1", retailerProductId: "retailer-product-1" } }
   }
 }
 
@@ -115,10 +93,7 @@ const makeEnvironment = (transport: VoilaTransport): OperationEnvironment => {
   const initialSession = makeSdkSessionForTest()
 
   return {
-    session: {
-      load: async () => Either.right(initialSession),
-      save: async () => Either.right(undefined)
-    },
+    session: { load: async () => Either.right(initialSession), save: async () => Either.right(undefined) },
     transport
   }
 }
@@ -134,39 +109,34 @@ const makeTransport = (): VoilaTransport => ({
 
 describe("Voila MCP order operations", () => {
   it("returns order details", async () => {
-    const result = await runVoilaOperation("voila_get_order_details", {
-      orderId: "sanitized-order-id-1"
-    }, makeEnvironment(makeTransport()))
+    const result = await runVoilaOperation(
+      "voila_get_order_details",
+      { orderId: "sanitized-order-id-1" },
+      makeEnvironment(makeTransport())
+    )
 
     expect(result.ok).toBe(true)
 
     if (result.ok) {
       expect(result.value).toMatchObject({
-        items: [{
-          name: "Bananas",
-          productId: "product-1",
-          quantity: 3
-        }],
+        items: [{ name: "Bananas", productId: "product-1", quantity: 3 }],
         orderId: "sanitized-order-id-1"
       })
     }
   })
 
   it("returns aggregated completed order items", async () => {
-    const result = await runVoilaOperation("voila_get_completed_order_items", {
-      fromDate: "2026-06-01",
-      toDate: "2026-06-30"
-    }, makeEnvironment(makeTransport()))
+    const result = await runVoilaOperation(
+      "voila_get_completed_order_items",
+      { fromDate: "2026-06-01", toDate: "2026-06-30" },
+      makeEnvironment(makeTransport())
+    )
 
     expect(result.ok).toBe(true)
 
     if (result.ok) {
       expect(result.value).toMatchObject({
-        items: [{
-          itemKey: "product-1",
-          name: "Bananas",
-          totalQuantity: 3
-        }],
+        items: [{ itemKey: "product-1", name: "Bananas", totalQuantity: 3 }],
         ordersMatched: 1,
         ordersScanned: 1
       })

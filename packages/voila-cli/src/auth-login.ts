@@ -24,17 +24,11 @@ const sessionCookieExpires = -1
 const readonlyCsrfFallback = "csrf-not-observed-readonly"
 
 const failure = (tag: string, message: string): OperationExecutionResult => ({
-  error: {
-    _tag: tag,
-    message
-  },
+  error: { _tag: tag, message },
   ok: false
 })
 
-const success = (value: unknown): OperationExecutionResult => ({
-  ok: true,
-  value
-})
+const success = (value: unknown): OperationExecutionResult => ({ ok: true, value })
 
 const makeFileStorage = (path: string): SessionStoragePort => ({
   read: () => readFile(path, "utf8"),
@@ -45,9 +39,10 @@ const makeFileStorage = (path: string): SessionStoragePort => ({
 })
 
 const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
-  const expires = cookie.expires === undefined || cookie.expires === sessionCookieExpires
-    ? []
-    : [`Expires=${new Date(cookie.expires * millisecondsPerSecond).toUTCString()}`]
+  const expires =
+    cookie.expires === undefined || cookie.expires === sessionCookieExpires
+      ? []
+      : [`Expires=${new Date(cookie.expires * millisecondsPerSecond).toUTCString()}`]
 
   return [
     `${cookie.name}=${cookie.value}`,
@@ -105,26 +100,20 @@ const saveSession = async (
 ): Promise<OperationExecutionResult | undefined> => {
   const saved = await saveSdkSessionSnapshot(makeFileStorage(path), snapshot)
 
-  return Either.isLeft(saved)
-    ? failure(saved.left._tag, saved.left.message)
-    : undefined
+  return Either.isLeft(saved) ? failure(saved.left._tag, saved.left.message) : undefined
 }
 
-export const loginWithPlaywright = async (
-  options: CliLoginOptions
-): Promise<OperationExecutionResult> => {
+export const loginWithPlaywright = async (options: CliLoginOptions): Promise<OperationExecutionResult> => {
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>>
 
   try {
-    context = await chromium.launchPersistentContext(options.profilePath, {
-      headless: false
-    })
+    context = await chromium.launchPersistentContext(options.profilePath, { headless: false })
   } catch {
     return failure("VoilaAuthBrowserLaunchFailed", "Playwright Chromium could not be launched")
   }
 
   try {
-    const page = context.pages()[0] ?? await context.newPage()
+    const page = context.pages()[0] ?? (await context.newPage())
     const observer = observeVoilaBrowserTraffic(page)
 
     try {
@@ -133,12 +122,14 @@ export const loginWithPlaywright = async (
       return failure("VoilaAuthOpenFailed", "Voila could not be opened in Chromium")
     }
 
-    process.stdout.write([
-      "Opened Voila in Chromium.",
-      "Log in manually, then close the browser window to save the authenticated session.",
-      "The CLI saves after Voila session material and cookies are captured, then validates the saved session.",
-      ""
-    ].join("\n"))
+    process.stdout.write(
+      [
+        "Opened Voila in Chromium.",
+        "Log in manually, then close the browser window to save the authenticated session.",
+        "The CLI saves after Voila session material and cookies are captured, then validates the saved session.",
+        ""
+      ].join("\n")
+    )
 
     const capture = await waitForAuthenticatedCapture(page, options.timeoutMs ?? defaultTimeoutMs, observer)
 
@@ -146,7 +137,7 @@ export const loginWithPlaywright = async (
       return capture
     }
 
-    const session = await makeSessionFromBrowserCapture(capture)
+    const session = makeSessionFromBrowserCapture(capture)
 
     if ("ok" in session) {
       return session
@@ -174,10 +165,7 @@ export const loginWithPlaywright = async (
       return failure("VoilaAuthSessionInactive", "Saved browser session is not active")
     }
 
-    return success({
-      sessionPath: options.sessionPath,
-      status: health.right.status
-    })
+    return success({ sessionPath: options.sessionPath, status: health.right.status })
   } finally {
     await context.close()
   }

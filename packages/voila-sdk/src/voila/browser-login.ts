@@ -21,34 +21,13 @@ export interface BrowserLoginResult {
 }
 
 export type BrowserLoginError =
-  | {
-    readonly _tag: "BrowserLoginUserCancelled"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "BrowserLoginTimedOut"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "BrowserLoginOptionsInvalid"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "BrowserLoginAdapterFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "BrowserLoginCaptureInvalid"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "BrowserLoginMissingCookies"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "BrowserLoginNotAuthenticated"
-    readonly message: string
-  }
+  | { readonly _tag: "BrowserLoginUserCancelled"; readonly message: string }
+  | { readonly _tag: "BrowserLoginTimedOut"; readonly message: string }
+  | { readonly _tag: "BrowserLoginOptionsInvalid"; readonly message: string }
+  | { readonly _tag: "BrowserLoginAdapterFailure"; readonly message: string }
+  | { readonly _tag: "BrowserLoginCaptureInvalid"; readonly message: string }
+  | { readonly _tag: "BrowserLoginMissingCookies"; readonly message: string }
+  | { readonly _tag: "BrowserLoginNotAuthenticated"; readonly message: string }
 
 const loginUrl = new URL("/", VOILA_BASE_URL).href
 const emptyCookieCount = 0
@@ -105,17 +84,12 @@ const normalizeBrowserLoginPortError = (error: unknown): BrowserLoginError => {
   }
 }
 
-const makeBrowserLoginRequest = (
-  options?: unknown
-): Either.Either<BrowserLoginRequest, BrowserLoginError> =>
+const makeBrowserLoginRequest = (options?: unknown): Either.Either<BrowserLoginRequest, BrowserLoginError> =>
   Either.flatMap(
     Either.mapLeft(parseUnknown(BrowserLoginOptionsSchema, options ?? {}), browserLoginOptionsInvalid),
     (parsedOptions) =>
       Either.mapLeft(
-        parseUnknown(BrowserLoginRequestSchema, {
-          ...parsedOptions,
-          loginUrl
-        }),
+        parseUnknown(BrowserLoginRequestSchema, { ...parsedOptions, loginUrl }),
         browserLoginOptionsInvalid
       )
   )
@@ -168,8 +142,6 @@ export const loginWithBrowser = async (
       makeAuthenticatedSdkSessionSnapshot(capture.right.session, "authenticated", capture.right.account),
       browserLoginCaptureInvalid
     ),
-    (session) => ({
-      session
-    })
+    (session) => ({ session })
   )
 }

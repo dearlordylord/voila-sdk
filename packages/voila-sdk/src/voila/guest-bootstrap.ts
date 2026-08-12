@@ -32,31 +32,12 @@ export interface GuestBootstrapResult {
 }
 
 export type GuestBootstrapError =
-  | {
-    readonly _tag: "GuestBootstrapNetworkFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "GuestBootstrapNon2xxResponse"
-    readonly message: string
-    readonly status: number
-  }
-  | {
-    readonly _tag: "GuestBootstrapMissingCookies"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "GuestBootstrapCookiePersistenceFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "GuestBootstrapMissingCsrf"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "GuestBootstrapInitialStateMalformed"
-    readonly message: string
-  }
+  | { readonly _tag: "GuestBootstrapNetworkFailure"; readonly message: string }
+  | { readonly _tag: "GuestBootstrapNon2xxResponse"; readonly message: string; readonly status: number }
+  | { readonly _tag: "GuestBootstrapMissingCookies"; readonly message: string }
+  | { readonly _tag: "GuestBootstrapCookiePersistenceFailure"; readonly message: string }
+  | { readonly _tag: "GuestBootstrapMissingCsrf"; readonly message: string }
+  | { readonly _tag: "GuestBootstrapInitialStateMalformed"; readonly message: string }
 
 const homepageUrl = new URL("/", VOILA_BASE_URL)
 const emptyStringLength = 0
@@ -108,20 +89,13 @@ const hasCsrfToken = (payload: unknown): boolean => {
   return typeof payload.csrf.token === "string"
 }
 
-const makeGuestCartSummary = (
-  basket: SessionSnapshotBasket
-): GuestCartSummary => {
+const makeGuestCartSummary = (basket: SessionSnapshotBasket): GuestCartSummary => {
   const itemCount = (basket.itemGroups ?? []).reduce(
     (total, group) => total + group.items.reduce((groupTotal, item) => groupTotal + item.quantity, 0),
     0
   )
 
-  return {
-    basketId: basket.basketId,
-    itemCount,
-    regionId: basket.regionId,
-    totals: basket.totals
-  }
+  return { basketId: basket.basketId, itemCount, regionId: basket.regionId, totals: basket.totals }
 }
 
 type SessionSnapshotBasket = InitialState["data"]["basket"]
@@ -150,16 +124,13 @@ const storeHomepageCookies = (
 }
 
 const decodeInitialState = (html: string): Either.Either<InitialState, GuestBootstrapError> =>
-  Either.flatMap(
-    Either.mapLeft(extractInitialStatePayload(html), initialStateMalformed),
-    (payload) => {
-      if (!hasCsrfToken(payload)) {
-        return Either.left(missingCsrf())
-      }
-
-      return Either.mapLeft(extractInitialState(html), initialStateMalformed)
+  Either.flatMap(Either.mapLeft(extractInitialStatePayload(html), initialStateMalformed), (payload) => {
+    if (!hasCsrfToken(payload)) {
+      return Either.left(missingCsrf())
     }
-  )
+
+    return Either.mapLeft(extractInitialState(html), initialStateMalformed)
+  })
 
 export const bootstrapGuestSession = async (
   transport: VoilaTransport,
@@ -168,11 +139,7 @@ export const bootstrapGuestSession = async (
   let response: Either.Either<VoilaTransportResponse, unknown>
 
   try {
-    response = await transport.request({
-      headers: {},
-      method: "GET",
-      url: homepageUrl
-    })
+    response = await transport.request({ headers: {}, method: "GET", url: homepageUrl })
   } catch {
     return Either.left(networkFailure())
   }
@@ -185,27 +152,25 @@ export const bootstrapGuestSession = async (
     return Either.left(non2xxResponse(response.right.status))
   }
 
-  return Either.flatMap(
-    storeHomepageCookies(cookieJarPort, response.right),
-    (cookieJar) =>
-      Either.flatMap(decodeInitialState(response.right.body), (initialState) => {
-        if (initialState.csrf.token.trim().length === emptyStringLength) {
-          return Either.left(missingCsrf())
-        }
+  return Either.flatMap(storeHomepageCookies(cookieJarPort, response.right), (cookieJar) =>
+    Either.flatMap(decodeInitialState(response.right.body), (initialState) => {
+      if (initialState.csrf.token.trim().length === emptyStringLength) {
+        return Either.left(missingCsrf())
+      }
 
-        return Either.mapLeft(
-          makeSessionSnapshot(initialState.session.metadata, initialState.csrf, cookieJar),
-          cookiePersistenceFailure
-        ).pipe(
-          Either.map((session) => ({
-            categories: getInitialStateCategories(initialState),
-            cart: makeGuestCartSummary(initialState.data.basket),
-            csrf: initialState.csrf,
-            metadata: initialState.session.metadata,
-            regionId: initialState.data.basket.regionId,
-            session
-          }))
-        )
-      })
+      return Either.mapLeft(
+        makeSessionSnapshot(initialState.session.metadata, initialState.csrf, cookieJar),
+        cookiePersistenceFailure
+      ).pipe(
+        Either.map((session) => ({
+          categories: getInitialStateCategories(initialState),
+          cart: makeGuestCartSummary(initialState.data.basket),
+          csrf: initialState.csrf,
+          metadata: initialState.session.metadata,
+          regionId: initialState.data.basket.regionId,
+          session
+        }))
+      )
+    })
   )
 }

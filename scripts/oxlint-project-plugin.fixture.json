@@ -1,0 +1,11 @@
+{
+  "jsPlugins": ["./oxlint-project-plugin.mjs"],
+  "rules": {
+    "voila/no-clock-read": "error",
+    "voila/no-double-type-assertion": "error",
+    "voila/no-test-mocks": "error",
+    "voila/no-type-assertion": "error",
+    "voila/property-test-placement": "error",
+    "voila/require-canonical-effect-schema-import": "error"
+  }
+}

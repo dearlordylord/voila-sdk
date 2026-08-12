@@ -6,9 +6,9 @@ import { makeAddToCartDelta, makeRemoveFromCartDelta } from "../../src/domain/ca
 import { propertyTestParameters } from "../helpers/property.js"
 
 const nonZeroQuantity = fc.integer({ max: 1000, min: -1000 }).filter((quantity) => quantity !== 0)
-const productUuid = fc.uuid().filter((value) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-)
+const productUuid = fc
+  .uuid()
+  .filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
 
 describe("cart delta properties", () => {
   it("normalizes add quantities to positive deltas", () => {

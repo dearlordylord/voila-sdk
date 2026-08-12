@@ -17,9 +17,7 @@ import {
   VOILA_BASE_URL
 } from "../../src/index.js"
 
-const OkResponseSchema = Schema.Struct({
-  ok: Schema.Boolean
-})
+const OkResponseSchema = Schema.Struct({ ok: Schema.Boolean })
 
 const voilaUrl = new URL("/api/example", VOILA_BASE_URL)
 const csrfToken = "csrf-token"
@@ -40,11 +38,7 @@ const cookieSerializationFailure = {
   message: "cannot serialize jar with csrf-token"
 } satisfies CookieJarPortError
 
-const okResponse = {
-  body: "{\"ok\":true}",
-  headers: {},
-  status: 200
-} satisfies VoilaTransportResponse
+const okResponse = { body: '{"ok":true}', headers: {}, status: 200 } satisfies VoilaTransportResponse
 
 const makeSession = (token: string = csrfToken): SessionSnapshot => {
   const jar = toughCookieJarPort.create()
@@ -65,10 +59,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -82,9 +75,7 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => Either.left(failure)
-})
+const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
 
 const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
   request: async () => {
@@ -117,17 +108,17 @@ const getRestoredCookieString = (session: SessionSnapshot): string => {
 describe("requestVoilaJson", () => {
   it("sends Voila headers and cookies, decodes JSON, and persists set-cookie values", async () => {
     const fake = makeResponseTransport({
-      body: "{\"ok\":true}",
-      headers: {
-        "Set-Cookie": ["fresh-cookie=after; Path=/; Secure"]
-      },
+      body: '{"ok":true}',
+      headers: { "Set-Cookie": ["fresh-cookie=after; Path=/; Secure"] },
       status: 200
     })
 
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      method: "GET",
-      url: voilaUrl
-    }, fake.transport)
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { method: "GET", url: voilaUrl },
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -154,10 +145,12 @@ describe("requestVoilaJson", () => {
       expect(Either.isRight(session)).toBe(true)
 
       if (Either.isRight(session)) {
-        const result = await requestVoilaJson(OkResponseSchema, session.right, {
-          method: "GET",
-          url: voilaUrl
-        }, fake.transport)
+        const result = await requestVoilaJson(
+          OkResponseSchema,
+          session.right,
+          { method: "GET", url: voilaUrl },
+          fake.transport
+        )
         const [request] = fake.requests()
 
         expect(Either.isRight(result)).toBe(true)
@@ -168,17 +161,17 @@ describe("requestVoilaJson", () => {
 
   it("accepts a single set-cookie header value", async () => {
     const fake = makeResponseTransport({
-      body: "{\"ok\":true}",
-      headers: {
-        "set-cookie": "single-cookie=after; Path=/; Secure"
-      },
+      body: '{"ok":true}',
+      headers: { "set-cookie": "single-cookie=after; Path=/; Secure" },
       status: 200
     })
 
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      method: "POST",
-      url: voilaUrl
-    }, fake.transport)
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { method: "POST", url: voilaUrl },
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -189,30 +182,27 @@ describe("requestVoilaJson", () => {
 
   it("forwards request bodies to the injected transport", async () => {
     const fake = makeResponseTransport(okResponse)
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      body: "{\"query\":\"milk\"}",
-      method: "POST",
-      url: voilaUrl
-    }, fake.transport)
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { body: '{"query":"milk"}', method: "POST", url: voilaUrl },
+      fake.transport
+    )
     const [request] = fake.requests()
 
     expect(Either.isRight(result)).toBe(true)
-    expect(request?.body).toBe("{\"query\":\"milk\"}")
+    expect(request?.body).toBe('{"query":"milk"}')
   })
 
   it("ignores undefined set-cookie header values", async () => {
-    const fake = makeResponseTransport({
-      body: "{\"ok\":true}",
-      headers: {
-        "set-cookie": undefined
-      },
-      status: 200
-    })
+    const fake = makeResponseTransport({ body: '{"ok":true}', headers: { "set-cookie": undefined }, status: 200 })
 
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      method: "GET",
-      url: voilaUrl
-    }, fake.transport)
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { method: "GET", url: voilaUrl },
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
   })
@@ -221,17 +211,9 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
-      makeResponseTransport({
-        body: "{\"ok\":true}",
-        headers: {
-          "set-cookie": "bad cookie value"
-        },
-        status: 200
-      }).transport
+      { method: "GET", url: voilaUrl },
+      makeResponseTransport({ body: '{"ok":true}', headers: { "set-cookie": "bad cookie value" }, status: 200 })
+        .transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -244,10 +226,12 @@ describe("requestVoilaJson", () => {
 
   it("returns a typed error when CSRF is missing", async () => {
     const fake = makeResponseTransport(okResponse)
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(" "), {
-      method: "GET",
-      url: voilaUrl
-    }, fake.transport)
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(" "),
+      { method: "GET", url: voilaUrl },
+      fake.transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)
@@ -258,10 +242,12 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error for non-Voila origins", async () => {
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      method: "GET",
-      url: new URL("https://example.com/api")
-    }, makeResponseTransport(okResponse).transport)
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { method: "GET", url: new URL("https://example.com/api") },
+      makeResponseTransport(okResponse).transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -274,10 +260,7 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
+      { method: "GET", url: voilaUrl },
       makeResponseTransport(okResponse).transport,
       failingDeserializeCookieJarPort
     )
@@ -294,10 +277,7 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
+      { method: "GET", url: voilaUrl },
       makeResponseTransport(okResponse).transport,
       failingSerializeCookieJarPort
     )
@@ -311,10 +291,12 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error when the transport throws", async () => {
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      method: "GET",
-      url: voilaUrl
-    }, makeThrowingTransport(new Error("socket failed")))
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { method: "GET", url: voilaUrl },
+      makeThrowingTransport(new Error("socket failed"))
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -326,10 +308,12 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error when the transport returns a failure", async () => {
-    const result = await requestVoilaJson(OkResponseSchema, makeSession(), {
-      method: "GET",
-      url: voilaUrl
-    }, makeLeftTransport("secret transport payload"))
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      { method: "GET", url: voilaUrl },
+      makeLeftTransport("secret transport payload")
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -344,15 +328,8 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
-      makeResponseTransport({
-        body: "{}",
-        headers: {},
-        status
-      }).transport
+      { method: "GET", url: voilaUrl },
+      makeResponseTransport({ body: "{}", headers: {}, status }).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -366,17 +343,10 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: new URL("/api/orders/secret-order-id/decorated?token=secret-query", VOILA_BASE_URL)
-      },
+      { method: "GET", url: new URL("/api/orders/secret-order-id/decorated?token=secret-query", VOILA_BASE_URL) },
       makeResponseTransport({
-        body:
-          "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY><H1>403 ERROR</H1>Request blocked.</BODY></HTML>",
-        headers: {
-          "set-cookie": "secret-cookie=must-not-leak",
-          "x-amz-cf-id": "safe-edge-request-id"
-        },
+        body: "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY><H1>403 ERROR</H1>Request blocked.</BODY></HTML>",
+        headers: { "set-cookie": "secret-cookie=must-not-leak", "x-amz-cf-id": "safe-edge-request-id" },
         status
       }).transport
     )
@@ -408,15 +378,8 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
-      makeResponseTransport({
-        body: "The request blocked a downstream operation",
-        headers: {},
-        status
-      }).transport
+      { method: "GET", url: voilaUrl },
+      makeResponseTransport({ body: "The request blocked a downstream operation", headers: {}, status }).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -430,13 +393,9 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
+      { method: "GET", url: voilaUrl },
       makeResponseTransport({
-        body:
-          "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY>Request blocked.</BODY></HTML>",
+        body: "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY>Request blocked.</BODY></HTML>",
         headers: {},
         status: 500
       }).transport
@@ -453,15 +412,8 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
-      makeResponseTransport({
-        body: "{}",
-        headers: {},
-        status: 500
-      }).transport
+      { method: "GET", url: voilaUrl },
+      makeResponseTransport({ body: "{}", headers: {}, status: 500 }).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -475,15 +427,8 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
-      makeResponseTransport({
-        body: "{",
-        headers: {},
-        status: 200
-      }).transport
+      { method: "GET", url: voilaUrl },
+      makeResponseTransport({ body: "{", headers: {}, status: 200 }).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -497,15 +442,8 @@ describe("requestVoilaJson", () => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
-      {
-        method: "GET",
-        url: voilaUrl
-      },
-      makeResponseTransport({
-        body: "{\"ok\":\"yes\"}",
-        headers: {},
-        status: 200
-      }).transport
+      { method: "GET", url: voilaUrl },
+      makeResponseTransport({ body: '{"ok":"yes"}', headers: {}, status: 200 }).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)

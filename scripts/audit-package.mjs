@@ -15,23 +15,10 @@ const requiredByKind = {
     "dist/types/index.d.ts",
     "package.json"
   ],
-  sdk: [
-    "LICENSE",
-    "README.md",
-    "dist/src/index.d.ts",
-    "dist/src/index.js",
-    "package.json"
-  ]
+  sdk: ["LICENSE", "README.md", "dist/src/index.d.ts", "dist/src/index.js", "package.json"]
 }
 
-const allowedDistExtensions = [
-  ".cjs",
-  ".d.ts",
-  ".d.ts.map",
-  ".js",
-  ".js.map",
-  ".mjs"
-]
+const allowedDistExtensions = [".cjs", ".d.ts", ".d.ts.map", ".js", ".js.map", ".mjs"]
 
 if (!Object.hasOwn(requiredByKind, packageKind)) {
   throw new Error(`Unknown package audit kind: ${packageKind}`)
@@ -40,9 +27,7 @@ if (!Object.hasOwn(requiredByKind, packageKind)) {
 chdir(packageDirectory)
 
 try {
-  const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-    encoding: "utf8"
-  })
+  const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { encoding: "utf8" })
   const [pack] = JSON.parse(output)
   const paths = pack.files.map((file) => file.path)
   const requiredFiles = requiredByKind[packageKind]
@@ -53,30 +38,32 @@ try {
     throw new Error(`Package is missing required files: ${missing.join(", ")}`)
   }
 
-  const unexpectedFiles = paths.filter((path) =>
-    !requiredFiles.includes(path) &&
-    path !== "dist/types/bin.d.ts" &&
-    path !== "dist/types/bin.d.ts.map" &&
-    path.startsWith("dist/") === false
+  const unexpectedFiles = paths.filter(
+    (path) =>
+      !requiredFiles.includes(path) &&
+      path !== "dist/types/bin.d.ts" &&
+      path !== "dist/types/bin.d.ts.map" &&
+      path.startsWith("dist/") === false
   )
 
   if (unexpectedFiles.length > 0) {
     throw new Error(`Package contains unexpected files: ${unexpectedFiles.join(", ")}`)
   }
 
-  const leaked = paths.filter((path) =>
-    path.startsWith("dist/test/") ||
-    path.startsWith("test/") ||
-    path.startsWith("src/") ||
-    path.endsWith(".tsbuildinfo")
+  const leaked = paths.filter(
+    (path) =>
+      path.startsWith("dist/test/") ||
+      path.startsWith("test/") ||
+      path.startsWith("src/") ||
+      path.endsWith(".tsbuildinfo")
   )
 
   if (leaked.length > 0) {
     throw new Error(`Package contains non-publishable files: ${leaked.join(", ")}`)
   }
 
-  const invalidDistFiles = paths.filter((path) =>
-    path.startsWith("dist/") && !allowedDistExtensions.some((extension) => path.endsWith(extension))
+  const invalidDistFiles = paths.filter(
+    (path) => path.startsWith("dist/") && !allowedDistExtensions.some((extension) => path.endsWith(extension))
   )
 
   if (invalidDistFiles.length > 0) {

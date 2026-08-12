@@ -19,15 +19,9 @@ export interface SlotReservationRequest {
   readonly url: URL
 }
 
-export type SlotListingRequestError = {
-  readonly _tag: "SlotListingInputInvalid"
-  readonly message: string
-}
+export type SlotListingRequestError = { readonly _tag: "SlotListingInputInvalid"; readonly message: string }
 
-export type SlotReservationRequestError = {
-  readonly _tag: "SlotReservationInputInvalid"
-  readonly message: string
-}
+export type SlotReservationRequestError = { readonly _tag: "SlotReservationInputInvalid"; readonly message: string }
 
 const slotListingInputInvalid = (): SlotListingRequestError => ({
   _tag: "SlotListingInputInvalid",
@@ -39,9 +33,7 @@ const slotReservationInputInvalid = (): SlotReservationRequestError => ({
   message: "Slot reservation request input does not match the SDK schema"
 })
 
-const makeSlotAnalyticsData = (
-  input: SlotListingInput
-): Readonly<Record<string, string>> | undefined => {
+const makeSlotAnalyticsData = (input: SlotListingInput): Readonly<Record<string, string>> | undefined => {
   if (input.sessionId === undefined) {
     return undefined
   }
@@ -54,28 +46,23 @@ const makeSlotAnalyticsData = (
   }
 }
 
-export const makeSlotListingRequest = (
-  input: unknown
-): Either.Either<SlotListingRequest, SlotListingRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(SlotListingInputSchema, input), slotListingInputInvalid),
-    (slotInput) => {
-      const analyticsData = makeSlotAnalyticsData(slotInput)
+export const makeSlotListingRequest = (input: unknown): Either.Either<SlotListingRequest, SlotListingRequestError> =>
+  Either.map(Either.mapLeft(parseUnknown(SlotListingInputSchema, input), slotListingInputInvalid), (slotInput) => {
+    const analyticsData = makeSlotAnalyticsData(slotInput)
 
-      return {
-        body: JSON.stringify({
-          deliveryDestinationId: slotInput.deliveryDestinationId,
-          displayConfiguration: slotInput.displayConfiguration,
-          ...(analyticsData === undefined ? {} : { analyticsData }),
-          ...(slotInput.numberOfDays === undefined ? {} : { numberOfDays: slotInput.numberOfDays }),
-          regionId: slotInput.regionId,
-          shippingGroupType: slotInput.shippingGroupType
-        }),
-        method: "POST",
-        url: new URL(SLOT_LISTING_PATH, VOILA_BASE_URL)
-      }
+    return {
+      body: JSON.stringify({
+        deliveryDestinationId: slotInput.deliveryDestinationId,
+        displayConfiguration: slotInput.displayConfiguration,
+        ...(analyticsData === undefined ? {} : { analyticsData }),
+        ...(slotInput.numberOfDays === undefined ? {} : { numberOfDays: slotInput.numberOfDays }),
+        regionId: slotInput.regionId,
+        shippingGroupType: slotInput.shippingGroupType
+      }),
+      method: "POST",
+      url: new URL(SLOT_LISTING_PATH, VOILA_BASE_URL)
     }
-  )
+  })
 
 export const makeSlotReservationRequest = (
   input: unknown

@@ -6,15 +6,9 @@ import { readFileSync } from "node:fs"
 import { Schema } from "effect"
 
 const NonEmptyString = Schema.String.pipe(Schema.minLength(1))
-const ServerJsonSchema = Schema.Struct({
-  name: NonEmptyString,
-  version: NonEmptyString
-})
+const ServerJsonSchema = Schema.Struct({ name: NonEmptyString, version: NonEmptyString })
 
-const PackageJsonSchema = Schema.Struct({
-  mcpName: NonEmptyString,
-  version: NonEmptyString
-})
+const PackageJsonSchema = Schema.Struct({ mcpName: NonEmptyString, version: NonEmptyString })
 
 const readJson = (path, schema) => {
   const raw = JSON.parse(readFileSync(path, "utf-8"))
@@ -23,10 +17,7 @@ const readJson = (path, schema) => {
 }
 
 const run = (command, args) =>
-  execFileSync(command, args, {
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"]
-  }).trim()
+  execFileSync(command, args, { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim()
 
 const hasTag = (ref) => {
   try {
@@ -85,4 +76,6 @@ if (hasTag(`refs/tags/${tagName}`)) {
 }
 
 execFileSync("git", ["push", "origin", `refs/tags/${tagName}`], { stdio: "inherit" })
-console.log(`pushed ${tagName}; GitHub Actions will publish ${serverJson.name}@${serverJson.version} to the MCP Registry`)
+console.log(
+  `pushed ${tagName}; GitHub Actions will publish ${serverJson.name}@${serverJson.version} to the MCP Registry`
+)

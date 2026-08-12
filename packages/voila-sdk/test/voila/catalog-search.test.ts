@@ -38,10 +38,7 @@ describe("catalog search normalization", () => {
       expect(milk?.brand).toBe("Lactantia")
       expect(milk?.name).toBe("Lactantia PurFiltre 2% Milk Partially Skimmed 2 L")
       expect(milk?.packSizeDescription).toBe("2L")
-      expect(milk?.price).toEqual({
-        amount: "5.69",
-        currency: "CAD"
-      })
+      expect(milk?.price).toEqual({ amount: "5.69", currency: "CAD" })
       expect(milk?.unitPrice?.price.amount).toBe("0.28")
       expect(milk?.unitPrice?.unitName).toBe("PER_100ML")
       expect(milk?.image?.src).toBe("https://voila.ca/images/sanitized-milk.jpg")
@@ -59,9 +56,7 @@ describe("catalog search normalization", () => {
   })
 
   it("omits optional pagination fields when Voila omits them", () => {
-    const result = normalizeSearchResponse({
-      productGroups: []
-    })
+    const result = normalizeSearchResponse({ productGroups: [] })
 
     expect(result.pagination).toEqual({})
     expect(result.products).toEqual([])
@@ -69,49 +64,43 @@ describe("catalog search normalization", () => {
 
   it("combines decorated and standard products when Voila sends both arrays", () => {
     const result = normalizeSearchResponse({
-      productGroups: [{
-        decoratedProducts: [{
-          available: true,
-          maxQuantityReached: false,
-          name: "Decorated product",
-          price: {
-            amount: "1.00",
-            currency: "CAD"
-          },
-          productId: "decorated-product-id",
-          quantityInBasket: 0,
-          retailerProductId: "decorated-retailer-product-id"
-        }],
-        products: [{
-          available: true,
-          maxQuantityReached: false,
-          name: "Standard product",
-          price: {
-            amount: "2.00",
-            currency: "CAD"
-          },
-          productId: "standard-product-id",
-          quantityInBasket: 0,
-          retailerProductId: "standard-retailer-product-id"
-        }],
-        type: "mixed"
-      }]
+      productGroups: [
+        {
+          decoratedProducts: [
+            {
+              available: true,
+              maxQuantityReached: false,
+              name: "Decorated product",
+              price: { amount: "1.00", currency: "CAD" },
+              productId: "decorated-product-id",
+              quantityInBasket: 0,
+              retailerProductId: "decorated-retailer-product-id"
+            }
+          ],
+          products: [
+            {
+              available: true,
+              maxQuantityReached: false,
+              name: "Standard product",
+              price: { amount: "2.00", currency: "CAD" },
+              productId: "standard-product-id",
+              quantityInBasket: 0,
+              retailerProductId: "standard-retailer-product-id"
+            }
+          ],
+          type: "mixed"
+        }
+      ]
     })
 
-    expect(result.products.map((product) => product.productId)).toEqual([
-      "decorated-product-id",
-      "standard-product-id"
-    ])
+    expect(result.products.map((product) => product.productId)).toEqual(["decorated-product-id", "standard-product-id"])
     expect(result.products[0]?.sourceGroupType).toBe("mixed")
     expect(result.products[1]?.sourceGroupType).toBe("mixed")
   })
 
   it("fails at the schema boundary when total product count is not a non-negative integer", () => {
     for (const totalProducts of [-1, 1.5]) {
-      const result = parseSearchResponse({
-        productGroups: [],
-        totalProducts
-      })
+      const result = parseSearchResponse({ productGroups: [], totalProducts })
 
       expect(Either.isLeft(result)).toBe(true)
 
@@ -123,20 +112,21 @@ describe("catalog search normalization", () => {
 
   it("fails at the schema boundary when required product fields drift", () => {
     const result = parseSearchResponse({
-      productGroups: [{
-        decoratedProducts: [{
-          available: true,
-          name: "Broken product",
-          price: {
-            amount: "1.00",
-            currency: "CAD"
-          },
-          productId: "product-id",
-          quantityInBasket: 0,
-          retailerProductId: "retailer-product-id"
-        }],
-        type: "featured"
-      }]
+      productGroups: [
+        {
+          decoratedProducts: [
+            {
+              available: true,
+              name: "Broken product",
+              price: { amount: "1.00", currency: "CAD" },
+              productId: "product-id",
+              quantityInBasket: 0,
+              retailerProductId: "retailer-product-id"
+            }
+          ],
+          type: "featured"
+        }
+      ]
     })
 
     expect(Either.isLeft(result)).toBe(true)

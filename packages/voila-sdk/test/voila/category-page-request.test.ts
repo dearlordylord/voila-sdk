@@ -10,13 +10,9 @@ import type { CategoryProductsRequest, CategoryProductsRequestError } from "../.
 import { makeCategoryProductsRequest } from "../../src/voila/urls.js"
 import { assertDecodeFailure } from "../helpers/property.js"
 
-const expectCategoryProductsRequest = (
-  request: CategoryProductsRequest
-): CategoryProductsRequest => request
+const expectCategoryProductsRequest = (request: CategoryProductsRequest): CategoryProductsRequest => request
 
-const expectCategoryProductsRequestError = (
-  error: CategoryProductsRequestError
-): CategoryProductsRequestError => error
+const expectCategoryProductsRequestError = (error: CategoryProductsRequestError): CategoryProductsRequestError => error
 
 describe("category page request model", () => {
   it("builds deterministic Voila category product requests", () => {
@@ -51,13 +47,10 @@ describe("category page request model", () => {
 
   it("adds optional pagination and filters", () => {
     const request = makeCategoryProductsRequest({
-      filters: [{
-        id: "brand",
-        value: "fresh-farms"
-      }, {
-        id: "dietary",
-        value: "organic"
-      }],
+      filters: [
+        { id: "brand", value: "fresh-farms" },
+        { id: "dietary", value: "organic" }
+      ],
       pageSize: 12,
       pageToken: "next-page-token",
       retailerCategoryId: "retailer-category-id"
@@ -68,18 +61,12 @@ describe("category page request model", () => {
     if (Either.isRight(request)) {
       expect(request.right.url.searchParams.get("pageToken")).toBe("next-page-token")
       expect(request.right.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
-      expect(request.right.url.searchParams.getAll("filter")).toEqual([
-        "brand:fresh-farms",
-        "dietary:organic"
-      ])
+      expect(request.right.url.searchParams.getAll("filter")).toEqual(["brand:fresh-farms", "dietary:organic"])
     }
   })
 
   it("allows category ID without retailer category ID", () => {
-    const request = makeCategoryProductsRequest({
-      categoryId: "category-id",
-      pageSize: 12
-    })
+    const request = makeCategoryProductsRequest({ categoryId: "category-id", pageSize: 12 })
 
     expect(Either.isRight(request)).toBe(true)
 
@@ -90,66 +77,22 @@ describe("category page request model", () => {
   })
 
   it("rejects invalid category page inputs at the boundary", () => {
-    for (
-      const input of [
-        {
-          pageSize: MIN_CATEGORY_PAGE_SIZE - 1,
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          pageSize: MAX_CATEGORY_PAGE_SIZE + 1,
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          pageSize: 12.5,
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          pageSize: 12
-        },
-        {
-          categoryId: "",
-          pageSize: 12
-        },
-        {
-          pageSize: 12,
-          pageToken: "",
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          filters: [{
-            id: "",
-            value: "fresh-farms"
-          }],
-          pageSize: 12,
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          filters: [{
-            id: "brand",
-            value: " fresh-farms"
-          }],
-          pageSize: 12,
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          filters: [{
-            id: "brand:name",
-            value: "fresh-farms"
-          }],
-          pageSize: 12,
-          retailerCategoryId: "retailer-category-id"
-        },
-        {
-          filters: [{
-            id: "brand",
-            value: "fresh:farms"
-          }],
-          pageSize: 12,
-          retailerCategoryId: "retailer-category-id"
-        }
-      ]
-    ) {
+    for (const input of [
+      { pageSize: MIN_CATEGORY_PAGE_SIZE - 1, retailerCategoryId: "retailer-category-id" },
+      { pageSize: MAX_CATEGORY_PAGE_SIZE + 1, retailerCategoryId: "retailer-category-id" },
+      { pageSize: 12.5, retailerCategoryId: "retailer-category-id" },
+      { pageSize: 12 },
+      { categoryId: "", pageSize: 12 },
+      { pageSize: 12, pageToken: "", retailerCategoryId: "retailer-category-id" },
+      { filters: [{ id: "", value: "fresh-farms" }], pageSize: 12, retailerCategoryId: "retailer-category-id" },
+      { filters: [{ id: "brand", value: " fresh-farms" }], pageSize: 12, retailerCategoryId: "retailer-category-id" },
+      {
+        filters: [{ id: "brand:name", value: "fresh-farms" }],
+        pageSize: 12,
+        retailerCategoryId: "retailer-category-id"
+      },
+      { filters: [{ id: "brand", value: "fresh:farms" }], pageSize: 12, retailerCategoryId: "retailer-category-id" }
+    ]) {
       expect(Either.isLeft(makeCategoryProductsRequest(input))).toBe(true)
       assertDecodeFailure(CategoryPageInputSchema, input)
     }
@@ -157,10 +100,7 @@ describe("category page request model", () => {
 
   it("explains ambiguous filter separator failures through the schema", () => {
     const result = Schema.decodeUnknownEither(CategoryPageInputSchema)({
-      filters: [{
-        id: "brand:name",
-        value: "fresh-farms"
-      }],
+      filters: [{ id: "brand:name", value: "fresh-farms" }],
       pageSize: 12,
       retailerCategoryId: "retailer-category-id"
     })
@@ -173,9 +113,7 @@ describe("category page request model", () => {
   })
 
   it("returns a typed request error for invalid input", () => {
-    const result = makeCategoryProductsRequest({
-      pageSize: 0
-    })
+    const result = makeCategoryProductsRequest({ pageSize: 0 })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -185,9 +123,7 @@ describe("category page request model", () => {
   })
 
   it("explains missing category identifier failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(CategoryPageInputSchema)({
-      pageSize: 12
-    })
+    const result = Schema.decodeUnknownEither(CategoryPageInputSchema)({ pageSize: 12 })
 
     expect(Either.isLeft(result)).toBe(true)
 

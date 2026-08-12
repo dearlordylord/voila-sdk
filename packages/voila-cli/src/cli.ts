@@ -86,11 +86,7 @@ const parseArgs = (args: ReadonlyArray<string>): ParsedOptions => {
     index += 1
   }
 
-  return {
-    flags,
-    options,
-    positionals
-  }
+  return { flags, options, positionals }
 }
 
 const usage = (message: string): CliRunResult => ({
@@ -99,11 +95,7 @@ const usage = (message: string): CliRunResult => ({
   stdout: ""
 })
 
-const ok = (stdout: string): CliRunResult => ({
-  exitCode: successExitCode,
-  stderr: "",
-  stdout
-})
+const ok = (stdout: string): CliRunResult => ({ exitCode: successExitCode, stderr: "", stdout })
 
 const renderFailureText = (result: OperationExecutionResult): string => {
   if (result.ok) {
@@ -117,12 +109,7 @@ const renderFailureText = (result: OperationExecutionResult): string => {
     return base
   }
 
-  return [
-    base,
-    `${guidance.message}\n`,
-    `${guidance.instructions}\n`,
-    `Login command: ${guidance.command}\n`
-  ].join("")
+  return [base, `${guidance.message}\n`, `${guidance.instructions}\n`, `Login command: ${guidance.command}\n`].join("")
 }
 
 const fail = (result: OperationExecutionResult, json: boolean): CliRunResult => ({
@@ -239,17 +226,12 @@ const runOperation = async (
   input: unknown,
   parsed: ParsedOptions
 ): Promise<CliRunResult> => {
-  const result = await ports.runOperation(name, input, {
-    sessionPath: getSessionPath(parsed)
-  })
+  const result = await ports.runOperation(name, input, { sessionPath: getSessionPath(parsed) })
 
   return render(name, result, getJsonFlag(parsed))
 }
 
-const runAuth = async (
-  ports: CliPorts,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
+const runAuth = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const subcommand = parsed.positionals[1]
 
   if (subcommand === "status") {
@@ -260,9 +242,10 @@ const runAuth = async (
     return usage("Expected auth login or auth status")
   }
 
-  const timeout = parsed.options.get("timeout-ms") === undefined
-    ? undefined
-    : parsePositiveInteger(parsed.options.get("timeout-ms"), "--timeout-ms")
+  const timeout =
+    parsed.options.get("timeout-ms") === undefined
+      ? undefined
+      : parsePositiveInteger(parsed.options.get("timeout-ms"), "--timeout-ms")
 
   if (timeout !== undefined && typeof timeout !== "number") {
     return timeout
@@ -277,10 +260,7 @@ const runAuth = async (
   return render("auth_login", result, getJsonFlag(parsed))
 }
 
-const runSearch = async (
-  ports: CliPorts,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
+const runSearch = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const query = parsed.positionals[1]
 
   if (query === undefined) {
@@ -293,16 +273,10 @@ const runSearch = async (
     return page
   }
 
-  return runOperation(ports, "voila_search_products", {
-    ...page,
-    query
-  }, parsed)
+  return runOperation(ports, "voila_search_products", { ...page, query }, parsed)
 }
 
-const runCategory = async (
-  ports: CliPorts,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
+const runCategory = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   if (parsed.positionals[1] !== "products") {
     return usage("Expected category products")
   }
@@ -319,16 +293,10 @@ const runCategory = async (
     return page
   }
 
-  return runOperation(ports, "voila_get_category_products", {
-    ...page,
-    categoryId
-  }, parsed)
+  return runOperation(ports, "voila_get_category_products", { ...page, categoryId }, parsed)
 }
 
-const runDiscounts = async (
-  ports: CliPorts,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
+const runDiscounts = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const input = makeDiscountsOperationInput(parsed, usage, parsePositiveInteger)
 
   if ("exitCode" in input) {
@@ -338,10 +306,7 @@ const runDiscounts = async (
   return runOperation(ports, "voila_get_discounted_products", input, parsed)
 }
 
-const runOrders = async (
-  ports: CliPorts,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
+const runOrders = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const subcommand = parsed.positionals[1]
 
   if (subcommand === "details") {
@@ -377,10 +342,7 @@ const runOrders = async (
   return runOperation(ports, "voila_get_completed_orders", page, parsed)
 }
 
-const runCart = async (
-  ports: CliPorts,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
+const runCart = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const subcommand = parsed.positionals[1]
 
   if (subcommand === "get") {
@@ -411,10 +373,7 @@ const runCart = async (
   )
 }
 
-export const runCli = async (
-  args: ReadonlyArray<string>,
-  ports: CliPorts
-): Promise<CliRunResult> => {
+export const runCli = async (args: ReadonlyArray<string>, ports: CliPorts): Promise<CliRunResult> => {
   const parsed = parseArgs(args)
 
   if (parsed.flags.has("help") || parsed.positionals.length === 0) {

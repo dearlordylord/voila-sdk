@@ -66,9 +66,7 @@ export const makeSdkOrderListInput = (input: OrderListOperationInput) => ({
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
 })
 
-export const makeSdkOrderDetailsInput = (input: OrderDetailsOperationInput) => ({
-  orderId: input.orderId
-})
+export const makeSdkOrderDetailsInput = (input: OrderDetailsOperationInput) => ({ orderId: input.orderId })
 
 export const makeSdkOrderItemsInput = (input: OrderItemsOperationInput) => ({
   ...(input.fromDate === undefined ? {} : { fromDate: input.fromDate }),

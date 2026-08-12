@@ -7,11 +7,9 @@ import { makeFetchVoilaTransport, makeNodeOperationEnvironment, type NodeFetchPo
 const requestUrl = new URL("https://voila.ca/api/example")
 
 const firstDesktopUserAgent = (): string => {
-  const [userAgent] = topDesktopUserAgents
+  const userAgent = topDesktopUserAgents.at(0)
 
-  if (userAgent === undefined) {
-    throw new Error("Expected the desktop user-agent dataset to be non-empty")
-  }
+  if (userAgent === undefined) throw new Error("Expected the desktop user-agent dataset to be non-empty")
 
   return userAgent
 }
@@ -37,11 +35,7 @@ describe("Node Voila transport", () => {
     const recording = makeRecordingFetch()
     const transport = makeFetchVoilaTransport(undefined, recording.fetchPort)
 
-    await transport.request({
-      headers: { "x-request-context": "preserved" },
-      method: "GET",
-      url: requestUrl
-    })
+    await transport.request({ headers: { "x-request-context": "preserved" }, method: "GET", url: requestUrl })
 
     expect(recording.requestHeaders()?.get("user-agent")).toBe(firstDesktopUserAgent())
     expect(recording.requestHeaders()?.get("x-request-context")).toBe("preserved")
@@ -58,11 +52,7 @@ describe("Node Voila transport", () => {
     expect(Either.isRight(environment)).toBe(true)
 
     if (Either.isRight(environment)) {
-      await environment.right.transport.request({
-        headers: {},
-        method: "GET",
-        url: requestUrl
-      })
+      await environment.right.transport.request({ headers: {}, method: "GET", url: requestUrl })
     }
 
     expect(recording.requestHeaders()?.get("user-agent")).toBe("configured-agent/1.0")
@@ -73,10 +63,7 @@ describe("Node Voila transport", () => {
     const transport = makeFetchVoilaTransport("configured-agent/1.0", recording.fetchPort)
 
     await transport.request({
-      headers: {
-        "User-Agent": "request-agent/2.0",
-        "x-request-context": "preserved"
-      },
+      headers: { "User-Agent": "request-agent/2.0", "x-request-context": "preserved" },
       method: "GET",
       url: requestUrl
     })

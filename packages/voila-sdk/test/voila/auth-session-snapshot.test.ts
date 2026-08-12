@@ -106,10 +106,7 @@ describe("auth session snapshots", () => {
   })
 
   it("rejects missing sensitive session fields at the SDK session boundary", () => {
-    assertDecodeFailure(SdkSessionSnapshotSchema, {
-      kind: "authenticated",
-      state: "authenticated"
-    })
+    assertDecodeFailure(SdkSessionSnapshotSchema, { kind: "authenticated", state: "authenticated" })
     assertDecodeFailure(SdkSessionSnapshotSchema, {
       kind: "authenticated",
       session: makeBaseSession(),
@@ -120,12 +117,7 @@ describe("auth session snapshots", () => {
   it("returns typed errors for malformed SDK session snapshots", () => {
     const result = decodeSdkSessionSnapshot({
       kind: "authenticated",
-      session: {
-        csrf: {
-          token: secretCsrfToken
-        },
-        metadata: sampleMetadata
-      },
+      session: { csrf: { token: secretCsrfToken }, metadata: sampleMetadata },
       state: "authenticated"
     })
 
@@ -163,11 +155,7 @@ describe("auth session snapshots", () => {
 
   it("rejects incoherent SDK session diagnostic state combinations", () => {
     const sessionDiagnostic = {
-      cookieJar: {
-        cookieCount: 0,
-        storeType: null,
-        version: "tough-cookie@6.0.0"
-      },
+      cookieJar: { cookieCount: 0, storeType: null, version: "tough-cookie@6.0.0" },
       csrf: "[redacted]",
       metadata: {
         assetVersion: "asset-version",
@@ -219,9 +207,7 @@ describe("auth session snapshots", () => {
 
     if (Either.isRight(withoutAccount) && Either.isRight(partialAccount) && Either.isRight(emailOnlyAccount)) {
       expect(redactSdkSessionSnapshot(withoutAccount.right).account).toBeUndefined()
-      expect(redactSdkSessionSnapshot(partialAccount.right).account).toEqual({
-        displayName: "[redacted]"
-      })
+      expect(redactSdkSessionSnapshot(partialAccount.right).account).toEqual({ displayName: "[redacted]" })
       expect(redactSdkSessionSnapshot(emailOnlyAccount.right).account).toEqual({
         emailHint: "[redacted]",
         stableAccountIdHash: "[redacted]"

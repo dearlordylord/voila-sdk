@@ -13,10 +13,7 @@ describe("cart deltas", () => {
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right).toEqual({
-        productId: productUuid,
-        quantity: 3
-      })
+      expect(result.right).toEqual({ productId: productUuid, quantity: 3 })
     }
   })
 
@@ -28,27 +25,19 @@ describe("cart deltas", () => {
     expect(Either.isRight(remove)).toBe(true)
 
     if (Either.isRight(add) && Either.isRight(remove)) {
-      expect(add.right).toEqual({
-        productId: productUuid,
-        quantity: 2
-      })
-      expect(remove.right).toEqual({
-        productId: productUuid,
-        quantity: -2
-      })
+      expect(add.right).toEqual({ productId: productUuid, quantity: 2 })
+      expect(remove.right).toEqual({ productId: productUuid, quantity: -2 })
     }
   })
 
   it("rejects invalid cart deltas", () => {
-    for (
-      const result of [
-        makeCartQuantityDelta("243255EA", 1),
-        makeCartQuantityDelta("", 1),
-        makeCartQuantityDelta(productUuid, 0),
-        makeCartQuantityDelta(productUuid, 1.5),
-        makeCartQuantityDelta(productUuid, Number.POSITIVE_INFINITY)
-      ]
-    ) {
+    for (const result of [
+      makeCartQuantityDelta("243255EA", 1),
+      makeCartQuantityDelta("", 1),
+      makeCartQuantityDelta(productUuid, 0),
+      makeCartQuantityDelta(productUuid, 1.5),
+      makeCartQuantityDelta(productUuid, Number.POSITIVE_INFINITY)
+    ]) {
       expect(Either.isLeft(result)).toBe(true)
 
       if (Either.isLeft(result)) {
@@ -58,10 +47,7 @@ describe("cart deltas", () => {
   })
 
   it("explains zero quantity failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(CartQuantityDeltaSchema)({
-      productId: productUuid,
-      quantity: 0
-    })
+    const result = Schema.decodeUnknownEither(CartQuantityDeltaSchema)({ productId: productUuid, quantity: 0 })
 
     expect(Either.isLeft(result)).toBe(true)
 

@@ -4,23 +4,14 @@ import { MoneySchema } from "./money.js"
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
 
-const NonNegativeIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.nonNegative()
-)
+const NonNegativeIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative())
 
 const CartQuantityDeltaIntegerSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
-  Schema.filter((quantity) => quantity !== 0, {
-    message: () => "Cart quantity delta must not be zero"
-  })
+  Schema.filter((quantity) => quantity !== 0, { message: () => "Cart quantity delta must not be zero" })
 )
 
 const ProductUuidSchema = Schema.String.pipe(
@@ -52,9 +43,7 @@ export const CartItemSchema = Schema.Struct({
 
 export type CartItem = Schema.Schema.Type<typeof CartItemSchema>
 
-export const CartItemGroupSchema = Schema.Struct({
-  items: Schema.Array(CartItemSchema)
-})
+export const CartItemGroupSchema = Schema.Struct({ items: Schema.Array(CartItemSchema) })
 
 export type CartItemGroup = Schema.Schema.Type<typeof CartItemGroupSchema>
 
@@ -85,11 +74,9 @@ export const CartViewSignalSchema = Schema.asSchema(
 export type CartViewSignal = Schema.Schema.Type<typeof CartViewSignalSchema>
 
 export const LimitedCartItemSchema = Schema.asSchema(
-  Schema.Struct({
-    productId: Schema.String,
-    quantity: NonNegativeIntegerSchema,
-    reason: Schema.String
-  }).pipe(Schema.extend(CartViewSignalSchema))
+  Schema.Struct({ productId: Schema.String, quantity: NonNegativeIntegerSchema, reason: Schema.String }).pipe(
+    Schema.extend(CartViewSignalSchema)
+  )
 )
 
 export type LimitedCartItem = Schema.Schema.Type<typeof LimitedCartItemSchema>
@@ -169,9 +156,9 @@ export type ActiveCartCheckoutGroup = Schema.Schema.Type<typeof ActiveCartChecko
 export const ActiveCartViewResponseSchema = Schema.asSchema(
   Schema.Struct({
     activeCheckoutGroup: Schema.optionalWith(
-      Schema.Struct({
-        checkoutRestrictions: Schema.optionalWith(Schema.Array(Schema.String), { exact: true })
-      }).pipe(Schema.extend(UnknownStringRecordSchema)),
+      Schema.Struct({ checkoutRestrictions: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }) }).pipe(
+        Schema.extend(UnknownStringRecordSchema)
+      ),
       { exact: true }
     ),
     cartId: Schema.String,
@@ -194,9 +181,7 @@ export const AnyCartViewResponseSchema = Schema.Union(CartViewResponseSchema, Ac
 export type AnyCartViewResponse = Schema.Schema.Type<typeof AnyCartViewResponseSchema>
 
 export const NormalizedCartItemSchema = CartViewItemSchema.pipe(
-  Schema.extend(Schema.Struct({
-    groupName: Schema.optionalWith(Schema.String, { exact: true })
-  }))
+  Schema.extend(Schema.Struct({ groupName: Schema.optionalWith(Schema.String, { exact: true }) }))
 )
 
 export type NormalizedCartItem = Schema.Schema.Type<typeof NormalizedCartItemSchema>

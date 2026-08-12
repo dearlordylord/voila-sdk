@@ -33,10 +33,7 @@ const cartViewResponseSchemaMismatch = (): CartViewResponseNormalizationError =>
 })
 
 const normalizeCartViewItemGroup = (group: CartViewItemGroup): ReadonlyArray<NormalizedCartItem> =>
-  group.items.map((item) => ({
-    ...item,
-    ...(group.name === undefined ? {} : { groupName: group.name })
-  }))
+  group.items.map((item) => ({ ...item, ...(group.name === undefined ? {} : { groupName: group.name }) }))
 
 const normalizeLegacyCartViewItemGroups = (
   itemGroups: ReadonlyArray<CartViewItemGroup> | undefined
@@ -52,18 +49,12 @@ const normalizeActiveCartViewItemGroups = (
 const normalizeCheckoutRestrictions = (
   restrictions: ReadonlyArray<string> | CartViewResponse["checkoutRestrictions"] | undefined
 ): NormalizedCartView["checkoutRestrictions"] =>
-  (restrictions ?? []).map((restriction) =>
-    typeof restriction === "string"
-      ? { code: restriction }
-      : restriction
-  )
+  (restrictions ?? []).map((restriction) => (typeof restriction === "string" ? { code: restriction } : restriction))
 
 const isActiveCartViewResponse = (response: AnyCartViewResponse): response is ActiveCartViewResponse =>
   "cartId" in response
 
-export const normalizeCartViewResponse = (
-  response: AnyCartViewResponse
-): NormalizedCartView => {
+export const normalizeCartViewResponse = (response: AnyCartViewResponse): NormalizedCartView => {
   const items = isActiveCartViewResponse(response)
     ? normalizeActiveCartViewItemGroups(response.checkoutGroups?.assignedCheckoutGroups)
     : normalizeLegacyCartViewItemGroups(response.basket.itemGroups)
@@ -77,7 +68,7 @@ export const normalizeCartViewResponse = (
     ),
     itemCount: items.reduce((total, item) => total + item.quantity, 0),
     items,
-    limitedItems: isActiveCartViewResponse(response) ? [] : response.limitedItems ?? [],
+    limitedItems: isActiveCartViewResponse(response) ? [] : (response.limitedItems ?? []),
     pricingNotifications: response.pricingNotifications ?? [],
     totals: isActiveCartViewResponse(response) ? response.totals : response.basket.totals,
     unavailableData: response.unavailableData ?? []
@@ -109,8 +100,5 @@ export const getCart = async (
     cookieJarPort
   )
 
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeCartViewResponse(result.value)
-  }))
+  return Either.map(response, (result) => ({ session: result.session, value: normalizeCartViewResponse(result.value) }))
 }

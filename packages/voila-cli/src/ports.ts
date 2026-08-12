@@ -5,10 +5,7 @@ import { loginWithPlaywright } from "./auth-login.js"
 import type { CliOperationOptions, CliPorts } from "./cli.js"
 
 const envFailure = (tag: string, message: string): OperationExecutionResult => ({
-  error: {
-    _tag: tag,
-    message
-  },
+  error: { _tag: tag, message },
   ok: false
 })
 
@@ -29,7 +26,4 @@ const runNodeOperation = async (
   return runVoilaOperation(name, input, env.right)
 }
 
-export const nodeCliPorts: CliPorts = {
-  login: loginWithPlaywright,
-  runOperation: runNodeOperation
-}
+export const nodeCliPorts: CliPorts = { login: loginWithPlaywright, runOperation: runNodeOperation }

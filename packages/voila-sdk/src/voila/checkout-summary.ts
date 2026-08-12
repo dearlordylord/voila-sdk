@@ -59,27 +59,21 @@ const normalizeSelectedSlot = (delivery: RawCheckoutDelivery | undefined): Check
   delivery === undefined
     ? undefined
     : {
-      ...(delivery.deliveryPriceChanged === undefined ? {} : { deliveryPriceChanged: delivery.deliveryPriceChanged }),
-      ...(delivery.endTime === undefined ? {} : { endTime: delivery.endTime }),
-      ...(delivery.expiryTime === undefined ? {} : { expiryTime: delivery.expiryTime }),
-      ...(delivery.price === undefined ? {} : { price: delivery.price }),
-      ...(delivery.slotId === undefined ? {} : { slotId: delivery.slotId }),
-      ...(delivery.startTime === undefined ? {} : { startTime: delivery.startTime }),
-      ...(delivery.timeZoneId === undefined ? {} : { timeZoneId: delivery.timeZoneId })
-    }
+        ...(delivery.deliveryPriceChanged === undefined ? {} : { deliveryPriceChanged: delivery.deliveryPriceChanged }),
+        ...(delivery.endTime === undefined ? {} : { endTime: delivery.endTime }),
+        ...(delivery.expiryTime === undefined ? {} : { expiryTime: delivery.expiryTime }),
+        ...(delivery.price === undefined ? {} : { price: delivery.price }),
+        ...(delivery.slotId === undefined ? {} : { slotId: delivery.slotId }),
+        ...(delivery.startTime === undefined ? {} : { startTime: delivery.startTime }),
+        ...(delivery.timeZoneId === undefined ? {} : { timeZoneId: delivery.timeZoneId })
+      }
 
 const tagWarnings = (
   kind: CheckoutSummaryWarning["kind"],
   signals: ReadonlyArray<CheckoutSummarySignal>
-): ReadonlyArray<CheckoutSummaryWarning> =>
-  signals.map((signal) => ({
-    kind,
-    signal
-  }))
+): ReadonlyArray<CheckoutSummaryWarning> => signals.map((signal) => ({ kind, signal }))
 
-export const normalizeCheckoutSummaryResponse = (
-  response: RawCheckoutSummaryResponse
-): NormalizedCheckoutSummary => {
+export const normalizeCheckoutSummaryResponse = (response: RawCheckoutSummaryResponse): NormalizedCheckoutSummary => {
   const checkoutRestrictions = response.checkout.checkoutRestrictions ?? []
   const limitedItems = response.limitedItems ?? []
   const pricingNotifications = response.pricingNotifications ?? []
@@ -91,9 +85,7 @@ export const normalizeCheckoutSummaryResponse = (
     basketAboveThreshold: response.checkout.basketAboveThreshold ?? false,
     ...(response.cartId === undefined ? {} : { basketId: response.cartId }),
     canCheckout: response.checkout.canCheckout ?? false,
-    ...(response.checkoutCorrelationId === undefined
-      ? {}
-      : { checkoutCorrelationId: response.checkoutCorrelationId }),
+    ...(response.checkoutCorrelationId === undefined ? {} : { checkoutCorrelationId: response.checkoutCorrelationId }),
     checkoutRestrictions,
     fees: normalizeFees(response.charges),
     limitedItems,

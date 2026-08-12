@@ -14,14 +14,11 @@ type DriftAuditOperation = "guest-bootstrap" | "catalog-search" | "cart-read"
 
 type EndpointDriftAuditFailure =
   | {
-    readonly _tag: "EndpointDriftAuditOperationFailed"
-    readonly causeTag: string
-    readonly operation: DriftAuditOperation
-  }
-  | {
-    readonly _tag: "EndpointDriftAuditNoProducts"
-    readonly operation: "catalog-search"
-  }
+      readonly _tag: "EndpointDriftAuditOperationFailed"
+      readonly causeTag: string
+      readonly operation: DriftAuditOperation
+    }
+  | { readonly _tag: "EndpointDriftAuditNoProducts"; readonly operation: "catalog-search" }
 
 interface EndpointDriftAuditSuccess {
   readonly cartItemCount: number
@@ -32,12 +29,7 @@ const responseHeadersFromFetch = (headers: Headers): ResponseHeaders => {
   const setCookie = headers.getSetCookie()
   const headerEntries = Object.fromEntries(headers.entries())
 
-  return setCookie.length === 0
-    ? headerEntries
-    : {
-      ...headerEntries,
-      "set-cookie": setCookie
-    }
+  return setCookie.length === 0 ? headerEntries : { ...headerEntries, "set-cookie": setCookie }
 }
 
 const fetchTransport: VoilaTransport = {
@@ -47,30 +39,20 @@ const fetchTransport: VoilaTransport = {
       method: request.method,
       redirect: "manual"
     } satisfies RequestInit
-    const requestInit = request.body === undefined
-      ? requestInitBase
-      : {
-        ...requestInitBase,
-        body: request.body
-      }
+    const requestInit = request.body === undefined ? requestInitBase : { ...requestInitBase, body: request.body }
     const response = await fetch(request.url, requestInit)
 
-    return Either.right(
-      {
-        body: await response.text(),
-        headers: responseHeadersFromFetch(response.headers),
-        status: response.status
-      } satisfies VoilaTransportResponse
-    )
+    return Either.right({
+      body: await response.text(),
+      headers: responseHeadersFromFetch(response.headers),
+      status: response.status
+    } satisfies VoilaTransportResponse)
   }
 }
 
 const toCauseTag = (error: { readonly _tag: string }): string => error._tag
 
-const operationFailed = (
-  operation: DriftAuditOperation,
-  causeTag: string
-): EndpointDriftAuditFailure => ({
+const operationFailed = (operation: DriftAuditOperation, causeTag: string): EndpointDriftAuditFailure => ({
   _tag: "EndpointDriftAuditOperationFailed",
   causeTag,
   operation
@@ -83,20 +65,14 @@ const runAudit = async (): Promise<Either.Either<EndpointDriftAuditSuccess, Endp
     return Either.left(operationFailed("guest-bootstrap", toCauseTag(bootstrap.left)))
   }
 
-  const search = await searchProducts(bootstrap.right.session, {
-    pageSize,
-    query: harmlessQuery
-  }, fetchTransport)
+  const search = await searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }, fetchTransport)
 
   if (Either.isLeft(search)) {
     return Either.left(operationFailed("catalog-search", toCauseTag(search.left)))
   }
 
   if (search.right.value.products.length === 0) {
-    return Either.left({
-      _tag: "EndpointDriftAuditNoProducts",
-      operation: "catalog-search"
-    })
+    return Either.left({ _tag: "EndpointDriftAuditNoProducts", operation: "catalog-search" })
   }
 
   const cart = await getCart(search.right.session, fetchTransport)
@@ -105,10 +81,7 @@ const runAudit = async (): Promise<Either.Either<EndpointDriftAuditSuccess, Endp
     return Either.left(operationFailed("cart-read", toCauseTag(cart.left)))
   }
 
-  return Either.right({
-    cartItemCount: cart.right.value.itemCount,
-    productCount: search.right.value.products.length
-  })
+  return Either.right({ cartItemCount: cart.right.value.itemCount, productCount: search.right.value.products.length })
 }
 
 if (process.env[driftAuditFlag] !== enabledValue) {
@@ -119,9 +92,9 @@ if (process.env[driftAuditFlag] !== enabledValue) {
 
   if (Either.isRight(result)) {
     process.stdout.write(
-      `Endpoint drift audit passed with ${String(result.right.productCount)} products and ${
-        String(result.right.cartItemCount)
-      } cart items.\n`
+      `Endpoint drift audit passed with ${String(result.right.productCount)} products and ${String(
+        result.right.cartItemCount
+      )} cart items.\n`
     )
     process.exit(successStatus)
   } else {

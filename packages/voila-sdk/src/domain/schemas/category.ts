@@ -1,9 +1,6 @@
 import { Schema } from "effect"
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
 
 const RootedUrlPathSchema = NonEmptyTrimmedStringSchema.pipe(Schema.startsWith("/"))
 
@@ -31,9 +28,7 @@ export const RawCategorySchema: Schema.Schema<RawCategoryShape> = Schema.Struct(
   retailerCategoryId: NonEmptyTrimmedStringSchema,
   urlPath: NonEmptyTrimmedStringSchema
 }).pipe(
-  Schema.filter(distinctCategoryIdentifiers, {
-    message: () => "Category ID and retailer category ID must be distinct"
-  })
+  Schema.filter(distinctCategoryIdentifiers, { message: () => "Category ID and retailer category ID must be distinct" })
 )
 
 export const RawCategoryTreeSchema = Schema.Array(RawCategorySchema)
@@ -60,9 +55,7 @@ export const NormalizedCategorySchema: Schema.Schema<NormalizedCategoryShape> = 
   Schema.filter((category) => normalizedUrlPath(category.fullUrlPath), {
     message: () => "Category full URL path must not start with duplicate slashes"
   }),
-  Schema.filter(distinctCategoryIdentifiers, {
-    message: () => "Category ID and retailer category ID must be distinct"
-  })
+  Schema.filter(distinctCategoryIdentifiers, { message: () => "Category ID and retailer category ID must be distinct" })
 )
 
 export const NormalizedCategoryTreeSchema = Schema.Array(NormalizedCategorySchema)

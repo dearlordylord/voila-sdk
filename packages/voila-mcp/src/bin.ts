@@ -19,15 +19,9 @@ const RuntimeEnvSchema = Schema.Struct({
   MCP_HTTP_PATH: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
     default: () => defaultHttpPath
   }),
-  MCP_HTTP_PORT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
-    exact: true
-  }),
-  MCP_TRANSPORT: Schema.optionalWith(Schema.Literal("stdio", "http"), {
-    default: () => "stdio"
-  }),
-  PORT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
-    exact: true
-  })
+  MCP_HTTP_PORT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), { exact: true }),
+  MCP_TRANSPORT: Schema.optionalWith(Schema.Literal("stdio", "http"), { default: () => "stdio" }),
+  PORT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), { exact: true })
 })
 
 interface RuntimeConfig {
@@ -64,9 +58,8 @@ const parsePort = (value: string | undefined): Either.Either<number, RuntimeConf
 const makeRuntimeConfig = (
   env: Readonly<Record<string, string | undefined>> = process.env
 ): Either.Either<RuntimeConfig, RuntimeConfigFailure> => {
-  const decoded = Either.mapLeft(
-    Schema.decodeUnknownEither(RuntimeEnvSchema)(env),
-    () => runtimeConfigFailure("Voila MCP runtime environment variables are invalid")
+  const decoded = Either.mapLeft(Schema.decodeUnknownEither(RuntimeEnvSchema)(env), () =>
+    runtimeConfigFailure("Voila MCP runtime environment variables are invalid")
   )
 
   if (Either.isLeft(decoded)) {
@@ -112,11 +105,11 @@ const main = async (): Promise<void> => {
   }
 
   if (runtime.right.transport === "http") {
-    const server = await startHttpServer(env.right, {
-      host: runtime.right.httpHost,
-      path: runtime.right.httpPath,
-      port: runtime.right.httpPort
-    }, packageVersion)
+    const server = await startHttpServer(
+      env.right,
+      { host: runtime.right.httpHost, path: runtime.right.httpPath, port: runtime.right.httpPort },
+      packageVersion
+    )
 
     process.stderr.write(
       `Voila MCP HTTP server listening on ${runtime.right.httpHost}:${runtime.right.httpPort}${runtime.right.httpPath}\n`

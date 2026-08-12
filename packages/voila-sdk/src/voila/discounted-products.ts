@@ -99,12 +99,7 @@ const moneyFromAmount = (amount: number, currency: string): Money => ({
 
 const firstPromotionSummary = (promotions: ReadonlyArray<RawPromotionMetadata>): string | undefined => {
   for (const promotion of promotions) {
-    const summaries = [
-      promotion.label,
-      promotion.name,
-      promotion.description,
-      promotion.type
-    ]
+    const summaries = [promotion.label, promotion.name, promotion.description, promotion.type]
 
     for (const summary of summaries) {
       if (summary !== undefined && summary.trim().length > 0) {
@@ -127,21 +122,19 @@ const matchesQuery = (product: RawPromotionProduct, query: string | undefined): 
     product.brand ?? "",
     product.retailerProductId,
     product.packSizeDescription ?? "",
-    ...((product.promotions ?? []).map((promotion) =>
-      `${promotion.label ?? ""} ${promotion.name ?? ""} ${promotion.description ?? ""}`
-    ))
-  ].join(" ").toLocaleLowerCase()
+    ...(product.promotions ?? []).map(
+      (promotion) => `${promotion.label ?? ""} ${promotion.name ?? ""} ${promotion.description ?? ""}`
+    )
+  ]
+    .join(" ")
+    .toLocaleLowerCase()
 
   return searchable.includes(normalizedQuery)
 }
 
-const passesThreshold = (
-  savingsAmount: number,
-  savingsPercent: number,
-  input: DiscountedProductsInput
-): boolean =>
-  savingsAmount >= (input.minSavingsAmount ?? DEFAULT_MIN_SAVINGS_AMOUNT)
-  || savingsPercent >= (input.minSavingsPercent ?? DEFAULT_MIN_SAVINGS_PERCENT)
+const passesThreshold = (savingsAmount: number, savingsPercent: number, input: DiscountedProductsInput): boolean =>
+  savingsAmount >= (input.minSavingsAmount ?? DEFAULT_MIN_SAVINGS_AMOUNT) ||
+  savingsPercent >= (input.minSavingsPercent ?? DEFAULT_MIN_SAVINGS_PERCENT)
 
 const normalizeProduct = (
   product: RawPromotionProduct,
@@ -195,10 +188,7 @@ const normalizeResponseProducts = (
   input: DiscountedProductsInput
 ): ReadonlyArray<NormalizedDiscountProduct> =>
   response.productGroups.flatMap((group) =>
-    [
-      ...(group.decoratedProducts ?? []),
-      ...(group.products ?? [])
-    ].flatMap((product) => {
+    [...(group.decoratedProducts ?? []), ...(group.products ?? [])].flatMap((product) => {
       const normalized = normalizeProduct(product, group, input)
 
       return normalized === undefined ? [] : [normalized]
@@ -232,9 +222,8 @@ export const normalizeDiscountedProductsResponse = (
   scan: DiscountScanMetadata
 ): NormalizedDiscountedProductsResult => {
   const sorted = sortDiscountProducts(normalizeResponseProducts(response, input), input.sort ?? defaultDiscountSort)
-  const products = input.query !== undefined && sorted.length > input.pageSize
-    ? sorted
-    : sorted.slice(0, input.pageSize)
+  const products =
+    input.query !== undefined && sorted.length > input.pageSize ? sorted : sorted.slice(0, input.pageSize)
 
   return {
     pagination: {
@@ -242,11 +231,7 @@ export const normalizeDiscountedProductsResponse = (
       ...(response.totalProducts === undefined ? {} : { totalProducts: response.totalProducts })
     },
     products,
-    scan: {
-      ...scan,
-      matchedProducts: sorted.length,
-      returnedProducts: products.length
-    }
+    scan: { ...scan, matchedProducts: sorted.length, returnedProducts: products.length }
   }
 }
 
@@ -311,9 +296,7 @@ export const getDiscountedProducts = async (
   const maxPages = parsed.right.query === undefined ? 1 : MAX_DISCOUNT_QUERY_SCAN_PAGES
   let currentSession = session
   let pageToken = parsed.right.pageToken
-  let response: PromotionProductsResponse = {
-    productGroups: []
-  }
+  let response: PromotionProductsResponse = { productGroups: [] }
   let pagesScanned = noPagesScanned
 
   while (pagesScanned < maxPages) {
@@ -334,13 +317,7 @@ export const getDiscountedProducts = async (
 
     pagesScanned += 1
     currentSession = page.right.session
-    response = {
-      ...page.right.value,
-      productGroups: [
-        ...response.productGroups,
-        ...page.right.value.productGroups
-      ]
-    }
+    response = { ...page.right.value, productGroups: [...response.productGroups, ...page.right.value.productGroups] }
     pageToken = page.right.value.nextPageToken
 
     const matchedProducts = normalizeResponseProducts(response, parsed.right).length

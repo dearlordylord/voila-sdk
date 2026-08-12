@@ -2,9 +2,50 @@ import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 
 const fixtureDirectory = process.argv[2] ?? "test/fixtures"
-const sensitiveKeyTerms = ["cookie", "csrf", "token", "password", "payment", "card", "customer", "account", "address", "street", "postal", "phone", "email", "visitor", "session", "auth", "authorization"]
-const sensitiveIdentifierKeyPattern = /(?:destination|checkout|order|cart|basket).*(?:id|identifier)$|(?:id|identifier).*(?:destination|checkout|order|cart|basket)/i
-const allowedSensitiveKeys = new Set(["csrf", "session", "customerAccountId", "addressId", "deliveryDestinationId", "destinationId", "deliveryInstructions", "formattedAddress", "resolvedRegionId", "regionId", "pageViewId", "clientRouteId", "assetVersion", "nextPageToken", "token", "basketId", "draftBasketId", "cartId", "cartPropositionId", "checkoutCorrelationId", "orderId"])
+const sensitiveKeyTerms = [
+  "cookie",
+  "csrf",
+  "token",
+  "password",
+  "payment",
+  "card",
+  "customer",
+  "account",
+  "address",
+  "street",
+  "postal",
+  "phone",
+  "email",
+  "visitor",
+  "session",
+  "auth",
+  "authorization"
+]
+const sensitiveIdentifierKeyPattern =
+  /(?:destination|checkout|order|cart|basket).*(?:id|identifier)$|(?:id|identifier).*(?:destination|checkout|order|cart|basket)/i
+const allowedSensitiveKeys = new Set([
+  "csrf",
+  "session",
+  "customerAccountId",
+  "addressId",
+  "deliveryDestinationId",
+  "destinationId",
+  "deliveryInstructions",
+  "formattedAddress",
+  "resolvedRegionId",
+  "regionId",
+  "pageViewId",
+  "clientRouteId",
+  "assetVersion",
+  "nextPageToken",
+  "token",
+  "basketId",
+  "draftBasketId",
+  "cartId",
+  "cartPropositionId",
+  "checkoutCorrelationId",
+  "orderId"
+])
 const sanitizedValuePattern = /\bsanitized[-_\w]*\b/i
 const rawValuePatterns = [
   /(?:^|[;\s])(?:cookie|set-cookie)\s*[:=]/i,
@@ -38,7 +79,11 @@ const errors = []
 const isSensitiveKey = (key) => {
   const normalizedKey = key.toLowerCase()
 
-  return isAllowedSensitiveKey(key) || sensitiveIdentifierKeyPattern.test(key) || sensitiveKeyTerms.some((term) => normalizedKey.includes(term))
+  return (
+    isAllowedSensitiveKey(key) ||
+    sensitiveIdentifierKeyPattern.test(key) ||
+    sensitiveKeyTerms.some((term) => normalizedKey.includes(term))
+  )
 }
 
 const isAllowedSensitiveKey = (key) => allowedSensitiveKeys.has(key)

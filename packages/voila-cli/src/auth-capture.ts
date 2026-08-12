@@ -31,10 +31,7 @@ interface BrowserCaptureObserver {
 }
 
 const failure = (tag: string, message: string): OperationExecutionResult => ({
-  error: {
-    _tag: tag,
-    message
-  },
+  error: { _tag: tag, message },
   ok: false
 })
 
@@ -59,10 +56,7 @@ const pageIsClosed = (page: Page): boolean => {
   }
 }
 
-const readNested = (
-  value: unknown,
-  path: ReadonlyArray<string>
-): unknown => {
+const readNested = (value: unknown, path: ReadonlyArray<string>): unknown => {
   let current = value
 
   for (const key of path) {
@@ -110,10 +104,7 @@ const normalizeMetadata = (payload: unknown): SessionMetadata | undefined => {
 }
 
 const readCsrfToken = (payload: unknown): string | undefined =>
-  pickString(
-    readNested(payload, ["csrf", "token"]),
-    readNested(payload, ["session", "csrf", "token"])
-  )
+  pickString(readNested(payload, ["csrf", "token"]), readNested(payload, ["session", "csrf", "token"]))
 
 const captureSessionMaterial = (payload: unknown): CapturedSessionMaterial | undefined => {
   const metadata = normalizeMetadata(payload)
@@ -124,15 +115,10 @@ const captureSessionMaterial = (payload: unknown): CapturedSessionMaterial | und
 
   const csrfToken = readCsrfToken(payload)
 
-  return {
-    ...(isNonEmptyString(csrfToken) ? { csrfToken } : {}),
-    metadata
-  }
+  return { ...(isNonEmptyString(csrfToken) ? { csrfToken } : {}), metadata }
 }
 
-const readMaterialFromRuntime = async (
-  page: Page
-): Promise<CapturedSessionMaterial | undefined> => {
+const readMaterialFromRuntime = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
   const runtimeState: unknown = await page.evaluate("window.__INITIAL_STATE__")
 
   if (runtimeState === undefined || runtimeState === null) {
@@ -148,13 +134,9 @@ const readMaterialFromHtml = (html: string): CapturedSessionMaterial | undefined
   return Either.isRight(payload) ? captureSessionMaterial(payload.right) : undefined
 }
 
-const readMaterialFromFetchedHtml = async (
-  page: Page
-): Promise<CapturedSessionMaterial | undefined> => {
+const readMaterialFromFetchedHtml = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
   const html = await page.evaluate(async () => {
-    const response = await fetch("/", {
-      credentials: "include"
-    })
+    const response = await fetch("/", { credentials: "include" })
 
     return response.text()
   })
@@ -162,9 +144,7 @@ const readMaterialFromFetchedHtml = async (
   return readMaterialFromHtml(html)
 }
 
-const readSessionMaterialFromBrowser = async (
-  page: Page
-): Promise<CapturedSessionMaterial | undefined> => {
+const readSessionMaterialFromBrowser = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
   const runtimeState = await readMaterialFromRuntime(page)
 
   if (runtimeState !== undefined) {
@@ -188,7 +168,7 @@ const captureBrowserSession = async (
     return undefined
   }
 
-  const material = observedMaterial ?? await readSessionMaterialFromBrowser(page)
+  const material = observedMaterial ?? (await readSessionMaterialFromBrowser(page))
 
   if (material === undefined) {
     return undefined
@@ -203,10 +183,7 @@ const captureBrowserSession = async (
     return undefined
   }
 
-  return {
-    cookies: cookies.right,
-    material
-  }
+  return { cookies: cookies.right, material }
 }
 
 export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver => {
@@ -246,10 +223,7 @@ export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver =
         latestCsrfToken = csrfToken
 
         if (latestMaterial !== undefined && latestMaterial.csrfToken === undefined) {
-          latestMaterial = {
-            ...latestMaterial,
-            csrfToken
-          }
+          latestMaterial = { ...latestMaterial, csrfToken }
         }
       }
     } catch {
@@ -278,10 +252,7 @@ export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver =
     })()
   })
 
-  return {
-    getMaterial: () => latestMaterial,
-    hasPayload: () => payloadObserved
-  }
+  return { getMaterial: () => latestMaterial, hasPayload: () => payloadObserved }
 }
 
 export const waitForAuthenticatedCapture = async (
@@ -310,9 +281,8 @@ export const waitForAuthenticatedCapture = async (
         const authStatus = cookiesSayAuthenticated(latestCapture.cookies)
           ? "Authenticated cookie observed."
           : "Authenticated cookie not observed; saved session will be verified after close."
-        const csrfStatus = latestCapture.material.csrfToken === undefined
-          ? "CSRF token not observed."
-          : "CSRF token observed."
+        const csrfStatus =
+          latestCapture.material.csrfToken === undefined ? "CSRF token not observed." : "CSRF token observed."
 
         process.stdout.write(
           `Voila session material observed. ${authStatus} ${csrfStatus} Close the browser window to save.\n`

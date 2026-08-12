@@ -40,10 +40,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -59,9 +58,7 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
 
 const makeSearchResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
-  headers: {
-    "set-cookie": "fresh-search-cookie=after; Path=/; Secure"
-  },
+  headers: { "set-cookie": "fresh-search-cookie=after; Path=/; Secure" },
   status
 })
 
@@ -78,14 +75,16 @@ const getSessionCookies = (session: SessionSnapshot): string => {
 describe("searchProducts", () => {
   it("searches through the active session and returns normalized products", async () => {
     const fake = makeResponseTransport(makeSearchResponse())
-    const result = await searchProducts(makeSession(), {
-      categoryContext: {
-        retailerCategoryId: "retailer-category-id"
+    const result = await searchProducts(
+      makeSession(),
+      {
+        categoryContext: { retailerCategoryId: "retailer-category-id" },
+        pageSize: 24,
+        pageToken: "next-page-token",
+        query: "milk"
       },
-      pageSize: 24,
-      pageToken: "next-page-token",
-      query: "milk"
-    }, fake.transport)
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -109,10 +108,7 @@ describe("searchProducts", () => {
 
   it("propagates invalid search input as a typed recoverable error", async () => {
     const fake = makeResponseTransport(makeSearchResponse())
-    const result = await searchProducts(makeSession(), {
-      pageSize: 0,
-      query: ""
-    }, fake.transport)
+    const result = await searchProducts(makeSession(), { pageSize: 0, query: "" }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)
@@ -123,10 +119,11 @@ describe("searchProducts", () => {
   })
 
   it("propagates HTTP client errors as typed recoverable errors", async () => {
-    const result = await searchProducts(makeSession(" "), {
-      pageSize: 24,
-      query: "milk"
-    }, makeResponseTransport(makeSearchResponse()).transport)
+    const result = await searchProducts(
+      makeSession(" "),
+      { pageSize: 24, query: "milk" },
+      makeResponseTransport(makeSearchResponse()).transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -136,19 +133,13 @@ describe("searchProducts", () => {
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
-    const fake = makeResponseTransport(makeSearchResponse(JSON.stringify({
-      productGroups: [{
-        decoratedProducts: [{
-          available: true
-        }],
-        type: "featured"
-      }]
-    })))
+    const fake = makeResponseTransport(
+      makeSearchResponse(
+        JSON.stringify({ productGroups: [{ decoratedProducts: [{ available: true }], type: "featured" }] })
+      )
+    )
 
-    const result = await searchProducts(makeSession(), {
-      pageSize: 24,
-      query: "milk"
-    }, fake.transport)
+    const result = await searchProducts(makeSession(), { pageSize: 24, query: "milk" }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -158,10 +149,11 @@ describe("searchProducts", () => {
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
-    const result = await searchProducts(makeSession(), {
-      pageSize: 24,
-      query: "milk"
-    }, makeResponseTransport(makeSearchResponse("{}", 500)).transport)
+    const result = await searchProducts(
+      makeSession(),
+      { pageSize: 24, query: "milk" },
+      makeResponseTransport(makeSearchResponse("{}", 500)).transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 

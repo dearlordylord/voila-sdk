@@ -1,0 +1,102 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import"],
+  "jsPlugins": ["./scripts/oxlint-project-plugin.mjs"],
+  "options": {
+    "typeAware": true
+  },
+  "ignorePatterns": [
+    "**/dist",
+    "**/build",
+    "**/coverage",
+    "**/*.md",
+    "**/.reference"
+  ],
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-rest-params": "error",
+    "prefer-spread": "error",
+    "no-array-constructor": "error",
+    "no-unused-expressions": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "typescript/ban-ts-comment": "error",
+    "typescript/consistent-type-imports": "warn",
+    "typescript/no-duplicate-enum-values": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-extra-non-null-assertion": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-new": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-this-alias": "error",
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-constraint": "error",
+    "typescript/no-unsafe-declaration-merging": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-wrapper-object-types": "error",
+    "typescript/prefer-as-const": "error",
+    "typescript/triple-slash-reference": "error",
+    "typescript/array-type": ["warn", { "default": "generic", "readonly": "generic" }],
+    "import/first": "error",
+    "import/no-duplicates": "error",
+    "object-shorthand": "error",
+    "voila/sort-destructure-keys": "error",
+    "max-lines": [
+      "error",
+      {
+        "max": 420,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "no-console": "warn",
+    "no-magic-numbers": [
+      "warn",
+      {
+        "ignore": [0, 1, 2, 100, 200, 300, 400, 401, 403, 404, 500, 1024],
+        "ignoreArrayIndexes": true,
+        "ignoreDefaultValues": true,
+        "ignoreEnums": true,
+        "ignoreNumericLiteralTypes": true,
+        "ignoreTypeIndexes": true,
+        "enforceConst": true
+      }
+    ],
+    "voila/no-clock-read": "error",
+    "voila/no-double-type-assertion": "error",
+    "voila/no-test-mocks": "error",
+    "voila/no-type-assertion": "error",
+    "voila/require-canonical-effect-schema-import": "error"
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.{mjs,ts}"],
+      "rules": {
+        "no-console": "off",
+        "no-magic-numbers": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.spec.ts"],
+      "rules": {
+        "max-lines": "off",
+        "no-magic-numbers": "off",
+        "typescript/no-non-null-assertion": "warn",
+        "typescript/no-unnecessary-type-assertion": "off",
+        "voila/no-type-assertion": "off",
+        "voila/property-test-placement": "error"
+      }
+    }
+  ]
+}

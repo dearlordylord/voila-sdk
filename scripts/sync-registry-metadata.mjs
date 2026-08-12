@@ -18,9 +18,7 @@ const PackageJsonSchema = Schema.Struct({
   homepage: NonEmptyString,
   mcpName: McpServerName,
   name: NonEmptyString,
-  repository: Schema.Struct({
-    url: NonEmptyString
-  }),
+  repository: Schema.Struct({ url: NonEmptyString }),
   version: ConcreteVersion
 })
 
@@ -38,9 +36,7 @@ const PackageSchema = Schema.Struct({
   environmentVariables: Schema.optional(Schema.Array(EnvironmentVariableSchema)),
   identifier: NonEmptyString,
   registryType: NonEmptyString,
-  transport: Schema.Struct({
-    type: Schema.Literal("stdio")
-  }),
+  transport: Schema.Struct({ type: Schema.Literal("stdio") }),
   version: ConcreteVersion
 })
 
@@ -49,11 +45,7 @@ const ServerJsonSchema = Schema.Struct({
   description: NonEmptyString.pipe(Schema.maxLength(100)),
   name: McpServerName,
   packages: Schema.Array(PackageSchema),
-  repository: Schema.Struct({
-    id: Schema.optional(NonEmptyString),
-    source: Schema.Literal("github"),
-    url: GitHubUrl
-  }),
+  repository: Schema.Struct({ id: Schema.optional(NonEmptyString), source: Schema.Literal("github"), url: GitHubUrl }),
   title: Schema.optional(NonEmptyString),
   version: ConcreteVersion,
   websiteUrl: NonEmptyString
@@ -84,20 +76,11 @@ const serverJson = readJson(serverJsonPath, ServerJsonSchema, { preserveRaw: tru
 const updatedServerJson = {
   ...serverJson,
   name: packageJson.mcpName,
-  repository: {
-    ...serverJson.repository,
-    url: normalizeRepositoryUrl(packageJson.repository.url)
-  },
+  repository: { ...serverJson.repository, url: normalizeRepositoryUrl(packageJson.repository.url) },
   websiteUrl: packageJson.homepage,
   version: packageJson.version,
   packages: serverJson.packages.map((entry) =>
-    entry?.registryType === "npm"
-      ? {
-        ...entry,
-        identifier: packageJson.name,
-        version: packageJson.version
-      }
-      : entry
+    entry?.registryType === "npm" ? { ...entry, identifier: packageJson.name, version: packageJson.version } : entry
   )
 }
 

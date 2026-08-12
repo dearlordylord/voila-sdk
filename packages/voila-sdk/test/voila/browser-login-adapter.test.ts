@@ -17,26 +17,15 @@ const secretFailurePayload = "secret-browser-failure"
 const secretEmailHint = "secret@example.test"
 
 const initialState = {
-  csrf: {
-    token: secretCsrfToken
-  },
+  csrf: { token: secretCsrfToken },
   data: {
     basket: {
       basketId: "basket-id",
       regionId: "region-id",
       totals: {
-        itemPriceAfterPromos: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        itemsRetailPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        savingsPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
+        itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+        itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+        savingsPrice: { amount: "0.00", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       }
     }
@@ -51,23 +40,19 @@ const initialState = {
   }
 }
 
-const browserCookies = [{
-  domain: "voila.ca",
-  httpOnly: true,
-  name: "voila-session",
-  path: "/",
-  secure: true,
-  value: secretCookieValue
-}, {
-  domain: "voila.ca",
-  expires: 1_893_456_000,
-  httpOnly: false,
-  name: "voila-preferences",
-  path: "/",
-  sameSite: "Lax",
-  secure: false,
-  value: "prefs"
-}]
+const browserCookies = [
+  { domain: "voila.ca", httpOnly: true, name: "voila-session", path: "/", secure: true, value: secretCookieValue },
+  {
+    domain: "voila.ca",
+    expires: 1_893_456_000,
+    httpOnly: false,
+    name: "voila-preferences",
+    path: "/",
+    sameSite: "Lax",
+    secure: false,
+    value: "prefs"
+  }
+]
 
 const makePage = (
   options: {
@@ -86,10 +71,7 @@ const makePage = (
     readonly waitResultProvided?: boolean
     readonly waitThrows?: boolean
   } = {}
-): {
-  readonly calls: ReadonlyArray<string>
-  readonly page: InteractiveBrowserLoginPage
-} => {
+): { readonly calls: ReadonlyArray<string>; readonly page: InteractiveBrowserLoginPage } => {
   const calls: Array<string> = []
 
   return {
@@ -116,9 +98,7 @@ const makePage = (
           throw new Error(secretFailurePayload)
         }
 
-        return options.accountAbsent === true ? undefined : options.accountPayload ?? {
-          emailHint: secretEmailHint
-        }
+        return options.accountAbsent === true ? undefined : (options.accountPayload ?? { emailHint: secretEmailHint })
       },
       readAuthenticated: async () => {
         calls.push("readAuthenticated")
@@ -173,19 +153,13 @@ const getSessionCookieHeader = (cookieJar: Parameters<typeof toughCookieJarPort.
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () =>
-    Either.left({
-      _tag: "CookieJarSerializationFailed",
-      message: secretFailurePayload
-    })
+  serialize: () => Either.left({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
 }
 
 describe("interactive browser login adapter", () => {
   it("opens an interactive page and captures an authenticated session", async () => {
     const fake = makePage()
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port, { timeoutMs: 120_000 })
 
@@ -211,24 +185,15 @@ describe("interactive browser login adapter", () => {
 
   it("returns a typed timeout and closes the browser page", async () => {
     const fake = makePage({
-      waitResult: Either.left({
-        _tag: "BrowserLoginTimedOut",
-        message: secretFailurePayload
-      }),
+      waitResult: Either.left({ _tag: "BrowserLoginTimedOut", message: secretFailurePayload }),
       waitResultProvided: true
     })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.calls).toEqual([
-      "open:https://voila.ca/",
-      "waitForLoginCompletion",
-      "close"
-    ])
+    expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("BrowserLoginTimedOut")
@@ -238,24 +203,15 @@ describe("interactive browser login adapter", () => {
 
   it("returns a typed cancellation and closes the browser page", async () => {
     const fake = makePage({
-      waitResult: Either.left({
-        _tag: "BrowserLoginUserCancelled",
-        message: secretFailurePayload
-      }),
+      waitResult: Either.left({ _tag: "BrowserLoginUserCancelled", message: secretFailurePayload }),
       waitResultProvided: true
     })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.calls).toEqual([
-      "open:https://voila.ca/",
-      "waitForLoginCompletion",
-      "close"
-    ])
+    expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("BrowserLoginUserCancelled")
@@ -264,12 +220,8 @@ describe("interactive browser login adapter", () => {
   })
 
   it("captures an authenticated session without optional account details", async () => {
-    const fake = makePage({
-      accountAbsent: true
-    })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const fake = makePage({ accountAbsent: true })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -281,16 +233,8 @@ describe("interactive browser login adapter", () => {
   })
 
   it("redacts malformed browser captures into typed adapter failures", async () => {
-    const fake = makePage({
-      initialStatePayload: {
-        csrf: {
-          token: secretCsrfToken
-        }
-      }
-    })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const fake = makePage({ initialStatePayload: { csrf: { token: secretCsrfToken } } })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -304,12 +248,8 @@ describe("interactive browser login adapter", () => {
   })
 
   it("returns not-authenticated when browser evidence is false", async () => {
-    const fake = makePage({
-      authenticatedPayload: false
-    })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const fake = makePage({ authenticatedPayload: false })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -323,22 +263,13 @@ describe("interactive browser login adapter", () => {
   it.each([undefined, null, secretFailurePayload])(
     "redacts malformed wait result %s into typed adapter failures",
     async (waitResult) => {
-      const fake = makePage({
-        waitResult,
-        waitResultProvided: true
-      })
-      const port = createInteractiveBrowserLoginPort({
-        openPage: async () => fake.page
-      })
+      const fake = makePage({ waitResult, waitResultProvided: true })
+      const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
       const result = await loginWithBrowser(port)
 
       expect(Either.isLeft(result)).toBe(true)
-      expect(fake.calls).toEqual([
-        "open:https://voila.ca/",
-        "waitForLoginCompletion",
-        "close"
-      ])
+      expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
 
       if (Either.isLeft(result)) {
         expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
@@ -349,15 +280,10 @@ describe("interactive browser login adapter", () => {
 
   it("redacts unknown wait failures into typed adapter failures", async () => {
     const fake = makePage({
-      waitResult: Either.left({
-        _tag: "UnexpectedWaitFailure",
-        message: secretFailurePayload
-      }),
+      waitResult: Either.left({ _tag: "UnexpectedWaitFailure", message: secretFailurePayload }),
       waitResultProvided: true
     })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -422,12 +348,8 @@ describe("interactive browser login adapter", () => {
       ]
     }
   ])("redacts thrown browser operation $option into typed adapter failures", async ({ expectedCalls, option }) => {
-    const fake = makePage({
-      [option]: true
-    })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const fake = makePage({ [option]: true })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -445,9 +367,7 @@ describe("interactive browser login adapter", () => {
     { cookiesPayload: [{ ...browserCookies[0], name: "bad;name" }], name: "invalid cookie name" }
   ])("redacts $name into typed adapter failures", async ({ cookiesPayload }) => {
     const fake = makePage({ cookiesPayload })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -463,45 +383,30 @@ describe("interactive browser login adapter", () => {
     {
       expectedCalls: ["open:https://voila.ca/", "waitForLoginCompletion", "close"],
       name: "thrown wait",
-      options: {
-        closeThrows: true,
-        waitThrows: true
-      }
+      options: { closeThrows: true, waitThrows: true }
     },
     {
       expectedCalls: ["open:https://voila.ca/", "waitForLoginCompletion", "close"],
       name: "malformed wait result",
-      options: {
-        closeThrows: true,
-        waitResult: undefined,
-        waitResultProvided: true
-      }
+      options: { closeThrows: true, waitResult: undefined, waitResultProvided: true }
     },
     {
       expectedCalls: ["open:https://voila.ca/", "waitForLoginCompletion", "close"],
       name: "wait left",
       options: {
         closeThrows: true,
-        waitResult: Either.left({
-          _tag: "BrowserLoginTimedOut",
-          message: secretFailurePayload
-        }),
+        waitResult: Either.left({ _tag: "BrowserLoginTimedOut", message: secretFailurePayload }),
         waitResultProvided: true
       }
     },
     {
       expectedCalls: ["open:https://voila.ca/", "waitForLoginCompletion", "readInitialState", "close"],
       name: "thrown read",
-      options: {
-        closeThrows: true,
-        readInitialStateThrows: true
-      }
+      options: { closeThrows: true, readInitialStateThrows: true }
     }
   ])("redacts close failure after $name into typed adapter failures", async ({ expectedCalls, options }) => {
     const fake = makePage(options)
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -518,13 +423,8 @@ describe("interactive browser login adapter", () => {
     { accountPayload: { emailHint: 1 }, name: "malformed account" },
     { authenticatedPayload: secretFailurePayload, name: "malformed authentication evidence" }
   ])("redacts $name into typed adapter failures", async ({ accountPayload, authenticatedPayload }) => {
-    const fake = makePage({
-      accountPayload,
-      authenticatedPayload
-    })
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    })
+    const fake = makePage({ accountPayload, authenticatedPayload })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
     const result = await loginWithBrowser(port)
 
@@ -538,9 +438,7 @@ describe("interactive browser login adapter", () => {
 
   it("redacts cookie jar persistence failures into typed adapter failures", async () => {
     const fake = makePage()
-    const port = createInteractiveBrowserLoginPort({
-      openPage: async () => fake.page
-    }, failingSerializeCookieJarPort)
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page }, failingSerializeCookieJarPort)
 
     const result = await loginWithBrowser(port)
 

@@ -11,28 +11,15 @@ const successStatus = 0
 const failureStatus = 1
 
 type LiveSmokeFailure =
-  | {
-    readonly _tag: "LiveSmokeBootstrapFailed"
-    readonly causeTag: string
-  }
-  | {
-    readonly _tag: "LiveSmokeSearchFailed"
-    readonly causeTag: string
-  }
-  | {
-    readonly _tag: "LiveSmokeNoProducts"
-  }
+  | { readonly _tag: "LiveSmokeBootstrapFailed"; readonly causeTag: string }
+  | { readonly _tag: "LiveSmokeSearchFailed"; readonly causeTag: string }
+  | { readonly _tag: "LiveSmokeNoProducts" }
 
 const responseHeadersFromFetch = (headers: Headers): ResponseHeaders => {
   const setCookie = headers.getSetCookie()
   const headerEntries = Object.fromEntries(headers.entries())
 
-  return setCookie.length === 0
-    ? headerEntries
-    : {
-      ...headerEntries,
-      "set-cookie": setCookie
-    }
+  return setCookie.length === 0 ? headerEntries : { ...headerEntries, "set-cookie": setCookie }
 }
 
 const fetchTransport: VoilaTransport = {
@@ -42,21 +29,14 @@ const fetchTransport: VoilaTransport = {
       method: request.method,
       redirect: "manual"
     } satisfies RequestInit
-    const requestInit = request.body === undefined
-      ? requestInitBase
-      : {
-        ...requestInitBase,
-        body: request.body
-      }
+    const requestInit = request.body === undefined ? requestInitBase : { ...requestInitBase, body: request.body }
     const response = await fetch(request.url, requestInit)
 
-    return Either.right(
-      {
-        body: await response.text(),
-        headers: responseHeadersFromFetch(response.headers),
-        status: response.status
-      } satisfies VoilaTransportResponse
-    )
+    return Either.right({
+      body: await response.text(),
+      headers: responseHeadersFromFetch(response.headers),
+      status: response.status
+    } satisfies VoilaTransportResponse)
   }
 }
 
@@ -66,28 +46,17 @@ const runSmoke = async (): Promise<Either.Either<number, LiveSmokeFailure>> => {
   const bootstrap = await bootstrapGuestSession(fetchTransport)
 
   if (Either.isLeft(bootstrap)) {
-    return Either.left({
-      _tag: "LiveSmokeBootstrapFailed",
-      causeTag: toCauseTag(bootstrap.left)
-    })
+    return Either.left({ _tag: "LiveSmokeBootstrapFailed", causeTag: toCauseTag(bootstrap.left) })
   }
 
-  const search = await searchProducts(bootstrap.right.session, {
-    pageSize,
-    query: harmlessQuery
-  }, fetchTransport)
+  const search = await searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }, fetchTransport)
 
   if (Either.isLeft(search)) {
-    return Either.left({
-      _tag: "LiveSmokeSearchFailed",
-      causeTag: toCauseTag(search.left)
-    })
+    return Either.left({ _tag: "LiveSmokeSearchFailed", causeTag: toCauseTag(search.left) })
   }
 
   if (search.right.value.products.length === 0) {
-    return Either.left({
-      _tag: "LiveSmokeNoProducts"
-    })
+    return Either.left({ _tag: "LiveSmokeNoProducts" })
   }
 
   return Either.right(search.right.value.products.length)

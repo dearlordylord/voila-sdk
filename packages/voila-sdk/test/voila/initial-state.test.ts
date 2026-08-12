@@ -8,34 +8,23 @@ import { extractInitialState } from "../../src/voila/initial-state.js"
 const fixtureHtml = readFileSync(new URL("../fixtures/voila-homepage.html", import.meta.url), "utf8")
 
 const stateWithEscapedStringContent = {
-  csrf: {
-    token: "sanitized-csrf-token"
-  },
+  csrf: { token: "sanitized-csrf-token" },
   data: {
     basket: {
       basketId: "sanitized-basket-id",
       itemGroups: [],
       regionId: "sanitized-region-id",
       totals: {
-        itemPriceAfterPromos: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        itemsRetailPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        savingsPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
+        itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+        itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+        savingsPrice: { amount: "0.00", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       }
     }
   },
   session: {
     metadata: {
-      assetVersion: "asset with \"quote\" and \\ path plus { nested } markers",
+      assetVersion: 'asset with "quote" and \\ path plus { nested } markers',
       clientRouteId: "sanitized-client-route-id",
       pageViewId: "sanitized-page-view-id",
       regionId: "sanitized-region-id"
@@ -43,14 +32,12 @@ const stateWithEscapedStringContent = {
   }
 }
 
-const fixtureWithEscapedStringContent = `<script>window.__INITIAL_STATE__ = ${
-  JSON.stringify(stateWithEscapedStringContent)
-};</script>`
+const fixtureWithEscapedStringContent = `<script>window.__INITIAL_STATE__ = ${JSON.stringify(
+  stateWithEscapedStringContent
+)};</script>`
 const stateWithEscapedStringContentJson = JSON.stringify(stateWithEscapedStringContent)
-const markerOutsideScriptHtml =
-  `<html><body><main>window.__INITIAL_STATE__ = ${stateWithEscapedStringContentJson}</main></body></html>`
-const incompleteScriptHtml =
-  `<html><body><script>window.__INITIAL_STATE__ = ${stateWithEscapedStringContentJson}</body></html>`
+const markerOutsideScriptHtml = `<html><body><main>window.__INITIAL_STATE__ = ${stateWithEscapedStringContentJson}</main></body></html>`
+const incompleteScriptHtml = `<html><body><script>window.__INITIAL_STATE__ = ${stateWithEscapedStringContentJson}</body></html>`
 
 const expectLeftTag = (html: string, tag: string): void => {
   const result = extractInitialState(html)
@@ -81,9 +68,7 @@ describe("extractInitialState", () => {
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right.session.metadata.assetVersion).toBe(
-        "asset with \"quote\" and \\ path plus { nested } markers"
-      )
+      expect(result.right.session.metadata.assetVersion).toBe('asset with "quote" and \\ path plus { nested } markers')
     }
   })
 
@@ -124,17 +109,14 @@ describe("extractInitialState", () => {
   })
 
   it("returns a typed error when the initial state object is unterminated", () => {
-    expectLeftTag("<script>window.__INITIAL_STATE__ = {\"csrf\":{\"token\":\"ok\"}</script>", "InitialStateJsonMissing")
+    expectLeftTag('<script>window.__INITIAL_STATE__ = {"csrf":{"token":"ok"}</script>', "InitialStateJsonMissing")
   })
 
   it("returns a typed error when the initial state JSON is malformed", () => {
-    expectLeftTag("<script>window.__INITIAL_STATE__ = {\"csrf\": }</script>", "InitialStateJsonMalformed")
+    expectLeftTag('<script>window.__INITIAL_STATE__ = {"csrf": }</script>', "InitialStateJsonMalformed")
   })
 
   it("returns a typed error when the initial state schema does not match", () => {
-    expectLeftTag(
-      "<script>window.__INITIAL_STATE__ = {\"csrf\":{\"token\":\"ok\"}}</script>",
-      "InitialStateSchemaMismatch"
-    )
+    expectLeftTag('<script>window.__INITIAL_STATE__ = {"csrf":{"token":"ok"}}</script>', "InitialStateSchemaMismatch")
   })
 })

@@ -46,10 +46,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -63,9 +62,7 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => Either.left(failure)
-})
+const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
 
 const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
   request: async () => {
@@ -75,9 +72,7 @@ const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
 
 const makeMutationResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
-  headers: {
-    "set-cookie": "fresh-mutation-cookie=after; Path=/; Secure"
-  },
+  headers: { "set-cookie": "fresh-mutation-cookie=after; Path=/; Secure" },
   status
 })
 
@@ -104,10 +99,11 @@ const makeDelta = (productId: string, quantity: number) => {
 describe("applyCartDeltas", () => {
   it("applies batch cart deltas through the active session", async () => {
     const fake = makeResponseTransport(makeMutationResponse())
-    const result = await applyCartDeltas(makeSession(), [
-      makeDelta(productUuid, 2),
-      makeDelta(secondProductUuid, -1)
-    ], fake.transport)
+    const result = await applyCartDeltas(
+      makeSession(),
+      [makeDelta(productUuid, 2), makeDelta(secondProductUuid, -1)],
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -118,7 +114,7 @@ describe("applyCartDeltas", () => {
       expect(request?.url.pathname).toBe("/api/cart/v1/carts/active/apply-quantity")
       expect(request?.url.searchParams.get("cartProductSorting")).toBe("CATEGORIES")
       expect(request?.body).toBe(
-        `[{\"productId\":\"${productUuid}\",\"quantity\":2},{\"productId\":\"${secondProductUuid}\",\"quantity\":-1}]`
+        `[{"productId":"${productUuid}","quantity":2},{"productId":"${secondProductUuid}","quantity":-1}]`
       )
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
@@ -132,10 +128,7 @@ describe("applyCartDeltas", () => {
 
   it("propagates invalid mutation input before network I/O", async () => {
     const fake = makeResponseTransport(makeMutationResponse())
-    const invalidDelta = {
-      productId: "243255EA",
-      quantity: 1
-    }
+    const invalidDelta = { productId: "243255EA", quantity: 1 }
     const result = await applyCartDeltas(makeSession(), [invalidDelta], fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
@@ -210,13 +203,17 @@ describe("applyCartDeltas", () => {
     const result = await applyCartDeltas(
       makeSession(),
       [makeDelta(productUuid, 1)],
-      makeResponseTransport(makeMutationResponse(JSON.stringify({
-        basketUpdateResult: {},
-        limitedItems: [],
-        limitedPromotionIds: [],
-        pricingNotifications: [],
-        unavailableData: []
-      }))).transport
+      makeResponseTransport(
+        makeMutationResponse(
+          JSON.stringify({
+            basketUpdateResult: {},
+            limitedItems: [],
+            limitedPromotionIds: [],
+            pricingNotifications: [],
+            unavailableData: []
+          })
+        )
+      ).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -244,13 +241,14 @@ describe("applyCartDeltas", () => {
 describe("cart item convenience operations", () => {
   it("adds cart items with positive deltas through observable request behavior", async () => {
     const fake = makeResponseTransport(makeMutationResponse())
-    const result = await addCartItems(makeSession(), [{
-      productId: productUuid,
-      quantity: -2
-    }, {
-      productId: secondProductUuid,
-      quantity: 1
-    }], fake.transport)
+    const result = await addCartItems(
+      makeSession(),
+      [
+        { productId: productUuid, quantity: -2 },
+        { productId: secondProductUuid, quantity: 1 }
+      ],
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -258,7 +256,7 @@ describe("cart item convenience operations", () => {
       const [request] = fake.requests()
 
       expect(request?.body).toBe(
-        `[{\"productId\":\"${productUuid}\",\"quantity\":2},{\"productId\":\"${secondProductUuid}\",\"quantity\":1}]`
+        `[{"productId":"${productUuid}","quantity":2},{"productId":"${secondProductUuid}","quantity":1}]`
       )
       expect(result.right.value.itemCount).toBe(2)
       expect(result.right.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
@@ -267,13 +265,14 @@ describe("cart item convenience operations", () => {
 
   it("removes cart items with negative deltas through observable request behavior", async () => {
     const fake = makeResponseTransport(makeMutationResponse())
-    const result = await removeCartItems(makeSession(), [{
-      productId: productUuid,
-      quantity: -2
-    }, {
-      productId: secondProductUuid,
-      quantity: 1
-    }], fake.transport)
+    const result = await removeCartItems(
+      makeSession(),
+      [
+        { productId: productUuid, quantity: -2 },
+        { productId: secondProductUuid, quantity: 1 }
+      ],
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -281,7 +280,7 @@ describe("cart item convenience operations", () => {
       const [request] = fake.requests()
 
       expect(request?.body).toBe(
-        `[{\"productId\":\"${productUuid}\",\"quantity\":-2},{\"productId\":\"${secondProductUuid}\",\"quantity\":-1}]`
+        `[{"productId":"${productUuid}","quantity":-2},{"productId":"${secondProductUuid}","quantity":-1}]`
       )
       expect(result.right.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
     }
@@ -289,14 +288,8 @@ describe("cart item convenience operations", () => {
 
   it("rejects invalid convenience item inputs before network I/O", async () => {
     const fake = makeResponseTransport(makeMutationResponse())
-    const addResult = await addCartItems(makeSession(), [{
-      productId: "243255EA",
-      quantity: 1
-    }], fake.transport)
-    const removeResult = await removeCartItems(makeSession(), [{
-      productId: productUuid,
-      quantity: 0
-    }], fake.transport)
+    const addResult = await addCartItems(makeSession(), [{ productId: "243255EA", quantity: 1 }], fake.transport)
+    const removeResult = await removeCartItems(makeSession(), [{ productId: productUuid, quantity: 0 }], fake.transport)
 
     expect(Either.isLeft(addResult)).toBe(true)
     expect(Either.isLeft(removeResult)).toBe(true)

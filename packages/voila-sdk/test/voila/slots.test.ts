@@ -30,8 +30,8 @@ const reservationFixtureText = readFileSync(
   "utf8"
 )
 const csrfToken = "csrf-token"
-const serviceDownBody = "{\"message\":\"sanitized service unavailable\"}"
-const reservationRejectedBody = "{\"message\":\"sanitized slot no longer available\"}"
+const serviceDownBody = '{"message":"sanitized service unavailable"}'
+const reservationRejectedBody = '{"message":"sanitized slot no longer available"}'
 
 const sampleMetadata = {
   assetVersion: "asset-version",
@@ -69,21 +69,11 @@ const makeSession = (): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponse = (
-  body: string,
-  status: number = 200
-): VoilaTransportResponse => ({
-  body,
-  headers: {},
-  status
-})
+const makeResponse = (body: string, status: number = 200): VoilaTransportResponse => ({ body, headers: {}, status })
 
 const makeResponseTransport = (
   response: VoilaTransportResponse
-): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -127,27 +117,15 @@ describe("slot listing parsing", () => {
       expect(result.right.carriers[0]).toEqual({
         carrierId: "sanitized-carrier-id",
         carrierName: "Voila delivery",
-        days: [{
-          day: "2026-07-01",
-          slotIds: [
-            "sanitized-slot-id"
-          ],
-          slotListingId: "sanitized-slot-listing-id"
-        }],
+        days: [{ day: "2026-07-01", slotIds: ["sanitized-slot-id"], slotListingId: "sanitized-slot-listing-id" }],
         title: "Home delivery"
       })
       expect(result.right.slots[0]).toEqual({
-        attributes: [
-          "AVAILABLE",
-          "STANDARD"
-        ],
+        attributes: ["AVAILABLE", "STANDARD"],
         available: true,
         carrierId: "sanitized-carrier-id",
         date: "2026-07-01",
-        deliveryPrice: {
-          amount: "3.99",
-          currency: "CAD"
-        },
+        deliveryPrice: { amount: "3.99", currency: "CAD" },
         endTime: "2026-07-01T10:00:00-04:00",
         slotId: "sanitized-slot-id",
         slotListingId: "sanitized-slot-listing-id",
@@ -172,53 +150,26 @@ describe("slot listing parsing", () => {
   })
 
   it("normalizes minimal slot listings without optional carrier or slot fields", () => {
-    const result = parseSlotListingResponse({
-      carriers: [{
-        gridSlots: [{
-          day: "2026-07-03",
-          slots: [{}]
-        }]
-      }]
-    })
+    const result = parseSlotListingResponse({ carriers: [{ gridSlots: [{ day: "2026-07-03", slots: [{}] }] }] })
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
       expect(result.right).toEqual({
         availableSlotCount: 0,
-        carriers: [{
-          days: []
-        }],
-        slots: [{
-          attributes: [],
-          available: false,
-          date: "2026-07-03"
-        }]
+        carriers: [{ days: [] }],
+        slots: [{ attributes: [], available: false, date: "2026-07-03" }]
       })
     }
   })
 
   it("normalizes carriers that expose days before slot grids are available", () => {
-    const result = parseSlotListingResponse({
-      carriers: [{
-        daysMapping: [{
-          day: "2026-07-04"
-        }]
-      }]
-    })
+    const result = parseSlotListingResponse({ carriers: [{ daysMapping: [{ day: "2026-07-04" }] }] })
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right).toEqual({
-        availableSlotCount: 0,
-        carriers: [{
-          days: [{
-            day: "2026-07-04"
-          }]
-        }],
-        slots: []
-      })
+      expect(result.right).toEqual({ availableSlotCount: 0, carriers: [{ days: [{ day: "2026-07-04" }] }], slots: [] })
     }
   })
 
@@ -234,9 +185,7 @@ describe("slot listing parsing", () => {
   })
 
   it("fails at the schema boundary with redacted errors when carriers are missing", () => {
-    const result = parseSlotListingResponse({
-      message: "sanitized service down"
-    })
+    const result = parseSlotListingResponse({ message: "sanitized service down" })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -263,14 +212,8 @@ describe("slot reservation guardrails", () => {
           totalChanged: false
         },
         expiryTime: "2026-07-01T07:45:00-04:00",
-        minimumCheckoutThreshold: {
-          amount: "50.00",
-          currency: "CAD"
-        },
-        originalMinimumCheckoutThreshold: {
-          amount: "50.00",
-          currency: "CAD"
-        },
+        minimumCheckoutThreshold: { amount: "50.00", currency: "CAD" },
+        originalMinimumCheckoutThreshold: { amount: "50.00", currency: "CAD" },
         reserved: true,
         slotId: "sanitized-slot-id",
         timeZoneId: "America/Toronto"
@@ -282,16 +225,12 @@ describe("slot reservation guardrails", () => {
   })
 
   it("normalizes minimal reservation responses without optional slot details", () => {
-    const result = parseSlotReservationResponse({
-      slot: {}
-    })
+    const result = parseSlotReservationResponse({ slot: {} })
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right).toEqual({
-        reserved: true
-      })
+      expect(result.right).toEqual({ reserved: true })
     }
   })
 
@@ -301,9 +240,7 @@ describe("slot reservation guardrails", () => {
         allowReservationOverwrite: true,
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
-        externalAddress: {
-          id: "sanitized-external-address-id"
-        },
+        externalAddress: { id: "sanitized-external-address-id" },
         regionId: "sanitized-region-id",
         slot: {
           attributes: ["AVAILABLE"],
@@ -322,9 +259,7 @@ describe("slot reservation guardrails", () => {
         allowReservationOverwrite: true,
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
-        externalAddress: {
-          id: "sanitized-external-address-id"
-        },
+        externalAddress: { id: "sanitized-external-address-id" },
         regionId: "sanitized-region-id",
         slotId: "sanitized-slot-id"
       })
@@ -338,11 +273,7 @@ describe("slot reservation guardrails", () => {
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
-        slot: {
-          attributes: ["AVAILABLE"],
-          available: true,
-          slotId: "sanitized-slot-id"
-        }
+        slot: { attributes: ["AVAILABLE"], available: true, slotId: "sanitized-slot-id" }
       },
       new Date("2026-07-01T09:00:00-04:00")
     )
@@ -360,11 +291,7 @@ describe("slot reservation guardrails", () => {
         allowReservationOverwrite: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
-        slot: {
-          attributes: ["AVAILABLE"],
-          available: true,
-          slotId: "sanitized-slot-id"
-        }
+        slot: { attributes: ["AVAILABLE"], available: true, slotId: "sanitized-slot-id" }
       },
       new Date("2026-07-01T09:00:00-04:00")
     )
@@ -383,11 +310,7 @@ describe("slot reservation guardrails", () => {
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
-        slot: {
-          attributes: ["FULL"],
-          available: false,
-          slotId: "sanitized-slot-id"
-        }
+        slot: { attributes: ["FULL"], available: false, slotId: "sanitized-slot-id" }
       },
       new Date("2026-07-01T09:00:00-04:00")
     )
@@ -406,10 +329,7 @@ describe("slot reservation guardrails", () => {
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
-        slot: {
-          attributes: ["AVAILABLE"],
-          available: true
-        }
+        slot: { attributes: ["AVAILABLE"], available: true }
       },
       new Date("2026-07-01T09:00:00-04:00")
     )
@@ -452,12 +372,7 @@ describe("slot reservation guardrails", () => {
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
-        slot: {
-          attributes: ["AVAILABLE"],
-          available: true,
-          endTime: "not-a-date",
-          slotId: "sanitized-slot-id"
-        }
+        slot: { attributes: ["AVAILABLE"], available: true, endTime: "not-a-date", slotId: "sanitized-slot-id" }
       },
       new Date("2026-07-01T09:00:00-04:00")
     )
@@ -470,9 +385,7 @@ describe("slot reservation guardrails", () => {
   })
 
   it("rejects malformed reservation responses with redacted schema errors", () => {
-    const result = parseSlotReservationResponse({
-      message: "sanitized reservation response shape changed"
-    })
+    const result = parseSlotReservationResponse({ message: "sanitized reservation response shape changed" })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -515,14 +428,7 @@ describe("getSlotListings", () => {
 
   it("rejects invalid slot listing input before network I/O", async () => {
     const fake = makeResponseTransport(makeResponse(availableFixtureText))
-    const result = await getSlotListings(
-      makeSession(),
-      {
-        ...slotListingInput,
-        numberOfDays: 0
-      },
-      fake.transport
-    )
+    const result = await getSlotListings(makeSession(), { ...slotListingInput, numberOfDays: 0 }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)

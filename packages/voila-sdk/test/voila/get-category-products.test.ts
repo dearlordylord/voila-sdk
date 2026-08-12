@@ -40,10 +40,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -57,9 +56,7 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => Either.left(failure)
-})
+const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
 
 const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
   request: async () => {
@@ -69,9 +66,7 @@ const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
 
 const makeCategoryResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
-  headers: {
-    "set-cookie": "fresh-category-cookie=after; Path=/; Secure"
-  },
+  headers: { "set-cookie": "fresh-category-cookie=after; Path=/; Secure" },
   status
 })
 
@@ -88,15 +83,16 @@ const getSessionCookies = (session: SessionSnapshot): string => {
 describe("getCategoryProducts", () => {
   it("gets category products through the active session using retailer category ID", async () => {
     const fake = makeResponseTransport(makeCategoryResponse())
-    const result = await getCategoryProducts(makeSession(), {
-      filters: [{
-        id: "brand",
-        value: "fresh-farms"
-      }],
-      pageSize: 24,
-      pageToken: "next-page-token",
-      retailerCategoryId: "retailer-category-produce"
-    }, fake.transport)
+    const result = await getCategoryProducts(
+      makeSession(),
+      {
+        filters: [{ id: "brand", value: "fresh-farms" }],
+        pageSize: 24,
+        pageToken: "next-page-token",
+        retailerCategoryId: "retailer-category-produce"
+      },
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -123,10 +119,11 @@ describe("getCategoryProducts", () => {
 
   it("gets category products through the active session using category ID", async () => {
     const fake = makeResponseTransport(makeCategoryResponse())
-    const result = await getCategoryProducts(makeSession(), {
-      categoryId: "sanitized-category-produce",
-      pageSize: 12
-    }, fake.transport)
+    const result = await getCategoryProducts(
+      makeSession(),
+      { categoryId: "sanitized-category-produce", pageSize: 12 },
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -140,9 +137,7 @@ describe("getCategoryProducts", () => {
 
   it("propagates invalid category input as a typed recoverable error", async () => {
     const fake = makeResponseTransport(makeCategoryResponse())
-    const result = await getCategoryProducts(makeSession(), {
-      pageSize: 0
-    }, fake.transport)
+    const result = await getCategoryProducts(makeSession(), { pageSize: 0 }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)
@@ -153,10 +148,11 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates HTTP client errors as typed recoverable errors", async () => {
-    const result = await getCategoryProducts(makeSession(" "), {
-      pageSize: 24,
-      retailerCategoryId: "retailer-category-produce"
-    }, makeResponseTransport(makeCategoryResponse()).transport)
+    const result = await getCategoryProducts(
+      makeSession(" "),
+      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
+      makeResponseTransport(makeCategoryResponse()).transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -166,10 +162,11 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates transport left failures as redacted typed recoverable errors", async () => {
-    const result = await getCategoryProducts(makeSession(), {
-      pageSize: 24,
-      retailerCategoryId: "retailer-category-produce"
-    }, makeLeftTransport("secret-network-token"))
+    const result = await getCategoryProducts(
+      makeSession(),
+      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
+      makeLeftTransport("secret-network-token")
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -180,10 +177,11 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates thrown transport failures as redacted typed recoverable errors", async () => {
-    const result = await getCategoryProducts(makeSession(), {
-      pageSize: 24,
-      retailerCategoryId: "retailer-category-produce"
-    }, makeThrowingTransport(new Error("secret-thrown-token")))
+    const result = await getCategoryProducts(
+      makeSession(),
+      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
+      makeThrowingTransport(new Error("secret-thrown-token"))
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -194,23 +192,20 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
-    const fake = makeResponseTransport(makeCategoryResponse(JSON.stringify({
-      category: {
-        categoryId: "category-id",
-        retailerCategoryId: "retailer-category-id"
-      },
-      productGroups: [{
-        products: [{
-          available: true
-        }],
-        type: "standard"
-      }]
-    })))
+    const fake = makeResponseTransport(
+      makeCategoryResponse(
+        JSON.stringify({
+          category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
+          productGroups: [{ products: [{ available: true }], type: "standard" }]
+        })
+      )
+    )
 
-    const result = await getCategoryProducts(makeSession(), {
-      pageSize: 24,
-      retailerCategoryId: "retailer-category-produce"
-    }, fake.transport)
+    const result = await getCategoryProducts(
+      makeSession(),
+      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
+      fake.transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -220,10 +215,11 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
-    const result = await getCategoryProducts(makeSession(), {
-      pageSize: 24,
-      retailerCategoryId: "retailer-category-produce"
-    }, makeResponseTransport(makeCategoryResponse("{}", 500)).transport)
+    const result = await getCategoryProducts(
+      makeSession(),
+      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
+      makeResponseTransport(makeCategoryResponse("{}", 500)).transport
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 

@@ -1,9 +1,6 @@
 import { Schema } from "effect"
 
-export const MoneySchema = Schema.Struct({
-  amount: Schema.String,
-  currency: Schema.String
-})
+export const MoneySchema = Schema.Struct({ amount: Schema.String, currency: Schema.String })
 
 export type Money = Schema.Schema.Type<typeof MoneySchema>
 

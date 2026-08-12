@@ -20,38 +20,15 @@ const successStatus = 0
 const failureStatus = 1
 
 type AuthReadOnlySmokeFailure =
-  | {
-    readonly _tag: "AuthReadOnlySmokeOptInMissing"
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeSessionPathMissing"
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeSessionLoadFailed"
-    readonly causeTag: string
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeSessionNotAuthenticated"
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeSessionHealthFailed"
-    readonly causeTag: string
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeSessionNotActive"
-    readonly status: string
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeSearchFailed"
-    readonly causeTag: string
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeCartReadFailed"
-    readonly causeTag: string
-  }
-  | {
-    readonly _tag: "AuthReadOnlySmokeNoProducts"
-  }
+  | { readonly _tag: "AuthReadOnlySmokeOptInMissing" }
+  | { readonly _tag: "AuthReadOnlySmokeSessionPathMissing" }
+  | { readonly _tag: "AuthReadOnlySmokeSessionLoadFailed"; readonly causeTag: string }
+  | { readonly _tag: "AuthReadOnlySmokeSessionNotAuthenticated" }
+  | { readonly _tag: "AuthReadOnlySmokeSessionHealthFailed"; readonly causeTag: string }
+  | { readonly _tag: "AuthReadOnlySmokeSessionNotActive"; readonly status: string }
+  | { readonly _tag: "AuthReadOnlySmokeSearchFailed"; readonly causeTag: string }
+  | { readonly _tag: "AuthReadOnlySmokeCartReadFailed"; readonly causeTag: string }
+  | { readonly _tag: "AuthReadOnlySmokeNoProducts" }
 
 interface AuthReadOnlySmokeSuccess {
   readonly cartItemCount: number
@@ -62,12 +39,7 @@ const responseHeadersFromFetch = (headers: Headers): ResponseHeaders => {
   const setCookie = headers.getSetCookie()
   const headerEntries = Object.fromEntries(headers.entries())
 
-  return setCookie.length === 0
-    ? headerEntries
-    : {
-      ...headerEntries,
-      "set-cookie": setCookie
-    }
+  return setCookie.length === 0 ? headerEntries : { ...headerEntries, "set-cookie": setCookie }
 }
 
 const fetchTransport: VoilaTransport = {
@@ -77,21 +49,14 @@ const fetchTransport: VoilaTransport = {
       method: request.method,
       redirect: "manual"
     } satisfies RequestInit
-    const requestInit = request.body === undefined
-      ? requestInitBase
-      : {
-        ...requestInitBase,
-        body: request.body
-      }
+    const requestInit = request.body === undefined ? requestInitBase : { ...requestInitBase, body: request.body }
     const response = await fetch(request.url, requestInit)
 
-    return Either.right(
-      {
-        body: await response.text(),
-        headers: responseHeadersFromFetch(response.headers),
-        status: response.status
-      } satisfies VoilaTransportResponse
-    )
+    return Either.right({
+      body: await response.text(),
+      headers: responseHeadersFromFetch(response.headers),
+      status: response.status
+    } satisfies VoilaTransportResponse)
   }
 }
 
@@ -106,82 +71,53 @@ const makeFileSessionStorage = (path: string): SessionStoragePort => ({
 
 const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthReadOnlySmokeFailure>> => {
   if (process.env[authSmokeFlag] !== enabledValue) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeOptInMissing"
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeOptInMissing" })
   }
 
   const sessionPath = process.env[liveSessionPathVariable]
 
   if (sessionPath === undefined || sessionPath.trim().length === 0) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeSessionPathMissing"
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeSessionPathMissing" })
   }
 
   const snapshot = await loadSdkSessionSnapshot(makeFileSessionStorage(sessionPath))
 
   if (Either.isLeft(snapshot)) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeSessionLoadFailed",
-      causeTag: toCauseTag(snapshot.left)
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeSessionLoadFailed", causeTag: toCauseTag(snapshot.left) })
   }
 
   if (snapshot.right.kind !== "authenticated") {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeSessionNotAuthenticated"
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeSessionNotAuthenticated" })
   }
 
   const health = await checkSessionHealth(snapshot.right, fetchTransport)
 
   if (Either.isLeft(health)) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeSessionHealthFailed",
-      causeTag: toCauseTag(health.left)
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeSessionHealthFailed", causeTag: toCauseTag(health.left) })
   }
 
   if (health.right.status !== "active") {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeSessionNotActive",
-      status: health.right.status
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeSessionNotActive", status: health.right.status })
   }
 
   const session = health.right.session.session
-  const search = await searchProducts(session, {
-    pageSize,
-    query: harmlessQuery
-  }, fetchTransport)
+  const search = await searchProducts(session, { pageSize, query: harmlessQuery }, fetchTransport)
 
   if (Either.isLeft(search)) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeSearchFailed",
-      causeTag: toCauseTag(search.left)
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeSearchFailed", causeTag: toCauseTag(search.left) })
   }
 
   if (search.right.value.products.length === 0) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeNoProducts"
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeNoProducts" })
   }
 
   const cart = await getCart(search.right.session, fetchTransport)
 
   if (Either.isLeft(cart)) {
-    return Either.left({
-      _tag: "AuthReadOnlySmokeCartReadFailed",
-      causeTag: toCauseTag(cart.left)
-    })
+    return Either.left({ _tag: "AuthReadOnlySmokeCartReadFailed", causeTag: toCauseTag(cart.left) })
   }
 
-  return Either.right({
-    cartItemCount: cart.right.value.itemCount,
-    productCount: search.right.value.products.length
-  })
+  return Either.right({ cartItemCount: cart.right.value.itemCount, productCount: search.right.value.products.length })
 }
 
 const result = await runSmoke()
@@ -198,9 +134,9 @@ if (Either.isLeft(result) && result.left._tag === "AuthReadOnlySmokeSessionPathM
 
 if (Either.isRight(result)) {
   process.stdout.write(
-    `Authenticated read-only smoke passed with ${String(result.right.productCount)} products and ${
-      String(result.right.cartItemCount)
-    } cart items.\n`
+    `Authenticated read-only smoke passed with ${String(result.right.productCount)} products and ${String(
+      result.right.cartItemCount
+    )} cart items.\n`
   )
   process.exit(successStatus)
 }

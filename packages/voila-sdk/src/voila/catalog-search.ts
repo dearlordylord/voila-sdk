@@ -45,10 +45,7 @@ const searchResponseSchemaMismatch = (): SearchResponseNormalizationError => ({
 const normalizeGroupProducts = (
   group: ProductSearchResponse["productGroups"][number]
 ): ReadonlyArray<NormalizedSearchProduct> => {
-  const products = [
-    ...(group.decoratedProducts ?? []),
-    ...(group.products ?? [])
-  ]
+  const products = [...(group.decoratedProducts ?? []), ...(group.products ?? [])]
 
   return products.map((product) => ({
     ...product,
@@ -57,9 +54,7 @@ const normalizeGroupProducts = (
   }))
 }
 
-export const normalizeSearchResponse = (
-  response: ProductSearchResponse
-): NormalizedSearchResult => ({
+export const normalizeSearchResponse = (response: ProductSearchResponse): NormalizedSearchResult => ({
   pagination: {
     ...(response.nextPageToken === undefined ? {} : { nextPageToken: response.nextPageToken }),
     ...(response.totalProducts === undefined ? {} : { totalProducts: response.totalProducts })
@@ -89,8 +84,5 @@ export const searchProducts = async (
 
   const response = await requestVoilaJson(ProductSearchResponseSchema, session, request.right, transport, cookieJarPort)
 
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeSearchResponse(result.value)
-  }))
+  return Either.map(response, (result) => ({ session: result.session, value: normalizeSearchResponse(result.value) }))
 }

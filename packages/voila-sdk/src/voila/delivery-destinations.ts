@@ -40,9 +40,7 @@ const deliveryDestinationsResponseSchemaMismatch = (): DeliveryDestinationsRespo
   message: "Voila delivery destinations response does not match the SDK schema"
 })
 
-export const normalizeDeliveryDestination = (
-  destination: RawDeliveryDestination
-): DeliveryDestination => {
+export const normalizeDeliveryDestination = (destination: RawDeliveryDestination): DeliveryDestination => {
   const regionId = destination.resolvedRegionId ?? destination.regionId
 
   return {
@@ -62,9 +60,7 @@ export const normalizeDeliveryDestination = (
 
 export const normalizeDeliveryDestinationsResponse = (
   response: RawDeliveryDestinationsResponse
-): NormalizedDeliveryDestinations => ({
-  destinations: response.map(normalizeDeliveryDestination)
-})
+): NormalizedDeliveryDestinations => ({ destinations: response.map(normalizeDeliveryDestination) })
 
 export const parseDeliveryDestinationsResponse = (
   input: unknown
@@ -117,10 +113,7 @@ export const makeDeliveryDestinationsDiagnostic = (
 export const parseDeliveryDestinationsDiagnostic = (
   input: unknown
 ): Either.Either<DeliveryDestinationsDiagnostic, DeliveryDestinationsResponseNormalizationError> =>
-  Either.mapLeft(
-    parseUnknown(DeliveryDestinationsDiagnosticSchema, input),
-    deliveryDestinationsResponseSchemaMismatch
-  )
+  Either.mapLeft(parseUnknown(DeliveryDestinationsDiagnosticSchema, input), deliveryDestinationsResponseSchemaMismatch)
 
 export const getDeliveryDestinations = async (
   session: SessionSnapshot,

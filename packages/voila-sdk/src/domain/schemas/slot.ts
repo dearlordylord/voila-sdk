@@ -4,11 +4,7 @@ import { MoneySchema } from "./money.js"
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 const NonEmptyStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
-const PositiveIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.positive()
-)
+const PositiveIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.positive())
 
 export const SlotDisplayConfigurationSchema = Schema.Literal("CARRIER", "DELIVERY_METHOD")
 
@@ -30,10 +26,7 @@ export const SlotListingInputSchema = Schema.Struct({
 export type SlotListingInput = Schema.Schema.Type<typeof SlotListingInputSchema>
 
 export const SlotWindowSchema = Schema.asSchema(
-  Schema.Struct({
-    endTime: Schema.String,
-    startTime: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ endTime: Schema.String, startTime: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
 export type SlotWindow = Schema.Schema.Type<typeof SlotWindowSchema>
@@ -63,10 +56,9 @@ export const RawSlotSchema = Schema.asSchema(
 export type RawSlot = Schema.Schema.Type<typeof RawSlotSchema>
 
 export const RawSlotGridDaySchema = Schema.asSchema(
-  Schema.Struct({
-    day: Schema.String,
-    slots: Schema.Array(RawSlotSchema)
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ day: Schema.String, slots: Schema.Array(RawSlotSchema) }).pipe(
+    Schema.extend(UnknownStringRecordSchema)
+  )
 )
 
 export type RawSlotGridDay = Schema.Schema.Type<typeof RawSlotGridDaySchema>
@@ -99,11 +91,7 @@ export const RawSlotListingResponseSchema = Schema.asSchema(
   Schema.Struct({
     carriers: Schema.Array(RawSlotCarrierSchema),
     days: Schema.optionalWith(
-      Schema.Array(
-        Schema.Struct({
-          date: Schema.String
-        }).pipe(Schema.extend(UnknownStringRecordSchema))
-      ),
+      Schema.Array(Schema.Struct({ date: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))),
       { exact: true }
     )
   }).pipe(Schema.extend(UnknownStringRecordSchema))
@@ -190,9 +178,7 @@ export const SlotReservationConfirmationDataSchema = Schema.asSchema(
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
-export type SlotReservationConfirmationData = Schema.Schema.Type<
-  typeof SlotReservationConfirmationDataSchema
->
+export type SlotReservationConfirmationData = Schema.Schema.Type<typeof SlotReservationConfirmationDataSchema>
 
 export const RawSlotReservationResponseSchema = Schema.asSchema(
   Schema.Struct({

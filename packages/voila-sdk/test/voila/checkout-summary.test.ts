@@ -17,10 +17,7 @@ import {
 } from "../../src/index.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
-const blockedFixtureText = readFileSync(
-  new URL("../fixtures/checkout-summary-blocked.json", import.meta.url),
-  "utf8"
-)
+const blockedFixtureText = readFileSync(new URL("../fixtures/checkout-summary-blocked.json", import.meta.url), "utf8")
 const missingSlotFixtureText = readFileSync(
   new URL("../fixtures/checkout-summary-missing-slot.json", import.meta.url),
   "utf8"
@@ -29,12 +26,9 @@ const unavailableFixtureText = readFileSync(
   new URL("../fixtures/checkout-summary-unavailable-item.json", import.meta.url),
   "utf8"
 )
-const readyFixtureText = readFileSync(
-  new URL("../fixtures/checkout-summary-ready.json", import.meta.url),
-  "utf8"
-)
+const readyFixtureText = readFileSync(new URL("../fixtures/checkout-summary-ready.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
-const serviceDownBody = "{\"message\":\"sanitized checkout service unavailable\"}"
+const serviceDownBody = '{"message":"sanitized checkout service unavailable"}'
 
 const sampleMetadata = {
   assetVersion: "asset-version",
@@ -72,21 +66,11 @@ const makeSession = (): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponse = (
-  body: string,
-  status: number = 200
-): VoilaTransportResponse => ({
-  body,
-  headers: {},
-  status
-})
+const makeResponse = (body: string, status: number = 200): VoilaTransportResponse => ({ body, headers: {}, status })
 
 const makeResponseTransport = (
   response: VoilaTransportResponse
-): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -112,10 +96,7 @@ describe("checkout summary parsing", () => {
       expect(result.right.canCheckout).toBe(false)
       expect(result.right.basketAboveThreshold).toBe(false)
       expect(result.right.checkoutRestrictions[0]?.code).toBe("EMPTY_CART")
-      expect(result.right.minimumCheckoutThreshold).toEqual({
-        amount: "50.00",
-        currency: "CAD"
-      })
+      expect(result.right.minimumCheckoutThreshold).toEqual({ amount: "50.00", currency: "CAD" })
       expect(result.right.warnings.map((warning) => warning.kind)).toEqual(["checkout-restriction"])
     }
   })
@@ -129,10 +110,7 @@ describe("checkout summary parsing", () => {
       expect(result.right.canCheckout).toBe(false)
       expect(result.right.selectedSlot).toBeUndefined()
       expect(result.right.checkoutRestrictions[0]?.code).toBe("DELIVERY_SLOT_REQUIRED")
-      expect(result.right.fees.smallOrder).toEqual({
-        amount: "0.00",
-        currency: "CAD"
-      })
+      expect(result.right.fees.smallOrder).toEqual({ amount: "0.00", currency: "CAD" })
     }
   })
 
@@ -165,23 +143,11 @@ describe("checkout summary parsing", () => {
     if (Either.isRight(result)) {
       expect(result.right.canCheckout).toBe(true)
       expect(result.right.warnings).toEqual([])
-      expect(result.right.totals?.finalPrice).toEqual({
-        amount: "84.09",
-        currency: "CAD"
-      })
+      expect(result.right.totals?.finalPrice).toEqual({ amount: "84.09", currency: "CAD" })
       expect(result.right.fees).toEqual({
-        carrierBag: {
-          amount: "0.10",
-          currency: "CAD"
-        },
-        delivery: {
-          amount: "3.99",
-          currency: "CAD"
-        },
-        smallOrder: {
-          amount: "0.00",
-          currency: "CAD"
-        }
+        carrierBag: { amount: "0.10", currency: "CAD" },
+        delivery: { amount: "3.99", currency: "CAD" },
+        smallOrder: { amount: "0.00", currency: "CAD" }
       })
       expect(result.right.selectedSlot?.expiryTime).toBe("2026-07-01T07:45:00-04:00")
     }
@@ -199,9 +165,7 @@ describe("checkout summary parsing", () => {
   })
 
   it("defaults omitted optional summary arrays and flags", () => {
-    const result = normalizeCheckoutSummaryResponse({
-      checkout: {}
-    })
+    const result = normalizeCheckoutSummaryResponse({ checkout: {} })
 
     expect(result).toEqual({
       basketAboveThreshold: false,
@@ -219,41 +183,21 @@ describe("checkout summary parsing", () => {
   it("normalizes sparse selected slot data and invoice/preparation fees", () => {
     const result = normalizeCheckoutSummaryResponse({
       charges: {
-        invoice: {
-          finalPrice: {
-            amount: "1.00",
-            currency: "CAD"
-          }
-        },
-        preparation: {
-          price: {
-            amount: "2.00",
-            currency: "CAD"
-          }
-        }
+        invoice: { finalPrice: { amount: "1.00", currency: "CAD" } },
+        preparation: { price: { amount: "2.00", currency: "CAD" } }
       },
-      checkout: {
-        delivery: {}
-      }
+      checkout: { delivery: {} }
     })
 
     expect(result.fees).toEqual({
-      invoice: {
-        amount: "1.00",
-        currency: "CAD"
-      },
-      preparation: {
-        amount: "2.00",
-        currency: "CAD"
-      }
+      invoice: { amount: "1.00", currency: "CAD" },
+      preparation: { amount: "2.00", currency: "CAD" }
     })
     expect(result.selectedSlot).toEqual({})
   })
 
   it("fails at the schema boundary without leaking checkout response bodies", () => {
-    const result = parseCheckoutSummaryResponse({
-      formattedAddress: "123 Secret Street"
-    })
+    const result = parseCheckoutSummaryResponse({ formattedAddress: "123 Secret Street" })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -269,10 +213,7 @@ describe("getCheckoutSummary", () => {
     const fake = makeResponseTransport(makeResponse(readyFixtureText))
     const result = await getCheckoutSummary(
       makeSession(),
-      {
-        appliedPaymentCheckId: "sanitized-payment-check-id",
-        fetchAllocatedPaymentChecks: true
-      },
+      { appliedPaymentCheckId: "sanitized-payment-check-id", fetchAllocatedPaymentChecks: true },
       fake.transport
     )
 
@@ -294,13 +235,7 @@ describe("getCheckoutSummary", () => {
 
   it("rejects invalid checkout summary input before network I/O", async () => {
     const fake = makeResponseTransport(makeResponse(readyFixtureText))
-    const result = await getCheckoutSummary(
-      makeSession(),
-      {
-        appliedPaymentCheckId: ""
-      },
-      fake.transport
-    )
+    const result = await getCheckoutSummary(makeSession(), { appliedPaymentCheckId: "" }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)

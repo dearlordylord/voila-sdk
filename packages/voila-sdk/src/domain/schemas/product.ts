@@ -2,11 +2,7 @@ import { Schema } from "effect"
 
 import { MoneySchema, UnitPriceSchema } from "./money.js"
 
-const NonNegativeIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.nonNegative()
-)
+const NonNegativeIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative())
 
 export const ProductImageSchema = Schema.Struct({
   description: Schema.optionalWith(Schema.String, { exact: true }),

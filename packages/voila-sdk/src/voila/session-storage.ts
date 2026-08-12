@@ -9,22 +9,10 @@ export interface SessionStoragePort {
 }
 
 export type SessionStorageError =
-  | {
-    readonly _tag: "SessionStorageSnapshotInvalid"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SessionStorageWriteFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SessionStorageReadFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SessionStorageContentsInvalid"
-    readonly message: string
-  }
+  | { readonly _tag: "SessionStorageSnapshotInvalid"; readonly message: string }
+  | { readonly _tag: "SessionStorageWriteFailure"; readonly message: string }
+  | { readonly _tag: "SessionStorageReadFailure"; readonly message: string }
+  | { readonly _tag: "SessionStorageContentsInvalid"; readonly message: string }
 
 const sessionStorageSnapshotInvalid = (): SessionStorageError => ({
   _tag: "SessionStorageSnapshotInvalid",
@@ -50,10 +38,7 @@ export const saveSdkSessionSnapshot = async (
   storage: SessionStoragePort,
   snapshot: unknown
 ): Promise<Either.Either<undefined, SessionStorageError>> => {
-  const decoded = Either.mapLeft(
-    parseUnknown(SdkSessionSnapshotSchema, snapshot),
-    sessionStorageSnapshotInvalid
-  )
+  const decoded = Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, snapshot), sessionStorageSnapshotInvalid)
 
   if (Either.isLeft(decoded)) {
     return Either.left(decoded.left)
@@ -98,8 +83,5 @@ export const loadSdkSessionSnapshot = async (
     return Either.left(parsed.left)
   }
 
-  return Either.mapLeft(
-    parseUnknown(SdkSessionSnapshotSchema, parsed.right),
-    sessionStorageContentsInvalid
-  )
+  return Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, parsed.right), sessionStorageContentsInvalid)
 }

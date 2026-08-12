@@ -60,9 +60,10 @@ const parseOptionalAccountSummary = (
     : Either.mapLeft(parseUnknown(AuthAccountSummarySchema, input), adapterFailure)
 
 const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
-  const expires = cookie.expires === undefined || cookie.expires === sessionCookieExpires
-    ? []
-    : [`Expires=${new Date(cookie.expires * millisecondsPerSecond).toUTCString()}`]
+  const expires =
+    cookie.expires === undefined || cookie.expires === sessionCookieExpires
+      ? []
+      : [`Expires=${new Date(cookie.expires * millisecondsPerSecond).toUTCString()}`]
 
   return [
     `${cookie.name}=${cookie.value}`,
@@ -108,18 +109,12 @@ const readBrowserCapture = async (
   page: InteractiveBrowserLoginPage,
   cookieJarPort: CookieJarPort
 ): Promise<Either.Either<BrowserLoginCapture, BrowserLoginPortError>> => {
-  const initialState = Either.mapLeft(
-    parseUnknown(InitialStateSchema, await page.readInitialState()),
-    adapterFailure
-  )
+  const initialState = Either.mapLeft(parseUnknown(InitialStateSchema, await page.readInitialState()), adapterFailure)
   const cookies = Either.mapLeft(
     parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.readCookies(VOILA_BASE_URL)),
     adapterFailure
   )
-  const authenticated = Either.mapLeft(
-    parseUnknown(Schema.Boolean, await page.readAuthenticated()),
-    adapterFailure
-  )
+  const authenticated = Either.mapLeft(parseUnknown(Schema.Boolean, await page.readAuthenticated()), adapterFailure)
   const account = parseOptionalAccountSummary(await page.readAccountSummary())
 
   if (Either.isLeft(initialState)) {

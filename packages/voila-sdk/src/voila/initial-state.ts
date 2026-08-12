@@ -1,7 +1,7 @@
 import type { ParseResult } from "effect"
 import { Either } from "effect"
 
-import { parseJson, parseUnknown } from "../domain/parse.js"
+import { parseJson, type ParseJsonError, parseUnknown } from "../domain/parse.js"
 import { type InitialState, InitialStateSchema } from "../domain/schemas/index.js"
 
 const initialStateMarker = "window.__INITIAL_STATE__"
@@ -11,40 +11,25 @@ const scriptOpenEnd = ">"
 const scriptClose = "</script>"
 const objectStart = "{"
 const objectEnd = "}"
-const quote = "\""
+const quote = '"'
 const escape = "\\"
 const missingIndex = -1
 const whitespaceCharacters = new Set([" ", "\n", "\r", "\t"])
 
 export type InitialStateExtractionError =
-  | {
-    readonly _tag: "InitialStateScriptMissing"
-    readonly marker: string
-  }
-  | {
-    readonly _tag: "InitialStateJsonMissing"
-    readonly marker: string
-  }
-  | {
-    readonly _tag: "InitialStateJsonMalformed"
-    readonly cause: Error
-  }
-  | {
-    readonly _tag: "InitialStateSchemaMismatch"
-    readonly cause: ParseResult.ParseError
-  }
+  | { readonly _tag: "InitialStateScriptMissing"; readonly marker: string }
+  | { readonly _tag: "InitialStateJsonMissing"; readonly marker: string }
+  | { readonly _tag: "InitialStateJsonMalformed"; readonly cause: ParseJsonError }
+  | { readonly _tag: "InitialStateSchemaMismatch"; readonly cause: ParseResult.ParseError }
 
 const scriptMissing = (): InitialStateExtractionError => ({
   _tag: "InitialStateScriptMissing",
   marker: initialStateMarker
 })
 
-const jsonMissing = (): InitialStateExtractionError => ({
-  _tag: "InitialStateJsonMissing",
-  marker: initialStateMarker
-})
+const jsonMissing = (): InitialStateExtractionError => ({ _tag: "InitialStateJsonMissing", marker: initialStateMarker })
 
-const jsonMalformed = (cause: Error): InitialStateExtractionError => ({
+const jsonMalformed = (cause: ParseJsonError): InitialStateExtractionError => ({
   _tag: "InitialStateJsonMalformed",
   cause
 })
@@ -166,13 +151,9 @@ const extractInitialStateJson = (html: string): Either.Either<string, InitialSta
 }
 
 export const extractInitialStatePayload = (html: string): Either.Either<unknown, InitialStateExtractionError> =>
-  Either.flatMap(
-    extractInitialStateJson(html),
-    (json) => Either.mapLeft(parseJson(json), jsonMalformed)
-  )
+  Either.flatMap(extractInitialStateJson(html), (json) => Either.mapLeft(parseJson(json), jsonMalformed))
 
 export const extractInitialState = (html: string): Either.Either<InitialState, InitialStateExtractionError> =>
-  Either.flatMap(
-    extractInitialStatePayload(html),
-    (payload) => Either.mapLeft(parseUnknown(InitialStateSchema, payload), schemaMismatch)
+  Either.flatMap(extractInitialStatePayload(html), (payload) =>
+    Either.mapLeft(parseUnknown(InitialStateSchema, payload), schemaMismatch)
   )

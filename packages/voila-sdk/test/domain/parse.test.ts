@@ -5,7 +5,7 @@ import { parseJson } from "../../src/domain/parse.js"
 
 describe("parseJson", () => {
   it("parses JSON text into unknown boundary data", () => {
-    const result = parseJson("{\"ok\":true}")
+    const result = parseJson('{"ok":true}')
 
     expect(Either.isRight(result)).toBe(true)
   })

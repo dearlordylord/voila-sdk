@@ -88,14 +88,8 @@ describe("public package entrypoint", () => {
   it("is importable through the package export map after build", () => {
     const output = execFileSync(
       process.execPath,
-      [
-        "-e",
-        "import('@firfi/voila-sdk').then((sdk) => console.log(typeof sdk.searchProducts))"
-      ],
-      {
-        cwd: new URL("../..", import.meta.url),
-        encoding: "utf8"
-      }
+      ["-e", "import('@firfi/voila-sdk').then((sdk) => console.log(typeof sdk.searchProducts))"],
+      { cwd: new URL("../..", import.meta.url), encoding: "utf8" }
     )
 
     expect(output.trim()).toBe("function")

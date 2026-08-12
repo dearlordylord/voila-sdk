@@ -7,10 +7,7 @@ export const MAX_ORDER_PAGE_SIZE = 50
 export const DEFAULT_ORDER_PAGE_SIZE = 20
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
 const OrderPageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
@@ -26,38 +23,29 @@ export const CompletedOrdersInputSchema = Schema.Struct({
 export type CompletedOrdersInput = Schema.Schema.Type<typeof CompletedOrdersInputSchema>
 
 const RawOrderRegionSchema = Schema.asSchema(
-  Schema.Struct({
-    regionId: Schema.String,
-    retailerRegionId: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ regionId: Schema.String, retailerRegionId: Schema.String }).pipe(
+    Schema.extend(UnknownStringRecordSchema)
+  )
 )
 
 const RawOrderCarrierSchema = Schema.asSchema(
-  Schema.Struct({
-    carrierId: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ carrierId: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
 const RawOrderExternalLockerSchema = Schema.asSchema(
-  Schema.Struct({
-    externalLockerId: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ externalLockerId: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
 const RawOrderDeliveryDestinationSchema = Schema.asSchema(
   Schema.Struct({
-    address: Schema.Struct({
-      timeZone: Schema.String
-    }).pipe(Schema.extend(UnknownStringRecordSchema)),
+    address: Schema.Struct({ timeZone: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema)),
     deliveryMethod: Schema.String,
     name: Schema.String
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
 export const RawCompletedOrdersGraphqlErrorSchema = Schema.asSchema(
-  Schema.Struct({
-    message: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ message: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
 export type RawCompletedOrdersGraphqlError = Schema.Schema.Type<typeof RawCompletedOrdersGraphqlErrorSchema>
@@ -99,15 +87,9 @@ export type RawCompletedOrderSlot = Schema.Schema.Type<typeof RawCompletedOrderS
 export const RawCompletedOrderNodeSchema = Schema.asSchema(
   Schema.Struct({
     orderId: Schema.String,
-    prices: Schema.Struct({
-      total: MoneySchema
-    }).pipe(Schema.extend(UnknownStringRecordSchema)),
+    prices: Schema.Struct({ total: MoneySchema }).pipe(Schema.extend(UnknownStringRecordSchema)),
     recurringOrderDefinition: Schema.optionalWith(
-      Schema.NullOr(
-        Schema.Struct({
-          name: Schema.String
-        }).pipe(Schema.extend(UnknownStringRecordSchema))
-      ),
+      Schema.NullOr(Schema.Struct({ name: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))),
       { exact: true }
     ),
     region: RawOrderRegionSchema,
@@ -120,15 +102,16 @@ export type RawCompletedOrderNode = Schema.Schema.Type<typeof RawCompletedOrderN
 
 const RawCompletedOrdersConnectionSchema = Schema.asSchema(
   Schema.Struct({
-    edges: Schema.Array(Schema.NullOr(
-      Schema.Struct({
-        node: Schema.NullOr(RawCompletedOrderNodeSchema)
-      }).pipe(Schema.extend(UnknownStringRecordSchema))
-    )),
-    pageInfo: Schema.Struct({
-      endCursor: Schema.NullOr(Schema.String),
-      hasNextPage: Schema.Boolean
-    }).pipe(Schema.extend(UnknownStringRecordSchema)),
+    edges: Schema.Array(
+      Schema.NullOr(
+        Schema.Struct({ node: Schema.NullOr(RawCompletedOrderNodeSchema) }).pipe(
+          Schema.extend(UnknownStringRecordSchema)
+        )
+      )
+    ),
+    pageInfo: Schema.Struct({ endCursor: Schema.NullOr(Schema.String), hasNextPage: Schema.Boolean }).pipe(
+      Schema.extend(UnknownStringRecordSchema)
+    ),
     retentionPeriod: Schema.optionalWith(Schema.String, { exact: true })
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
@@ -139,9 +122,9 @@ export const RawCompletedOrdersGraphqlResponseSchema = Schema.asSchema(
   Schema.Struct({
     data: Schema.optionalWith(
       Schema.NullOr(
-        Schema.Struct({
-          completedOrders: Schema.NullOr(RawCompletedOrdersConnectionSchema)
-        }).pipe(Schema.extend(UnknownStringRecordSchema))
+        Schema.Struct({ completedOrders: Schema.NullOr(RawCompletedOrdersConnectionSchema) }).pipe(
+          Schema.extend(UnknownStringRecordSchema)
+        )
       ),
       { exact: true }
     ),
@@ -162,28 +145,12 @@ export type CompletedOrdersPagination = Schema.Schema.Type<typeof CompletedOrder
 export const NormalizedCompletedOrderSchema = Schema.Struct({
   addressNickName: Schema.String,
   carrierId: Schema.optionalWith(Schema.String, { exact: true }),
-  dates: Schema.Struct({
-    deliveryEndDate: Schema.String,
-    deliveryStartDate: Schema.String,
-    timeZoneId: Schema.String
-  }),
+  dates: Schema.Struct({ deliveryEndDate: Schema.String, deliveryStartDate: Schema.String, timeZoneId: Schema.String }),
   deliveryMethod: Schema.String,
-  externalAddress: Schema.optionalWith(
-    Schema.Struct({
-      externalCollectionPointId: Schema.String
-    }),
-    { exact: true }
-  ),
+  externalAddress: Schema.optionalWith(Schema.Struct({ externalCollectionPointId: Schema.String }), { exact: true }),
   orderId: Schema.String,
-  orderTotals: Schema.Struct({
-    totalPrice: MoneySchema
-  }),
-  recurringShoppingDefinition: Schema.optionalWith(
-    Schema.Struct({
-      name: Schema.String
-    }),
-    { exact: true }
-  ),
+  orderTotals: Schema.Struct({ totalPrice: MoneySchema }),
+  recurringShoppingDefinition: Schema.optionalWith(Schema.Struct({ name: Schema.String }), { exact: true }),
   regionId: Schema.String,
   retailerRegionId: Schema.String,
   shippingGroupType: Schema.optionalWith(Schema.String, { exact: true }),

@@ -29,10 +29,7 @@ describe("cart view normalization", () => {
       expect(result.right.basketId).toBe("sanitized-empty-basket-id")
       expect(result.right.itemCount).toBe(0)
       expect(result.right.items).toEqual([])
-      expect(result.right.totals.itemPriceAfterPromos).toEqual({
-        amount: "0.00",
-        currency: "CAD"
-      })
+      expect(result.right.totals.itemPriceAfterPromos).toEqual({ amount: "0.00", currency: "CAD" })
       expect(result.right.checkoutRestrictions[0]).toEqual({
         code: "EMPTY_CART",
         message: "Cart must contain items before checkout",
@@ -53,18 +50,9 @@ describe("cart view normalization", () => {
       expect(result.right.basketId).toBe("sanitized-basket-id")
       expect(result.right.itemCount).toBe(3)
       expect(result.right.totals).toEqual({
-        itemPriceAfterPromos: {
-          amount: "8.88",
-          currency: "CAD"
-        },
-        itemsRetailPrice: {
-          amount: "12.34",
-          currency: "CAD"
-        },
-        savingsPrice: {
-          amount: "3.46",
-          currency: "CAD"
-        },
+        itemPriceAfterPromos: { amount: "8.88", currency: "CAD" },
+        itemsRetailPrice: { amount: "12.34", currency: "CAD" },
+        savingsPrice: { amount: "3.46", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       })
       expect(result.right.items).toHaveLength(2)
@@ -88,29 +76,33 @@ describe("cart view normalization", () => {
       expect(blueberries?.unavailable).toBe(true)
       expect(blueberries?.maxQuantityReached).toBe(true)
 
-      expect(result.right.checkoutRestrictions).toEqual([{
-        code: "DELIVERY_SLOT_REQUIRED",
-        message: "Select a delivery slot before checkout",
-        severity: "BLOCKING"
-      }])
-      expect(result.right.limitedItems).toEqual([{
-        code: "MAX_QUANTITY",
-        message: "Blueberries are limited to one item",
-        productId: "sanitized-blueberries-product-id",
-        severity: "WARNING"
-      }])
-      expect(result.right.pricingNotifications).toEqual([{
-        code: "PRICE_CHANGED",
-        message: "A product price changed since it was added",
-        productId: "sanitized-strawberries-product-id",
-        severity: "INFO"
-      }])
-      expect(result.right.unavailableData).toEqual([{
-        code: "UNAVAILABLE",
-        message: "Blueberries are unavailable",
-        productId: "sanitized-blueberries-product-id",
-        severity: "WARNING"
-      }])
+      expect(result.right.checkoutRestrictions).toEqual([
+        { code: "DELIVERY_SLOT_REQUIRED", message: "Select a delivery slot before checkout", severity: "BLOCKING" }
+      ])
+      expect(result.right.limitedItems).toEqual([
+        {
+          code: "MAX_QUANTITY",
+          message: "Blueberries are limited to one item",
+          productId: "sanitized-blueberries-product-id",
+          severity: "WARNING"
+        }
+      ])
+      expect(result.right.pricingNotifications).toEqual([
+        {
+          code: "PRICE_CHANGED",
+          message: "A product price changed since it was added",
+          productId: "sanitized-strawberries-product-id",
+          severity: "INFO"
+        }
+      ])
+      expect(result.right.unavailableData).toEqual([
+        {
+          code: "UNAVAILABLE",
+          message: "Blueberries are unavailable",
+          productId: "sanitized-blueberries-product-id",
+          severity: "WARNING"
+        }
+      ])
     }
   })
 
@@ -130,18 +122,9 @@ describe("cart view normalization", () => {
       basket: {
         basketId: "basket-id",
         totals: {
-          itemPriceAfterPromos: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          itemsRetailPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          savingsPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
+          itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+          itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+          savingsPrice: { amount: "0.00", currency: "CAD" },
           taxation: "TAX_EXCLUDED"
         }
       }
@@ -159,42 +142,21 @@ describe("cart view normalization", () => {
     const result = normalizeCartViewResponse({
       basket: {
         basketId: "basket-id",
-        itemGroups: [{
-          items: [{
-            productId: "product-id",
-            quantity: 1
-          }]
-        }],
+        itemGroups: [{ items: [{ productId: "product-id", quantity: 1 }] }],
         totals: {
-          itemPriceAfterPromos: {
-            amount: "1.00",
-            currency: "CAD"
-          },
-          itemsRetailPrice: {
-            amount: "1.00",
-            currency: "CAD"
-          },
-          savingsPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
+          itemPriceAfterPromos: { amount: "1.00", currency: "CAD" },
+          itemsRetailPrice: { amount: "1.00", currency: "CAD" },
+          savingsPrice: { amount: "0.00", currency: "CAD" },
           taxation: "TAX_EXCLUDED"
         }
       }
     })
 
-    expect(result.items[0]).toEqual({
-      productId: "product-id",
-      quantity: 1
-    })
+    expect(result.items[0]).toEqual({ productId: "product-id", quantity: 1 })
   })
 
   it("fails at the schema boundary when totals are missing", () => {
-    const result = parseCartViewResponse({
-      basket: {
-        basketId: "basket-id"
-      }
-    })
+    const result = parseCartViewResponse({ basket: { basketId: "basket-id" } })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -209,25 +171,11 @@ describe("cart view normalization", () => {
       const result = parseCartViewResponse({
         basket: {
           basketId: "basket-id",
-          itemGroups: [{
-            items: [{
-              productId: "product-id",
-              quantity
-            }]
-          }],
+          itemGroups: [{ items: [{ productId: "product-id", quantity }] }],
           totals: {
-            itemPriceAfterPromos: {
-              amount: "0.00",
-              currency: "CAD"
-            },
-            itemsRetailPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
-            savingsPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
+            itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+            itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+            savingsPrice: { amount: "0.00", currency: "CAD" },
             taxation: "TAX_EXCLUDED"
           }
         }

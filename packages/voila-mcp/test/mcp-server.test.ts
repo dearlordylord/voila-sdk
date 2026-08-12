@@ -10,15 +10,10 @@ const mcpProtocolVersion = "2025-11-25"
 const inertEnvironment: OperationEnvironment = {
   session: {
     load: async () =>
-      Either.left({
-        _tag: "VoilaTestSessionUnavailable",
-        message: "Session is unavailable in this protocol test"
-      }),
+      Either.left({ _tag: "VoilaTestSessionUnavailable", message: "Session is unavailable in this protocol test" }),
     save: async () => Either.right(undefined)
   },
-  transport: {
-    request: async () => Either.left("Network is unavailable in this protocol test")
-  }
+  transport: { request: async () => Either.left("Network is unavailable in this protocol test") }
 }
 
 const startedServers: Array<Server> = []
@@ -46,11 +41,7 @@ const closeServer = async (server: Server): Promise<void> =>
     })
   })
 
-const postMcp = async (
-  url: string,
-  body: unknown,
-  sessionId?: string
-): Promise<Response> =>
+const postMcp = async (url: string, body: unknown, sessionId?: string): Promise<Response> =>
   fetch(url, {
     body: JSON.stringify(body),
     headers: {
@@ -63,13 +54,13 @@ const postMcp = async (
 
 const toolsFrom = (value: unknown): Array<unknown> => {
   if (
-    typeof value === "object"
-    && value !== null
-    && "result" in value
-    && typeof value.result === "object"
-    && value.result !== null
-    && "tools" in value.result
-    && Array.isArray(value.result.tools)
+    typeof value === "object" &&
+    value !== null &&
+    "result" in value &&
+    typeof value.result === "object" &&
+    value.result !== null &&
+    "tools" in value.result &&
+    Array.isArray(value.result.tools)
   ) {
     return value.result.tools
   }
@@ -87,46 +78,27 @@ const toolNamesFrom = (tools: Array<unknown>): Array<string> =>
   })
 
 const toolByName = (tools: Array<unknown>, name: string): unknown =>
-  tools.find((tool) =>
-    typeof tool === "object"
-    && tool !== null
-    && "name" in tool
-    && tool.name === name
-  )
+  tools.find((tool) => typeof tool === "object" && tool !== null && "name" in tool && tool.name === name)
 
-const initializeAndListTools = async (
-  baseUrl: string,
-  idOffset: number
-): Promise<Array<unknown>> => {
+const initializeAndListTools = async (baseUrl: string, idOffset: number): Promise<Array<unknown>> => {
   const initialize = await postMcp(`${baseUrl}/mcp`, {
     id: idOffset,
     jsonrpc: "2.0",
     method: "initialize",
-    params: {
-      capabilities: {},
-      clientInfo: {
-        name: "vitest",
-        version: "0.0.0"
-      },
-      protocolVersion: mcpProtocolVersion
-    }
+    params: { capabilities: {}, clientInfo: { name: "vitest", version: "0.0.0" }, protocolVersion: mcpProtocolVersion }
   })
   const sessionId = initialize.headers.get("mcp-session-id")
 
   expect(initialize.status).toBe(httpOk)
   expect(sessionId).toBeTruthy()
 
-  await postMcp(`${baseUrl}/mcp`, {
-    jsonrpc: "2.0",
-    method: "notifications/initialized"
-  }, sessionId ?? undefined)
+  await postMcp(`${baseUrl}/mcp`, { jsonrpc: "2.0", method: "notifications/initialized" }, sessionId ?? undefined)
 
-  const tools = await postMcp(`${baseUrl}/mcp`, {
-    id: idOffset + 1,
-    jsonrpc: "2.0",
-    method: "tools/list",
-    params: {}
-  }, sessionId ?? undefined)
+  const tools = await postMcp(
+    `${baseUrl}/mcp`,
+    { id: idOffset + 1, jsonrpc: "2.0", method: "tools/list", params: {} },
+    sessionId ?? undefined
+  )
 
   expect(tools.status).toBe(httpOk)
 
@@ -141,10 +113,7 @@ afterEach(async () => {
 
 describe("Voila MCP HTTP server", () => {
   it("supports independent Streamable HTTP initialization and tool listing sessions", async () => {
-    const server = await createHttpServer(inertEnvironment, {
-      host: "127.0.0.1",
-      port: 0
-    })
+    const server = createHttpServer(inertEnvironment, { host: "127.0.0.1", port: 0 })
 
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", resolve)
@@ -163,16 +132,9 @@ describe("Voila MCP HTTP server", () => {
     expect(toolNames).toContain("voila_search_products")
     expect(toolNames).toContain("voila_get_cart")
     expect(toolNamesFrom(firstTools)).toEqual(toolNames)
-    expect(toolByName(secondTools, "voila_search_products")).toMatchObject({
-      annotations: {
-        readOnlyHint: true
-      }
-    })
+    expect(toolByName(secondTools, "voila_search_products")).toMatchObject({ annotations: { readOnlyHint: true } })
     expect(toolByName(secondTools, "voila_add_cart_items")).toMatchObject({
-      annotations: {
-        destructiveHint: true,
-        readOnlyHint: false
-      }
+      annotations: { destructiveHint: true, readOnlyHint: false }
     })
   })
 

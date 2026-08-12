@@ -1,43 +1,29 @@
 import { Schema } from "effect"
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
-const IsoDateStringSchema = NonEmptyTrimmedStringSchema.pipe(
-  Schema.pattern(/^\d{4}-\d{2}-\d{2}$/)
-)
+import { maximumOrderPageSize, maximumProductPageSize } from "./operation-limits.js"
+
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+const IsoDateStringSchema = NonEmptyTrimmedStringSchema.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/))
 
 const PageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
   Schema.greaterThanOrEqualTo(1),
-  Schema.lessThanOrEqualTo(24)
+  Schema.lessThanOrEqualTo(maximumProductPageSize)
 )
 
-const NonNegativeNumberSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.nonNegative()
-)
+const NonNegativeNumberSchema = Schema.Number.pipe(Schema.finite(), Schema.nonNegative())
 
-const PositiveIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.positive()
-)
+const PositiveIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.positive())
 
 const OrderPageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
   Schema.greaterThanOrEqualTo(1),
-  Schema.lessThanOrEqualTo(50)
+  Schema.lessThanOrEqualTo(maximumOrderPageSize)
 )
 
-const QuantitySchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.greaterThan(0)
-)
+const QuantitySchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.greaterThan(0))
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
@@ -49,9 +35,7 @@ export const ActiveShoppingContextOperationInputSchema = Schema.Struct({
   regionId: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true })
 })
 
-export type ActiveShoppingContextOperationInput = Schema.Schema.Type<
-  typeof ActiveShoppingContextOperationInputSchema
->
+export type ActiveShoppingContextOperationInput = Schema.Schema.Type<typeof ActiveShoppingContextOperationInputSchema>
 
 export const SlotDisplayConfigurationOperationInputSchema = Schema.Literal("DELIVERY_METHOD", "CARRIER")
 
@@ -115,9 +99,7 @@ export const OrderListOperationInputSchema = Schema.Struct({
 
 export type OrderListOperationInput = Schema.Schema.Type<typeof OrderListOperationInputSchema>
 
-export const OrderDetailsOperationInputSchema = Schema.Struct({
-  orderId: NonEmptyTrimmedStringSchema
-})
+export const OrderDetailsOperationInputSchema = Schema.Struct({ orderId: NonEmptyTrimmedStringSchema })
 
 export type OrderDetailsOperationInput = Schema.Schema.Type<typeof OrderDetailsOperationInputSchema>
 
@@ -132,10 +114,9 @@ export const OrderItemsOperationInputSchema = Schema.Struct({
 export type OrderItemsOperationInput = Schema.Schema.Type<typeof OrderItemsOperationInputSchema>
 
 export const CartItemOperationInputSchema = Schema.Struct({
-  items: Schema.Array(Schema.Struct({
-    productId: NonEmptyTrimmedStringSchema,
-    quantity: QuantitySchema
-  })).pipe(Schema.minItems(1))
+  items: Schema.Array(Schema.Struct({ productId: NonEmptyTrimmedStringSchema, quantity: QuantitySchema })).pipe(
+    Schema.minItems(1)
+  )
 })
 
 export type CartItemOperationInput = Schema.Schema.Type<typeof CartItemOperationInputSchema>

@@ -6,10 +6,15 @@ export const parseUnknown = <A, I>(
   input: unknown
 ): Either.Either<A, ParseResult.ParseError> => Schema.decodeUnknownEither(schema)(input)
 
-export const parseJson = (text: string): Either.Either<unknown, Error> => {
+export interface ParseJsonError {
+  readonly _tag: "ParseJsonError"
+  readonly message: string
+}
+
+export const parseJson = (text: string): Either.Either<unknown, ParseJsonError> => {
   try {
     return Either.right(JSON.parse(text))
-  } catch (error) {
-    return Either.left(new Error("Invalid JSON", { cause: error }))
+  } catch {
+    return Either.left({ _tag: "ParseJsonError", message: "Invalid JSON" })
   }
 }

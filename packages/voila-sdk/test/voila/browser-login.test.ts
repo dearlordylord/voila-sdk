@@ -43,10 +43,7 @@ const makeSession = (withCookies: boolean) => {
 
 const makePort = (
   result: Either.Either<unknown, BrowserLoginPortError>
-): {
-  readonly port: BrowserLoginPort
-  readonly requests: ReadonlyArray<unknown>
-} => {
+): { readonly port: BrowserLoginPort; readonly requests: ReadonlyArray<unknown> } => {
   const requests: Array<unknown> = []
 
   return {
@@ -63,13 +60,9 @@ const makePort = (
 
 describe("browser login port", () => {
   it("captures an authenticated session through an injected browser port without password input", async () => {
-    const fake = makePort(Either.right({
-      account: {
-        emailHint: secretEmailHint
-      },
-      authenticated: true,
-      session: makeSession(true)
-    }))
+    const fake = makePort(
+      Either.right({ account: { emailHint: secretEmailHint }, authenticated: true, session: makeSession(true) })
+    )
 
     const result = await loginWithBrowser(fake.port, { timeoutMs: 30_000 })
 
@@ -77,10 +70,7 @@ describe("browser login port", () => {
     expect(fake.requests).toHaveLength(1)
     expect(JSON.stringify(fake.requests[0])).not.toContain("password")
     expect(JSON.stringify(fake.requests[0])).not.toContain("secret")
-    expect(fake.requests[0]).toEqual({
-      loginUrl: voilaUrl,
-      timeoutMs: 30_000
-    })
+    expect(fake.requests[0]).toEqual({ loginUrl: voilaUrl, timeoutMs: 30_000 })
 
     if (Either.isRight(result)) {
       expect(result.right.session.kind).toBe("authenticated")
@@ -90,10 +80,12 @@ describe("browser login port", () => {
   })
 
   it("returns a typed cancellation error from the injected browser port", async () => {
-    const fake = makePort(Either.left({
-      _tag: "BrowserLoginUserCancelled",
-      message: `User cancelled interactive browser login with ${secretCookieValue}`
-    }))
+    const fake = makePort(
+      Either.left({
+        _tag: "BrowserLoginUserCancelled",
+        message: `User cancelled interactive browser login with ${secretCookieValue}`
+      })
+    )
 
     const result = await loginWithBrowser(fake.port)
 
@@ -106,18 +98,17 @@ describe("browser login port", () => {
   })
 
   it("returns a typed timeout error from the injected browser port", async () => {
-    const fake = makePort(Either.left({
-      _tag: "BrowserLoginTimedOut",
-      message: `Interactive browser login timed out with ${secretCookieValue}`
-    }))
+    const fake = makePort(
+      Either.left({
+        _tag: "BrowserLoginTimedOut",
+        message: `Interactive browser login timed out with ${secretCookieValue}`
+      })
+    )
 
     const result = await loginWithBrowser(fake.port, { timeoutMs: 1 })
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests).toEqual([{
-      loginUrl: voilaUrl,
-      timeoutMs: 1
-    }])
+    expect(fake.requests).toEqual([{ loginUrl: voilaUrl, timeoutMs: 1 }])
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("BrowserLoginTimedOut")
@@ -126,10 +117,7 @@ describe("browser login port", () => {
   })
 
   it("rejects completed browser captures that do not include session cookies", async () => {
-    const fake = makePort(Either.right({
-      authenticated: true,
-      session: makeSession(false)
-    }))
+    const fake = makePort(Either.right({ authenticated: true, session: makeSession(false) }))
 
     const result = await loginWithBrowser(fake.port)
 
@@ -142,10 +130,7 @@ describe("browser login port", () => {
   })
 
   it("rejects completed browser captures without authenticated account evidence", async () => {
-    const fake = makePort(Either.right({
-      authenticated: false,
-      session: makeSession(true)
-    }))
+    const fake = makePort(Either.right({ authenticated: false, session: makeSession(true) }))
 
     const result = await loginWithBrowser(fake.port)
 
@@ -158,9 +143,7 @@ describe("browser login port", () => {
   })
 
   it("rejects invalid browser login options before invoking the port", async () => {
-    const fake = makePort(Either.right({
-      session: makeSession(true)
-    }))
+    const fake = makePort(Either.right({ session: makeSession(true) }))
 
     const result = await loginWithBrowser(fake.port, { timeoutMs: 0 })
 
@@ -173,13 +156,7 @@ describe("browser login port", () => {
   })
 
   it("rejects malformed browser capture payloads without leaking captured secrets", async () => {
-    const fake = makePort(Either.right({
-      session: {
-        csrf: {
-          token: secretCsrfToken
-        }
-      }
-    }))
+    const fake = makePort(Either.right({ session: { csrf: { token: secretCsrfToken } } }))
 
     const result = await loginWithBrowser(fake.port)
 
@@ -209,9 +186,7 @@ describe("browser login port", () => {
   })
 
   it("redacts malformed non-Either adapter results into typed errors", async () => {
-    const port: BrowserLoginPort = {
-      captureSession: async () => secretAdapterPayload
-    }
+    const port: BrowserLoginPort = { captureSession: async () => secretAdapterPayload }
 
     const result = await loginWithBrowser(port)
 
@@ -225,9 +200,7 @@ describe("browser login port", () => {
   })
 
   it.each([undefined, null])("redacts missing adapter result %s into typed errors", async (adapterResult) => {
-    const port: BrowserLoginPort = {
-      captureSession: async () => adapterResult
-    }
+    const port: BrowserLoginPort = { captureSession: async () => adapterResult }
 
     const result = await loginWithBrowser(port)
 
@@ -241,11 +214,7 @@ describe("browser login port", () => {
 
   it("redacts malformed adapter-left errors into typed errors", async () => {
     const port: BrowserLoginPort = {
-      captureSession: async () =>
-        Either.left({
-          _tag: "UnexpectedAdapterFailure",
-          message: secretAdapterPayload
-        })
+      captureSession: async () => Either.left({ _tag: "UnexpectedAdapterFailure", message: secretAdapterPayload })
     }
 
     const result = await loginWithBrowser(port)

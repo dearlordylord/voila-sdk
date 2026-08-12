@@ -4,10 +4,7 @@ import { parseUnknown } from "./parse.js"
 import type { CartQuantityDelta } from "./schemas/index.js"
 import { CartQuantityDeltaSchema } from "./schemas/index.js"
 
-export type CartQuantityDeltaError = {
-  readonly _tag: "CartQuantityDeltaInvalid"
-  readonly message: string
-}
+export type CartQuantityDeltaError = { readonly _tag: "CartQuantityDeltaInvalid"; readonly message: string }
 
 const cartQuantityDeltaInvalid = (): CartQuantityDeltaError => ({
   _tag: "CartQuantityDeltaInvalid",
@@ -18,13 +15,7 @@ export const makeCartQuantityDelta = (
   productId: string,
   quantity: number
 ): Either.Either<CartQuantityDelta, CartQuantityDeltaError> =>
-  Either.mapLeft(
-    parseUnknown(CartQuantityDeltaSchema, {
-      productId,
-      quantity
-    }),
-    cartQuantityDeltaInvalid
-  )
+  Either.mapLeft(parseUnknown(CartQuantityDeltaSchema, { productId, quantity }), cartQuantityDeltaInvalid)
 
 export const makeAddToCartDelta = (
   productId: string,

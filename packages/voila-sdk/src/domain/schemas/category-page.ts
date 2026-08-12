@@ -5,22 +5,13 @@ import { ProductSearchResponseSchema } from "./product.js"
 export const MIN_CATEGORY_PAGE_SIZE = 1
 export const MAX_CATEGORY_PAGE_SIZE = 24
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
 
 const FilterSeparatorFreeStringSchema = NonEmptyTrimmedStringSchema.pipe(
-  Schema.filter((value) => !value.includes(":"), {
-    message: () => "Category page filter values must not include ':'"
-  })
+  Schema.filter((value) => !value.includes(":"), { message: () => "Category page filter values must not include ':'" })
 )
 
-const NonNegativeIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.nonNegative()
-)
+const NonNegativeIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative())
 
 const CategoryPageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
@@ -43,10 +34,9 @@ export const CategoryPageInputSchema = Schema.Struct({
   pageToken: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true }),
   retailerCategoryId: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true })
 }).pipe(
-  Schema.filter(
-    (input) => input.categoryId !== undefined || input.retailerCategoryId !== undefined,
-    { message: () => "Category page input must include categoryId or retailerCategoryId" }
-  )
+  Schema.filter((input) => input.categoryId !== undefined || input.retailerCategoryId !== undefined, {
+    message: () => "Category page input must include categoryId or retailerCategoryId"
+  })
 )
 
 export type CategoryPageInput = Schema.Schema.Type<typeof CategoryPageInputSchema>
@@ -78,10 +68,12 @@ export const CategoryPageFilterSchema = Schema.Struct({
 export type CategoryPageFilter = Schema.Schema.Type<typeof CategoryPageFilterSchema>
 
 export const CategoryProductPageResponseSchema = ProductSearchResponseSchema.pipe(
-  Schema.extend(Schema.Struct({
-    category: CategoryPageSummarySchema,
-    filters: Schema.optionalWith(Schema.Array(CategoryPageFilterSchema), { exact: true })
-  }))
+  Schema.extend(
+    Schema.Struct({
+      category: CategoryPageSummarySchema,
+      filters: Schema.optionalWith(Schema.Array(CategoryPageFilterSchema), { exact: true })
+    })
+  )
 )
 
 export type CategoryProductPageResponse = Schema.Schema.Type<typeof CategoryProductPageResponseSchema>

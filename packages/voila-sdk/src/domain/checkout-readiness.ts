@@ -20,9 +20,7 @@ const makeDecision = (
   warnings: summary.warnings
 })
 
-export const decideCheckoutReadiness = (
-  summary: NormalizedCheckoutSummary
-): CheckoutReadinessDecision => {
+export const decideCheckoutReadiness = (summary: NormalizedCheckoutSummary): CheckoutReadinessDecision => {
   if (!summary.canCheckout || summary.checkoutRestrictions.length > emptyCount) {
     return makeDecision(summary, "blocked", "checkout-blocked", false)
   }

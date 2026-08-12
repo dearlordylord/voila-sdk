@@ -19,17 +19,12 @@ import {
 
 const expectSearchRequest = (request: SearchRequest): SearchRequest => request
 const expectCartViewRequest = (request: CartViewRequest): CartViewRequest => request
-const expectDeliveryDestinationsRequest = (
-  request: DeliveryDestinationsRequest
-): DeliveryDestinationsRequest => request
+const expectDeliveryDestinationsRequest = (request: DeliveryDestinationsRequest): DeliveryDestinationsRequest => request
 const productUuid = "b952bad2-3d09-4b7f-831a-87ad31eaad3f"
 
 describe("Voila URLs", () => {
   it("builds product search URLs with web search parameters", () => {
-    const request = makeSearchRequest({
-      pageSize: 24,
-      query: "milk"
-    })
+    const request = makeSearchRequest({ pageSize: 24, query: "milk" })
 
     expect(Either.isRight(request)).toBe(true)
 
@@ -51,9 +46,7 @@ describe("Voila URLs", () => {
     expect(Either.isRight(delta)).toBe(true)
 
     if (Either.isRight(delta)) {
-      const request = makeApplyQuantityRequest([
-        delta.right
-      ])
+      const request = makeApplyQuantityRequest([delta.right])
 
       expect(Either.isRight(request)).toBe(true)
 
@@ -61,29 +54,18 @@ describe("Voila URLs", () => {
         expect(request.right.method).toBe("POST")
         expect(request.right.url.pathname).toBe("/api/cart/v1/carts/active/apply-quantity")
         expect(request.right.url.searchParams.get("cartProductSorting")).toBe("CATEGORIES")
-        expect(request.right.body).toBe(`[{\"productId\":\"${productUuid}\",\"quantity\":1}]`)
+        expect(request.right.body).toBe(`[{"productId":"${productUuid}","quantity":1}]`)
       }
     }
   })
 
   it("rejects invalid apply quantity request bodies before serialization", () => {
-    for (
-      const input of [
-        [],
-        [{
-          productId: "243255EA",
-          quantity: 1
-        }],
-        [{
-          productId: productUuid,
-          quantity: 0
-        }],
-        [{
-          productId: productUuid,
-          quantity: Number.NaN
-        }]
-      ]
-    ) {
+    for (const input of [
+      [],
+      [{ productId: "243255EA", quantity: 1 }],
+      [{ productId: productUuid, quantity: 0 }],
+      [{ productId: productUuid, quantity: Number.NaN }]
+    ]) {
       const request = makeApplyQuantityRequest(input)
 
       expect(Either.isLeft(request)).toBe(true)
@@ -135,9 +117,7 @@ describe("Voila URLs", () => {
   })
 
   it("builds delivery destination list requests for collection destinations", () => {
-    const request = makeDeliveryDestinationsRequest({
-      deliveryMethod: "CUSTOMER_COLLECTION"
-    })
+    const request = makeDeliveryDestinationsRequest({ deliveryMethod: "CUSTOMER_COLLECTION" })
 
     expect(Either.isRight(request)).toBe(true)
 
@@ -147,9 +127,7 @@ describe("Voila URLs", () => {
   })
 
   it("rejects invalid delivery destination list inputs", () => {
-    const request = makeDeliveryDestinationsRequest({
-      deliveryMethod: "PICKUP"
-    })
+    const request = makeDeliveryDestinationsRequest({ deliveryMethod: "PICKUP" })
 
     expect(Either.isLeft(request)).toBe(true)
 
@@ -159,9 +137,7 @@ describe("Voila URLs", () => {
   })
 
   it("builds single delivery destination requests", () => {
-    const request = makeDeliveryDestinationRequest({
-      deliveryDestinationId: "destination/id with spaces"
-    })
+    const request = makeDeliveryDestinationRequest({ deliveryDestinationId: "destination/id with spaces" })
 
     expect(Either.isRight(request)).toBe(true)
 
@@ -174,9 +150,7 @@ describe("Voila URLs", () => {
   })
 
   it("builds active shopping context requests with optional region scope", () => {
-    const request = makeActiveShoppingContextRequest({
-      regionId: "region-id"
-    })
+    const request = makeActiveShoppingContextRequest({ regionId: "region-id" })
 
     expect(Either.isRight(request)).toBe(true)
 
@@ -214,10 +188,9 @@ describe("Voila URLs", () => {
     if (Either.isRight(request)) {
       expect(request.right.method).toBe("POST")
       expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/proposition")
-      expect(request.right.body).toBe(JSON.stringify({
-        deliveryDestinationId: "delivery-destination-id",
-        destinationRegionId: "region-id"
-      }))
+      expect(request.right.body).toBe(
+        JSON.stringify({ deliveryDestinationId: "delivery-destination-id", destinationRegionId: "region-id" })
+      )
     }
   })
 
@@ -234,14 +207,10 @@ describe("Voila URLs", () => {
     if (Either.isRight(request)) {
       expect(request.right.method).toBe("PUT")
       expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/active")
-      expect(request.right.headers).toEqual({
-        "customer-id": "customer-id",
-        "visitor-id": "visitor-id"
-      })
-      expect(request.right.body).toBe(JSON.stringify({
-        deliveryDestinationId: "delivery-destination-id",
-        regionId: "region-id"
-      }))
+      expect(request.right.headers).toEqual({ "customer-id": "customer-id", "visitor-id": "visitor-id" })
+      expect(request.right.body).toBe(
+        JSON.stringify({ deliveryDestinationId: "delivery-destination-id", regionId: "region-id" })
+      )
     }
   })
 
@@ -257,10 +226,12 @@ describe("Voila URLs", () => {
       expect(request.right.method).toBe("POST")
       expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/active")
       expect(request.right.headers).toBeUndefined()
-      expect(request.right.body).toBe(JSON.stringify({
-        destinationCartPropositionId: "destination-cart-proposition-id",
-        originCartPropositionId: "origin-cart-proposition-id"
-      }))
+      expect(request.right.body).toBe(
+        JSON.stringify({
+          destinationCartPropositionId: "destination-cart-proposition-id",
+          originCartPropositionId: "origin-cart-proposition-id"
+        })
+      )
     }
   })
 
@@ -280,11 +251,7 @@ describe("Voila URLs", () => {
       expect(request.right.method).toBe("POST")
       expect(request.right.url.pathname).toBe("/api/ecomslots/v2/slots")
       expect(JSON.parse(request.right.body)).toEqual({
-        analyticsData: {
-          platform: "WEB",
-          sessionId: "analytics-session-id",
-          viewingLocation: "SLOT_BOOKING"
-        },
+        analyticsData: { platform: "WEB", sessionId: "analytics-session-id", viewingLocation: "SLOT_BOOKING" },
         deliveryDestinationId: "delivery-destination-id",
         displayConfiguration: "DELIVERY_METHOD",
         numberOfDays: 3,
@@ -326,11 +293,7 @@ describe("Voila URLs", () => {
 
     if (Either.isRight(request)) {
       expect(JSON.parse(request.right.body)).toEqual({
-        analyticsData: {
-          pageViewId: "page-view-id",
-          platform: "WEB",
-          sessionId: "analytics-session-id"
-        },
+        analyticsData: { pageViewId: "page-view-id", platform: "WEB", sessionId: "analytics-session-id" },
         deliveryDestinationId: "delivery-destination-id",
         displayConfiguration: "DELIVERY_METHOD",
         regionId: "region-id",
@@ -344,9 +307,7 @@ describe("Voila URLs", () => {
       allowReservationOverwrite: true,
       confirmSlotReservation: true,
       deliveryDestinationId: "delivery-destination-id",
-      externalAddress: {
-        id: "external-address-id"
-      },
+      externalAddress: { id: "external-address-id" },
       regionId: "region-id",
       slotId: "slot-id"
     })
@@ -358,9 +319,7 @@ describe("Voila URLs", () => {
       expect(request.right.url.pathname).toBe("/api/ecomslots/v1/slots/reservation")
       expect(JSON.parse(request.right.body)).toEqual({
         deliveryDestinationId: "delivery-destination-id",
-        externalAddress: {
-          id: "external-address-id"
-        },
+        externalAddress: { id: "external-address-id" },
         regionId: "region-id",
         slotId: "slot-id"
       })
