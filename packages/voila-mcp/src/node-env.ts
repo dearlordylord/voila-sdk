@@ -11,6 +11,8 @@ import { Either, Schema } from "effect"
 import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 
+import topDesktopUserAgents from "top-user-agents/desktop"
+
 import { makeAuthGuidance } from "./auth-guidance.js"
 import { makeGuestSessionSnapshot, type OperationEnvironment, type OperationFailure } from "./operations.js"
 
@@ -138,6 +140,16 @@ const collectResponseHeaders = (headers: Headers): VoilaTransportResponse["heade
   return collected
 }
 
+const getMostPopularUserAgent = (): string => {
+  const [mostPopularUserAgent] = topDesktopUserAgents
+
+  if (mostPopularUserAgent === undefined) {
+    throw new Error("top-user-agents/desktop returned an empty list")
+  }
+
+  return mostPopularUserAgent
+}
+
 export const fetchVoilaTransport: VoilaTransport = {
   request: async (request: VoilaTransportRequest) => {
     let response: Response
@@ -145,7 +157,7 @@ export const fetchVoilaTransport: VoilaTransport = {
     try {
       response = await fetch(request.url, {
         ...(request.body === undefined ? {} : { body: request.body }),
-        headers: request.headers,
+        headers: { "User-Agent": getMostPopularUserAgent(), ...request.headers },
         method: request.method
       })
     } catch (error) {
