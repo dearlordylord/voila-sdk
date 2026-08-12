@@ -58,13 +58,9 @@ export type PreviewDeliveryContextChangeError = DeliveryContextPreviewRequestErr
 
 export type PreviewDeliveryContextChangeResult = VoilaJsonResult<NormalizedDeliveryContextPreview>
 
-export type SetActiveDeliveryDestinationContextError =
-  | SetActiveDeliveryDestinationRequestError
-  | VoilaSdkError
+export type SetActiveDeliveryDestinationContextError = SetActiveDeliveryDestinationRequestError | VoilaSdkError
 
-export type SetActiveCartPropositionContextError =
-  | SetActiveCartPropositionRequestError
-  | VoilaSdkError
+export type SetActiveCartPropositionContextError = SetActiveCartPropositionRequestError | VoilaSdkError
 
 export type SetActiveShoppingContextResult = VoilaJsonResult<NormalizedActiveShoppingContext>
 
@@ -110,17 +106,9 @@ const getProductsFromCartProposition = (
 const makeCartImpactWarning = (
   kind: CartImpactWarning["kind"],
   products: ReadonlyArray<CartImpactProduct>
-): CartImpactWarning | undefined =>
-  products.length === emptyLength
-    ? undefined
-    : {
-      kind,
-      products
-    }
+): CartImpactWarning | undefined => (products.length === emptyLength ? undefined : { kind, products })
 
-const collectCartImpactWarnings = (
-  response: DeliveryContextPreviewResponse
-): ReadonlyArray<CartImpactWarning> =>
+const collectCartImpactWarnings = (response: DeliveryContextPreviewResponse): ReadonlyArray<CartImpactWarning> =>
   [
     makeCartImpactWarning(
       "origin-cart-items",
@@ -178,10 +166,7 @@ export const parseDeliveryPropositionDetailsResponse = (
     Either.mapLeft(parseUnknown(DeliveryPropositionDetailsResponseSchema, input), shoppingContextSchemaMismatch),
     (response) =>
       Either.mapLeft(
-        parseUnknown(
-          NormalizedDeliveryPropositionDetailsSchema,
-          normalizeDeliveryPropositionDetailsResponse(response)
-        ),
+        parseUnknown(NormalizedDeliveryPropositionDetailsSchema, normalizeDeliveryPropositionDetailsResponse(response)),
         shoppingContextSchemaMismatch
       )
   )
@@ -220,17 +205,8 @@ const requestNormalizedActiveShoppingContext = async (
   cookieJarPort?: CookieJarPort
 ): Promise<Either.Either<SetActiveShoppingContextResult, VoilaSdkError>> =>
   Either.map(
-    await requestVoilaJson(
-      ActiveShoppingContextResponseSchema,
-      session,
-      request,
-      transport,
-      cookieJarPort
-    ),
-    (result) => ({
-      session: result.session,
-      value: normalizeActiveShoppingContext(result.value)
-    })
+    await requestVoilaJson(ActiveShoppingContextResponseSchema, session, request, transport, cookieJarPort),
+    (result) => ({ session: result.session, value: normalizeActiveShoppingContext(result.value) })
   )
 
 export const getDeliveryPropositionDetails = async (
@@ -321,17 +297,10 @@ const makeRequiresConfirmationResult = (
 ): Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError> =>
   Either.map(
     Either.mapLeft(
-      parseUnknown(DeliveryContextChangeResultSchema, {
-        applied: false,
-        preview,
-        status: "requires-confirmation"
-      }),
+      parseUnknown(DeliveryContextChangeResultSchema, { applied: false, preview, status: "requires-confirmation" }),
       shoppingContextSchemaMismatch
     ),
-    (value) => ({
-      session,
-      value
-    })
+    (value) => ({ session, value })
   )
 
 const makeAppliedResult = (
@@ -341,18 +310,10 @@ const makeAppliedResult = (
 ): Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError> =>
   Either.map(
     Either.mapLeft(
-      parseUnknown(DeliveryContextChangeResultSchema, {
-        applied: true,
-        context,
-        preview,
-        status: "applied"
-      }),
+      parseUnknown(DeliveryContextChangeResultSchema, { applied: true, context, preview, status: "applied" }),
       shoppingContextSchemaMismatch
     ),
-    (value) => ({
-      session,
-      value
-    })
+    (value) => ({ session, value })
   )
 
 export const applyDeliveryContextChange = async (
@@ -391,8 +352,8 @@ export const applyDeliveryContextChange = async (
   }
 
   if (
-    preview.right.value.destinationCartPropositionId !== undefined
-    && preview.right.value.originCartPropositionId !== undefined
+    preview.right.value.destinationCartPropositionId !== undefined &&
+    preview.right.value.originCartPropositionId !== undefined
   ) {
     const context = await setActiveCartPropositionContext(
       preview.right.session,

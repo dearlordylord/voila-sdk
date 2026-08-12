@@ -32,9 +32,7 @@ export const SetActiveDeliveryDestinationInputSchema = Schema.Struct({
   visitorId: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
 })
 
-export type SetActiveDeliveryDestinationInput = Schema.Schema.Type<
-  typeof SetActiveDeliveryDestinationInputSchema
->
+export type SetActiveDeliveryDestinationInput = Schema.Schema.Type<typeof SetActiveDeliveryDestinationInputSchema>
 
 export const SetActiveCartPropositionInputSchema = Schema.Struct({
   customerId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
@@ -46,18 +44,14 @@ export const SetActiveCartPropositionInputSchema = Schema.Struct({
 export type SetActiveCartPropositionInput = Schema.Schema.Type<typeof SetActiveCartPropositionInputSchema>
 
 export const ApplyDeliveryContextChangeInputSchema = Schema.Struct({
-  allowCartImpact: Schema.optionalWith(Schema.Boolean, {
-    default: () => false
-  }),
+  allowCartImpact: Schema.optionalWith(Schema.Boolean, { default: () => false }),
   customerId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
   deliveryDestinationId: NonEmptyStringSchema,
   destinationRegionId: NonEmptyStringSchema,
   visitorId: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
 })
 
-export type ApplyDeliveryContextChangeInput = Schema.Schema.Type<
-  typeof ApplyDeliveryContextChangeInputSchema
->
+export type ApplyDeliveryContextChangeInput = Schema.Schema.Type<typeof ApplyDeliveryContextChangeInputSchema>
 
 export const SupportedDeliveryPropositionSchema = Schema.asSchema(
   Schema.Struct({
@@ -76,30 +70,24 @@ export const SupportedDeliveryPropositionSchema = Schema.asSchema(
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
-export type SupportedDeliveryProposition = Schema.Schema.Type<
-  typeof SupportedDeliveryPropositionSchema
->
+export type SupportedDeliveryProposition = Schema.Schema.Type<typeof SupportedDeliveryPropositionSchema>
 
 export const DeliveryPropositionDetailsResponseSchema = Schema.Union(
   Schema.Array(SupportedDeliveryPropositionSchema),
   Schema.asSchema(
-    Schema.Struct({
-      propositions: Schema.Array(SupportedDeliveryPropositionSchema)
-    }).pipe(Schema.extend(UnknownStringRecordSchema))
+    Schema.Struct({ propositions: Schema.Array(SupportedDeliveryPropositionSchema) }).pipe(
+      Schema.extend(UnknownStringRecordSchema)
+    )
   )
 )
 
-export type DeliveryPropositionDetailsResponse = Schema.Schema.Type<
-  typeof DeliveryPropositionDetailsResponseSchema
->
+export type DeliveryPropositionDetailsResponse = Schema.Schema.Type<typeof DeliveryPropositionDetailsResponseSchema>
 
 export const NormalizedDeliveryPropositionDetailsSchema = Schema.Struct({
   propositions: Schema.Array(SupportedDeliveryPropositionSchema)
 })
 
-export type NormalizedDeliveryPropositionDetails = Schema.Schema.Type<
-  typeof NormalizedDeliveryPropositionDetailsSchema
->
+export type NormalizedDeliveryPropositionDetails = Schema.Schema.Type<typeof NormalizedDeliveryPropositionDetailsSchema>
 
 export const CartImpactProductSchema = Schema.asSchema(
   Schema.Struct({
@@ -121,15 +109,11 @@ export const CartPropositionCheckoutGroupSchema = Schema.asSchema(
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
-export type CartPropositionCheckoutGroup = Schema.Schema.Type<
-  typeof CartPropositionCheckoutGroupSchema
->
+export type CartPropositionCheckoutGroup = Schema.Schema.Type<typeof CartPropositionCheckoutGroupSchema>
 
 export const CartPropositionSchema = Schema.asSchema(
   Schema.Struct({
-    assignedCheckoutGroups: Schema.optionalWith(Schema.Array(CartPropositionCheckoutGroupSchema), {
-      exact: true
-    }),
+    assignedCheckoutGroups: Schema.optionalWith(Schema.Array(CartPropositionCheckoutGroupSchema), { exact: true }),
     cartPropositionId: Schema.optionalWith(Schema.String, { exact: true }),
     regionId: Schema.optionalWith(Schema.String, { exact: true })
   }).pipe(Schema.extend(UnknownStringRecordSchema))
@@ -144,9 +128,7 @@ export const DeliveryContextPreviewResponseSchema = Schema.asSchema(
   }).pipe(Schema.extend(UnknownStringRecordSchema))
 )
 
-export type DeliveryContextPreviewResponse = Schema.Schema.Type<
-  typeof DeliveryContextPreviewResponseSchema
->
+export type DeliveryContextPreviewResponse = Schema.Schema.Type<typeof DeliveryContextPreviewResponseSchema>
 
 export const CartImpactWarningSchema = Schema.Struct({
   kind: Schema.Literal("origin-cart-items", "destination-cart-items", "limited-cart-items"),
@@ -164,9 +146,7 @@ export const NormalizedDeliveryContextPreviewSchema = Schema.Struct({
   requiresConfirmation: Schema.Boolean
 })
 
-export type NormalizedDeliveryContextPreview = Schema.Schema.Type<
-  typeof NormalizedDeliveryContextPreviewSchema
->
+export type NormalizedDeliveryContextPreview = Schema.Schema.Type<typeof NormalizedDeliveryContextPreviewSchema>
 
 export const NormalizedActiveShoppingContextSchema = Schema.Struct({
   cartPropositionId: Schema.optionalWith(Schema.String, { exact: true }),
@@ -183,9 +163,7 @@ export const ActiveShoppingContextResponseSchema = Schema.asSchema(
 
 export type ActiveShoppingContextResponse = Schema.Schema.Type<typeof ActiveShoppingContextResponseSchema>
 
-export type NormalizedActiveShoppingContext = Schema.Schema.Type<
-  typeof NormalizedActiveShoppingContextSchema
->
+export type NormalizedActiveShoppingContext = Schema.Schema.Type<typeof NormalizedActiveShoppingContextSchema>
 
 export const DeliveryContextAppliedResultSchema = Schema.Struct({
   applied: Schema.Literal(true),
@@ -194,9 +172,7 @@ export const DeliveryContextAppliedResultSchema = Schema.Struct({
   status: Schema.Literal("applied")
 })
 
-export type DeliveryContextAppliedResult = Schema.Schema.Type<
-  typeof DeliveryContextAppliedResultSchema
->
+export type DeliveryContextAppliedResult = Schema.Schema.Type<typeof DeliveryContextAppliedResultSchema>
 
 export const DeliveryContextRequiresConfirmationResultSchema = Schema.Struct({
   applied: Schema.Literal(false),

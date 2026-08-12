@@ -113,7 +113,7 @@ Deep imports are unsupported. See [docs/public-api.md](docs/public-api.md) for t
 
 ## Development
 
-This repository follows the same quality harness as `../hulymcp`: Effect-first TypeScript, Effect Schema at I/O boundaries, strict linting, property tests, coverage gates, duplication checks, circular dependency checks, and Husky pre-commit hooks.
+This repository follows the same quality harness as `../hulymcp`: Effect-first TypeScript, Effect Schema at I/O boundaries, type-aware Oxlint and Effect diagnostics, Oxc formatting through dprint, property tests, complexity and package-boundary checks, coverage gates, duplication checks, circular dependency checks, and Husky pre-commit hooks.
 
 ```bash
 pnpm install
@@ -121,7 +121,7 @@ pnpm check-all
 pnpm package:audit
 ```
 
-`pnpm check-all` runs build, typecheck, circular dependency checks, lint/duplication checks, fixture audit, and coverage-gated tests.
+`pnpm check-all` runs named stages with timeouts and a bounded output budget: build, package boundaries, TypeScript and Effect diagnostics, circular dependencies, cyclomatic complexity, registry metadata, lint/format/duplication, fixture audit, and independently verified coverage-gated tests.
 
 `pnpm package:audit` builds the SDK and verifies the local npm dry-run package contents. See [docs/package-audit.md](docs/package-audit.md).
 

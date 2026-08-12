@@ -26,10 +26,7 @@ export type ApplyCartDeltasError = CartQuantityRequestError | VoilaSdkError
 
 export type ApplyCartDeltasResult = VoilaJsonResult<NormalizedCartMutationResult>
 
-export type CartItemsInputError = {
-  readonly _tag: "CartItemsInputInvalid"
-  readonly message: string
-}
+export type CartItemsInputError = { readonly _tag: "CartItemsInputInvalid"; readonly message: string }
 
 export type CartItemsOperationError = ApplyCartDeltasError | CartItemsInputError | CartQuantityDeltaError
 
@@ -51,9 +48,7 @@ const countCartItems = (response: CartUpdateResponse): number =>
     0
   )
 
-export const normalizeCartMutationResponse = (
-  response: CartUpdateResponse
-): NormalizedCartMutationResult => ({
+export const normalizeCartMutationResponse = (response: CartUpdateResponse): NormalizedCartMutationResult => ({
   itemCount: countCartItems(response),
   itemGroups: response.basketUpdateResult.itemGroups ?? [],
   limitedItems: response.limitedItems,
@@ -87,13 +82,7 @@ export const applyCartDeltas = async (
     return Either.left(request.left)
   }
 
-  const response = await requestVoilaJson(
-    CartUpdateResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
-  )
+  const response = await requestVoilaJson(CartUpdateResponseSchema, session, request.right, transport, cookieJarPort)
 
   return Either.map(response, (result) => ({
     session: result.session,
@@ -108,10 +97,8 @@ const makeCartDeltas = (
   items.reduce<Either.Either<ReadonlyArray<unknown>, CartQuantityDeltaError>>(
     (deltas, item) =>
       Either.flatMap(deltas, (current) =>
-        Either.map(
-          makeDelta(item.productId, item.quantity),
-          (delta) => [...current, delta]
-        )),
+        Either.map(makeDelta(item.productId, item.quantity), (delta) => [...current, delta])
+      ),
     Either.right([])
   )
 
@@ -122,10 +109,7 @@ const applyCartItemOperation = async (
   makeDelta: (productId: string, quantity: number) => Either.Either<unknown, CartQuantityDeltaError>,
   cookieJarPort?: CookieJarPort
 ): Promise<Either.Either<ApplyCartDeltasResult, CartItemsOperationError>> => {
-  const parsedItems = Either.mapLeft(
-    parseUnknown(CartItemQuantityInputArraySchema, items),
-    cartItemsInputInvalid
-  )
+  const parsedItems = Either.mapLeft(parseUnknown(CartItemQuantityInputArraySchema, items), cartItemsInputInvalid)
 
   if (Either.isLeft(parsedItems)) {
     return Either.left(parsedItems.left)

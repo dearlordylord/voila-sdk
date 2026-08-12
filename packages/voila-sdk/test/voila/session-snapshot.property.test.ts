@@ -30,15 +30,8 @@ const cookieJarSnapshotArbitrary: fc.Arbitrary<SerializedCookieJarSnapshot> = fc
 
 const sessionSnapshotArbitrary: fc.Arbitrary<SessionSnapshot> = fc.record({
   cookieJar: cookieJarSnapshotArbitrary,
-  csrf: fc.record({
-    token: safeText
-  }),
-  metadata: fc.record({
-    assetVersion: safeText,
-    clientRouteId: safeText,
-    pageViewId: safeText,
-    regionId: safeText
-  })
+  csrf: fc.record({ token: safeText }),
+  metadata: fc.record({ assetVersion: safeText, clientRouteId: safeText, pageViewId: safeText, regionId: safeText })
 })
 
 describe("SessionSnapshotSchema properties", () => {

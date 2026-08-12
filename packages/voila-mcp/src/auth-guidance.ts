@@ -18,9 +18,7 @@ export const makeAuthGuidance = (sessionPath?: string): OperationAuthGuidance =>
       "Run the command, log in in the browser, close the browser window to save, then retry the MCP request.",
       "MCP does not launch the browser itself."
     ].join(" "),
-    mcpEnv: {
-      VOILA_AUTH_SESSION_PATH: path
-    },
+    mcpEnv: { VOILA_AUTH_SESSION_PATH: path },
     message: "Voila account session is required for account-specific cart and authenticated grocery workflows."
   }
 }
@@ -28,7 +26,7 @@ export const makeAuthGuidance = (sessionPath?: string): OperationAuthGuidance =>
 export const authGuidanceForSnapshot = (
   authGuidance: OperationAuthGuidance | undefined,
   snapshot: SdkSessionSnapshot
-): OperationAuthGuidance | undefined => snapshot.kind === "guest" ? authGuidance : undefined
+): OperationAuthGuidance | undefined => (snapshot.kind === "guest" ? authGuidance : undefined)
 
 export const authGuidanceForHealth = (
   authGuidance: OperationAuthGuidance | undefined,

@@ -25,10 +25,7 @@ import type { CookieJarPort } from "./session-snapshot.js"
 import type { SlotListingRequestError, SlotReservationRequestError } from "./slot-urls.js"
 import { makeSlotListingRequest, makeSlotReservationRequest } from "./slot-urls.js"
 
-export type SlotListingNormalizationError = {
-  readonly _tag: "SlotListingSchemaMismatch"
-  readonly message: string
-}
+export type SlotListingNormalizationError = { readonly _tag: "SlotListingSchemaMismatch"; readonly message: string }
 
 export type SlotReservationNormalizationError = {
   readonly _tag: "SlotReservationSchemaMismatch"
@@ -36,26 +33,11 @@ export type SlotReservationNormalizationError = {
 }
 
 export type SlotReservationSelectionError =
-  | {
-    readonly _tag: "SlotReservationSelectionInvalid"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SlotReservationSlotIdMissing"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SlotReservationSlotUnavailable"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SlotReservationSlotExpired"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "SlotReservationSlotEndTimeInvalid"
-    readonly message: string
-  }
+  | { readonly _tag: "SlotReservationSelectionInvalid"; readonly message: string }
+  | { readonly _tag: "SlotReservationSlotIdMissing"; readonly message: string }
+  | { readonly _tag: "SlotReservationSlotUnavailable"; readonly message: string }
+  | { readonly _tag: "SlotReservationSlotExpired"; readonly message: string }
+  | { readonly _tag: "SlotReservationSlotEndTimeInvalid"; readonly message: string }
 
 export type GetSlotListingsError = SlotListingRequestError | VoilaSdkError
 
@@ -138,9 +120,7 @@ const normalizeCarrier = (carrier: RawSlotCarrier): NormalizedSlotCarrier => ({
   ...(carrier.title === undefined ? {} : { title: carrier.title })
 })
 
-export const normalizeSlotListingResponse = (
-  response: RawSlotListingResponse
-): NormalizedSlotListing => {
+export const normalizeSlotListingResponse = (response: RawSlotListingResponse): NormalizedSlotListing => {
   const slots = response.carriers.flatMap(normalizeCarrierSlots)
 
   return {
@@ -150,9 +130,7 @@ export const normalizeSlotListingResponse = (
   }
 }
 
-export const normalizeSlotReservationResponse = (
-  response: RawSlotReservationResponse
-): NormalizedSlotReservation => ({
+export const normalizeSlotReservationResponse = (response: RawSlotReservationResponse): NormalizedSlotReservation => ({
   ...(response.confirmationData === undefined ? {} : { confirmationData: response.confirmationData }),
   ...(response.slot.expiryTime === undefined ? {} : { expiryTime: response.slot.expiryTime }),
   ...(response.slot.minimumCheckoutThreshold === undefined

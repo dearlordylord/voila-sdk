@@ -11,10 +11,7 @@ export interface CheckoutSummaryRequest {
   readonly url: URL
 }
 
-export type CheckoutSummaryRequestError = {
-  readonly _tag: "CheckoutSummaryInputInvalid"
-  readonly message: string
-}
+export type CheckoutSummaryRequestError = { readonly _tag: "CheckoutSummaryInputInvalid"; readonly message: string }
 
 const checkoutSummaryInputInvalid = (): CheckoutSummaryRequestError => ({
   _tag: "CheckoutSummaryInputInvalid",
@@ -37,9 +34,6 @@ export const makeCheckoutSummaryRequest = (
         url.searchParams.set("paymentCheckId", summaryInput.appliedPaymentCheckId)
       }
 
-      return {
-        method: "GET",
-        url
-      }
+      return { method: "GET", url }
     }
   )

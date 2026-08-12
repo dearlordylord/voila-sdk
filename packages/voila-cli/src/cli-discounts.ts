@@ -31,10 +31,10 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null
 
 const isUsageResult = (value: unknown): value is DiscountCliRunResult =>
-  isRecord(value)
-  && typeof value.exitCode === "number"
-  && typeof value.stderr === "string"
-  && typeof value.stdout === "string"
+  isRecord(value) &&
+  typeof value.exitCode === "number" &&
+  typeof value.stderr === "string" &&
+  typeof value.stdout === "string"
 
 const getRecord = (
   record: Readonly<Record<string, unknown>>,
@@ -120,9 +120,7 @@ export const makeDiscountsOperationInput = (
     return sort
   }
 
-  const pageSize = pageSizeOption === undefined
-    ? undefined
-    : parsePositiveInteger(pageSizeOption, "--page-size")
+  const pageSize = pageSizeOption === undefined ? undefined : parsePositiveInteger(pageSizeOption, "--page-size")
 
   if (isUsageResult(pageSize)) {
     return pageSize
@@ -178,10 +176,7 @@ export const renderDiscountsText = (result: OperationExecutionResult): string =>
     return `${JSON.stringify(result.value, undefined, 2)}\n`
   }
 
-  const rows = products.flatMap((product) => isRecord(product) ? [renderProductRow(product)] : [])
+  const rows = products.flatMap((product) => (isRecord(product) ? [renderProductRow(product)] : []))
 
-  return [
-    "Product\tNow\tWas\tSaved\tSave %\tPromo",
-    ...rows
-  ].join("\n") + "\n"
+  return ["Product\tNow\tWas\tSaved\tSave %\tPromo", ...rows].join("\n") + "\n"
 }

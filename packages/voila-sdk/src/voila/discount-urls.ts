@@ -52,9 +52,7 @@ export const makeDiscountedProductsRequest = (
     makeDiscountedProductsRequestFromInput
   )
 
-export const makeDiscountedProductsRequestFromInput = (
-  input: DiscountedProductsInput
-): DiscountedProductsRequest => ({
+export const makeDiscountedProductsRequestFromInput = (input: DiscountedProductsInput): DiscountedProductsRequest => ({
   method: "GET",
   url: buildDiscountedProductsUrl(input)
 })

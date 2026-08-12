@@ -13,15 +13,9 @@ export interface VoilaMcpHttpServerOptions {
   readonly port: number
 }
 
-const responseJsonHeaders = {
-  "content-type": "application/json"
-}
+const responseJsonHeaders = { "content-type": "application/json" }
 
-const writeJsonResponse = (
-  response: ServerResponse,
-  status: number,
-  value: unknown
-): void => {
+const writeJsonResponse = (response: ServerResponse, status: number, value: unknown): void => {
   response.writeHead(status, responseJsonHeaders)
   response.end(JSON.stringify(value))
 }
@@ -37,10 +31,7 @@ const firstHeaderValue = (value: string | Array<string> | undefined): string | u
   Array.isArray(value) ? value[0] : value
 
 const isInitializeMessage = (value: unknown): boolean =>
-  typeof value === "object"
-  && value !== null
-  && "method" in value
-  && value.method === "initialize"
+  typeof value === "object" && value !== null && "method" in value && value.method === "initialize"
 
 const isInitializePayload = (value: unknown): boolean =>
   Array.isArray(value) ? value.some(isInitializeMessage) : isInitializeMessage(value)
@@ -98,27 +89,20 @@ export const createHttpServer = (
     const pathname = requestPathname(request)
 
     if (request.method === "GET" && (pathname === "/" || pathname === "/health")) {
-      writeJsonResponse(response, 200, {
-        name: mcpName,
-        status: "ok"
-      })
+      writeJsonResponse(response, 200, { name: mcpName, status: "ok" })
 
       return
     }
 
     if (pathname !== mcpPath) {
-      writeJsonResponse(response, 404, {
-        error: "not_found"
-      })
+      writeJsonResponse(response, 404, { error: "not_found" })
 
       return
     }
 
     void handleMcpRequest(request, response, env, transports, version).catch(() => {
       if (!response.headersSent) {
-        writeJsonResponse(response, 500, {
-          error: "mcp_request_failed"
-        })
+        writeJsonResponse(response, 500, { error: "mcp_request_failed" })
 
         return
       }
@@ -139,9 +123,7 @@ const handleMcpRequest = async (
     const transport = lookupHttpTransport(request, transports)
 
     if (transport === undefined) {
-      writeJsonResponse(response, 400, {
-        error: "mcp_session_required"
-      })
+      writeJsonResponse(response, 400, { error: "mcp_session_required" })
 
       return
     }
@@ -157,9 +139,7 @@ const handleMcpRequest = async (
     : lookupHttpTransport(request, transports)
 
   if (transport === undefined) {
-    writeJsonResponse(response, 400, {
-      error: "mcp_session_required"
-    })
+    writeJsonResponse(response, 400, { error: "mcp_session_required" })
 
     return
   }

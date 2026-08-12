@@ -10,9 +10,7 @@ import {
   type SessionSnapshot,
   type VoilaTransport,
   type VoilaTransportRequest,
-  type VoilaTransportResponse
-} from "../../src/index.js"
-import {
+  type VoilaTransportResponse,
   getDeliveryDestination,
   getDeliveryDestinations,
   makeDeliveryDestinationsDiagnostic,
@@ -68,10 +66,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -85,14 +82,9 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeResponse = (
-  body: string = fixtureText,
-  status: number = 200
-): VoilaTransportResponse => ({
+const makeResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
-  headers: {
-    "set-cookie": "fresh-delivery-destination-cookie=after; Path=/; Secure"
-  },
+  headers: { "set-cookie": "fresh-delivery-destination-cookie=after; Path=/; Secure" },
   status
 })
 
@@ -142,12 +134,9 @@ describe("delivery destination parsing", () => {
   })
 
   it("normalizes a minimal destination without optional address details", () => {
-    expect(normalizeDeliveryDestination({
-      deliveryDestinationId: "sanitized-minimal-delivery-destination-id"
-    })).toEqual({
-      deliverable: false,
-      deliveryDestinationId: "sanitized-minimal-delivery-destination-id"
-    })
+    expect(
+      normalizeDeliveryDestination({ deliveryDestinationId: "sanitized-minimal-delivery-destination-id" })
+    ).toEqual({ deliverable: false, deliveryDestinationId: "sanitized-minimal-delivery-destination-id" })
   })
 
   it("proves delivery destination fixtures do not carry raw address or account identifiers", () => {
@@ -169,24 +158,24 @@ describe("delivery destination parsing", () => {
       name: "private nickname",
       resolvedRegionId: "private-region-id"
     })
-    const diagnostic = makeDeliveryDestinationsDiagnostic({
-      destinations: [destination]
-    })
+    const diagnostic = makeDeliveryDestinationsDiagnostic({ destinations: [destination] })
     const encoded = JSON.stringify(diagnostic)
 
     expect(diagnostic).toEqual({
       count: 1,
-      destinations: [{
-        addressId: "[redacted]",
-        deliverability: "DELIVERABLE",
-        deliverable: true,
-        deliveryDestinationId: "[redacted]",
-        deliveryInstructions: "[redacted]",
-        deliveryMethod: "HOME_DELIVERY",
-        formattedAddress: "[redacted]",
-        nickname: "[redacted]",
-        regionId: "[redacted]"
-      }]
+      destinations: [
+        {
+          addressId: "[redacted]",
+          deliverability: "DELIVERABLE",
+          deliverable: true,
+          deliveryDestinationId: "[redacted]",
+          deliveryInstructions: "[redacted]",
+          deliveryMethod: "HOME_DELIVERY",
+          formattedAddress: "[redacted]",
+          nickname: "[redacted]",
+          regionId: "[redacted]"
+        }
+      ]
     })
     expect(assertDecodeSuccess(DeliveryDestinationsDiagnosticSchema, diagnostic)).toEqual(diagnostic)
     expect(Either.isRight(parseDeliveryDestinationsDiagnostic(diagnostic))).toBe(true)
@@ -199,28 +188,19 @@ describe("delivery destination parsing", () => {
 
   it("builds minimal diagnostics without adding absent sensitive fields", () => {
     const diagnostic = makeDeliveryDestinationsDiagnostic({
-      destinations: [{
-        deliverable: false,
-        deliveryDestinationId: "destination-id"
-      }]
+      destinations: [{ deliverable: false, deliveryDestinationId: "destination-id" }]
     })
 
     expect(diagnostic).toEqual({
       count: 1,
-      destinations: [{
-        deliverable: false,
-        deliveryDestinationId: "[redacted]"
-      }]
+      destinations: [{ deliverable: false, deliveryDestinationId: "[redacted]" }]
     })
   })
 
   it("rejects diagnostics that contain raw identifiers", () => {
     const result = parseDeliveryDestinationsDiagnostic({
       count: 1,
-      destinations: [{
-        deliverable: true,
-        deliveryDestinationId: "raw-destination-id"
-      }]
+      destinations: [{ deliverable: true, deliveryDestinationId: "raw-destination-id" }]
     })
 
     expect(Either.isLeft(result)).toBe(true)
@@ -255,9 +235,7 @@ describe("delivery destination parsing", () => {
   })
 
   it("fails single destination parsing with redacted schema errors", () => {
-    const result = parseDeliveryDestinationResponse({
-      formattedAddress: secretAddress
-    })
+    const result = parseDeliveryDestinationResponse({ formattedAddress: secretAddress })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -268,10 +246,9 @@ describe("delivery destination parsing", () => {
   })
 
   it("fails at the schema boundary when destination IDs are missing", () => {
-    const result = parseDeliveryDestinationsResponse([{
-      deliverability: "DELIVERABLE",
-      formattedAddress: secretAddress
-    }])
+    const result = parseDeliveryDestinationsResponse([
+      { deliverability: "DELIVERABLE", formattedAddress: secretAddress }
+    ])
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -306,9 +283,7 @@ describe("delivery destination operations", () => {
     const fake = makeResponseTransport(makeResponse())
     const result = await getDeliveryDestinations(
       makeSession(),
-      {
-        deliveryMethod: "CUSTOMER_COLLECTION"
-      },
+      { deliveryMethod: "CUSTOMER_COLLECTION" },
       fake.transport
     )
 
@@ -322,13 +297,7 @@ describe("delivery destination operations", () => {
 
   it("rejects invalid delivery method input before network I/O", async () => {
     const fake = makeResponseTransport(makeResponse())
-    const result = await getDeliveryDestinations(
-      makeSession(),
-      {
-        deliveryMethod: "INVALID"
-      },
-      fake.transport
-    )
+    const result = await getDeliveryDestinations(makeSession(), { deliveryMethod: "INVALID" }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)
@@ -339,18 +308,20 @@ describe("delivery destination operations", () => {
   })
 
   it("fetches a single delivery destination by ID", async () => {
-    const fake = makeResponseTransport(makeResponse(JSON.stringify({
-      deliverability: "DELIVERABLE",
-      deliveryDestinationId: "sanitized-delivery-destination-id",
-      deliveryMethod: "HOME_DELIVERY",
-      formattedAddress: "sanitized-formatted-address",
-      resolvedRegionId: "sanitized-region-id"
-    })))
+    const fake = makeResponseTransport(
+      makeResponse(
+        JSON.stringify({
+          deliverability: "DELIVERABLE",
+          deliveryDestinationId: "sanitized-delivery-destination-id",
+          deliveryMethod: "HOME_DELIVERY",
+          formattedAddress: "sanitized-formatted-address",
+          resolvedRegionId: "sanitized-region-id"
+        })
+      )
+    )
     const result = await getDeliveryDestination(
       makeSession(),
-      {
-        deliveryDestinationId: "sanitized-delivery-destination-id"
-      },
+      { deliveryDestinationId: "sanitized-delivery-destination-id" },
       fake.transport
     )
 
@@ -370,13 +341,7 @@ describe("delivery destination operations", () => {
 
   it("rejects invalid single-destination input before network I/O", async () => {
     const fake = makeResponseTransport(makeResponse())
-    const result = await getDeliveryDestination(
-      makeSession(),
-      {
-        deliveryDestinationId: ""
-      },
-      fake.transport
-    )
+    const result = await getDeliveryDestination(makeSession(), { deliveryDestinationId: "" }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)
@@ -390,9 +355,7 @@ describe("delivery destination operations", () => {
     const result = await getDeliveryDestinations(
       makeSession(),
       {},
-      makeResponseTransport(makeResponse(JSON.stringify([{
-        formattedAddress: secretAddress
-      }]))).transport
+      makeResponseTransport(makeResponse(JSON.stringify([{ formattedAddress: secretAddress }]))).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)

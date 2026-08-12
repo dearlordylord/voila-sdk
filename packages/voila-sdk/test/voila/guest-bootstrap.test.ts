@@ -11,26 +11,15 @@ const sessionCookie = "guest-session=fixture; Path=/; Secure"
 const secretFailurePayload = "guest-session=secret"
 
 const minimalInitialState = {
-  csrf: {
-    token: "fixture-csrf-token"
-  },
+  csrf: { token: "fixture-csrf-token" },
   data: {
     basket: {
       basketId: "fixture-basket-id",
       regionId: "fixture-region-id",
       totals: {
-        itemPriceAfterPromos: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        itemsRetailPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        savingsPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
+        itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+        itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+        savingsPrice: { amount: "0.00", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       }
     }
@@ -50,15 +39,14 @@ const initialStateWithItems = {
   data: {
     basket: {
       ...minimalInitialState.data.basket,
-      itemGroups: [{
-        items: [{
-          productId: "first-product",
-          quantity: 2
-        }, {
-          productId: "second-product",
-          quantity: 3
-        }]
-      }]
+      itemGroups: [
+        {
+          items: [
+            { productId: "first-product", quantity: 2 },
+            { productId: "second-product", quantity: 3 }
+          ]
+        }
+      ]
     }
   }
 }
@@ -66,10 +54,9 @@ const initialStateWithItems = {
 const htmlFromInitialState = (initialState: unknown): string =>
   `<html><body><script>window.__INITIAL_STATE__ = ${JSON.stringify(initialState)};</script></body></html>`
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -83,9 +70,7 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => Either.left(failure)
-})
+const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
 
 const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
   request: async () => {
@@ -95,24 +80,14 @@ const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
 
 const makeHomepageResponse = (
   body: string,
-  headers: VoilaTransportResponse["headers"] = {
-    "set-cookie": sessionCookie
-  },
+  headers: VoilaTransportResponse["headers"] = { "set-cookie": sessionCookie },
   status: number = 200
-): VoilaTransportResponse => ({
-  body,
-  headers,
-  status
-})
+): VoilaTransportResponse => ({ body, headers, status })
 
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () =>
-    Either.left({
-      _tag: "CookieJarSerializationFailed",
-      message: secretFailurePayload
-    })
+  serialize: () => Either.left({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
 }
 
 const getSessionCookies = (result: Awaited<ReturnType<typeof bootstrapGuestSession>>): string => {
@@ -177,9 +152,7 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when homepage cookies are missing", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(fixtureHtml, {})).transport
-    )
+    const result = await bootstrapGuestSession(makeResponseTransport(makeHomepageResponse(fixtureHtml, {})).transport)
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -190,9 +163,7 @@ describe("bootstrapGuestSession", () => {
 
   it("returns a typed error when homepage cookies are malformed", async () => {
     const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(fixtureHtml, {
-        "set-cookie": "bad cookie value"
-      })).transport
+      makeResponseTransport(makeHomepageResponse(fixtureHtml, { "set-cookie": "bad cookie value" })).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -219,14 +190,9 @@ describe("bootstrapGuestSession", () => {
 
   it("returns a typed error when CSRF is missing from initial state", async () => {
     const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(
-        htmlFromInitialState({
-          ...minimalInitialState,
-          csrf: {
-            token: " "
-          }
-        })
-      )).transport
+      makeResponseTransport(
+        makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: { token: " " } }))
+      ).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -238,12 +204,8 @@ describe("bootstrapGuestSession", () => {
 
   it("returns a typed error when the CSRF object is absent from initial state", async () => {
     const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(
-        htmlFromInitialState({
-          ...minimalInitialState,
-          csrf: undefined
-        })
-      )).transport
+      makeResponseTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: undefined })))
+        .transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -255,12 +217,7 @@ describe("bootstrapGuestSession", () => {
 
   it("returns a typed error when the CSRF token is absent from initial state", async () => {
     const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(
-        htmlFromInitialState({
-          ...minimalInitialState,
-          csrf: {}
-        })
-      )).transport
+      makeResponseTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: {} }))).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -272,7 +229,7 @@ describe("bootstrapGuestSession", () => {
 
   it("returns a typed error when initial state is malformed", async () => {
     const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse("<script>window.__INITIAL_STATE__ = {\"csrf\":}</script>")).transport
+      makeResponseTransport(makeHomepageResponse('<script>window.__INITIAL_STATE__ = {"csrf":}</script>')).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -306,9 +263,7 @@ describe("bootstrapGuestSession", () => {
 
   it("returns a typed error for non-2xx homepage responses", async () => {
     const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse("not used", {
-        "set-cookie": sessionCookie
-      }, 500)).transport
+      makeResponseTransport(makeHomepageResponse("not used", { "set-cookie": sessionCookie }, 500)).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)

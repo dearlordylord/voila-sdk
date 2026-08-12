@@ -7,14 +7,8 @@ import { assertDecodeFailure } from "../helpers/property.js"
 
 describe("search request model", () => {
   it("builds deterministic Voila search requests", () => {
-    const first = makeSearchRequest({
-      pageSize: 24,
-      query: "milk"
-    })
-    const second = makeSearchRequest({
-      pageSize: 24,
-      query: "milk"
-    })
+    const first = makeSearchRequest({ pageSize: 24, query: "milk" })
+    const second = makeSearchRequest({ pageSize: 24, query: "milk" })
 
     expect(Either.isRight(first)).toBe(true)
     expect(Either.isRight(second)).toBe(true)
@@ -27,10 +21,7 @@ describe("search request model", () => {
   })
 
   it("encodes search query values through URLSearchParams", () => {
-    const request = makeSearchRequest({
-      pageSize: 12,
-      query: "milk & eggs"
-    })
+    const request = makeSearchRequest({ pageSize: 12, query: "milk & eggs" })
 
     expect(Either.isRight(request)).toBe(true)
 
@@ -42,10 +33,7 @@ describe("search request model", () => {
 
   it("adds optional page token and category context", () => {
     const request = makeSearchRequest({
-      categoryContext: {
-        categoryId: "category-id",
-        retailerCategoryId: "retailer-category-id"
-      },
+      categoryContext: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
       pageSize: 24,
       pageToken: "next-page-token",
       query: "apples"
@@ -61,83 +49,31 @@ describe("search request model", () => {
   })
 
   it("rejects invalid search inputs at the boundary", () => {
-    for (
-      const input of [
-        {
-          pageSize: MIN_SEARCH_PAGE_SIZE - 1,
-          query: "milk"
-        },
-        {
-          pageSize: MAX_SEARCH_PAGE_SIZE + 1,
-          query: "milk"
-        },
-        {
-          pageSize: 12.5,
-          query: "milk"
-        },
-        {
-          pageSize: 12,
-          query: ""
-        },
-        {
-          pageSize: 12,
-          query: " milk"
-        },
-        {
-          pageSize: 12,
-          pageToken: "",
-          query: "milk"
-        },
-        {
-          categoryContext: {},
-          pageSize: 12,
-          query: "milk"
-        },
-        {
-          categoryContext: {
-            categoryId: " category"
-          },
-          pageSize: 12,
-          query: "milk"
-        },
-        {
-          categoryContext: {
-            categoryId: "category",
-            retailerCategoryId: ""
-          },
-          pageSize: 12,
-          query: "milk"
-        },
-        {
-          categoryContext: {
-            categoryId: "",
-            retailerCategoryId: "retailer-category"
-          },
-          pageSize: 12,
-          query: "milk"
-        }
-      ]
-    ) {
+    for (const input of [
+      { pageSize: MIN_SEARCH_PAGE_SIZE - 1, query: "milk" },
+      { pageSize: MAX_SEARCH_PAGE_SIZE + 1, query: "milk" },
+      { pageSize: 12.5, query: "milk" },
+      { pageSize: 12, query: "" },
+      { pageSize: 12, query: " milk" },
+      { pageSize: 12, pageToken: "", query: "milk" },
+      { categoryContext: {}, pageSize: 12, query: "milk" },
+      { categoryContext: { categoryId: " category" }, pageSize: 12, query: "milk" },
+      { categoryContext: { categoryId: "category", retailerCategoryId: "" }, pageSize: 12, query: "milk" },
+      { categoryContext: { categoryId: "", retailerCategoryId: "retailer-category" }, pageSize: 12, query: "milk" }
+    ]) {
       expect(Either.isLeft(makeSearchRequest(input))).toBe(true)
       assertDecodeFailure(SearchInputSchema, input)
     }
   })
 
   it("rejects invalid search input instead of exposing an unsafe URL helper", () => {
-    const result = makeSearchRequest({
-      pageSize: 0,
-      query: ""
-    })
+    const result = makeSearchRequest({ pageSize: 0, query: "" })
 
     expect(Either.isLeft(result)).toBe(true)
   })
 
   it("explains empty category context failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(SearchInputSchema)({
-      categoryContext: {},
-      pageSize: 12,
-      query: "milk"
-    })
+    const result = Schema.decodeUnknownEither(SearchInputSchema)({ categoryContext: {}, pageSize: 12, query: "milk" })
 
     expect(Either.isLeft(result)).toBe(true)
 

@@ -2,17 +2,11 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const packageDirectories = [
-  "packages/voila-sdk",
-  "packages/voila-mcp",
-  "packages/voila-cli"
-]
+const packageDirectories = ["packages/voila-sdk", "packages/voila-mcp", "packages/voila-cli"]
 
 const isPublished = (name, version) => {
   try {
-    execFileSync("npm", ["view", `${name}@${version}`, "version"], {
-      stdio: "ignore"
-    })
+    execFileSync("npm", ["view", `${name}@${version}`, "version"], { stdio: "ignore" })
 
     return true
   } catch {
@@ -30,7 +24,5 @@ for (const packageDirectory of packageDirectories) {
   }
 
   console.log(`publish ${name}@${version}`)
-  execFileSync("pnpm", ["publish", packageDirectory, "--access", "public", "--no-git-checks"], {
-    stdio: "inherit"
-  })
+  execFileSync("pnpm", ["publish", packageDirectory, "--access", "public", "--no-git-checks"], { stdio: "inherit" })
 }

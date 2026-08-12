@@ -6,17 +6,9 @@ export const MAX_COMPLETED_ORDER_ITEM_SCAN = 50
 export const DEFAULT_COMPLETED_ORDER_ITEM_SCAN = 20
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
-const IsoDateStringSchema = NonEmptyTrimmedStringSchema.pipe(
-  Schema.pattern(/^\d{4}-\d{2}-\d{2}$/)
-)
-const NonNegativeNumberSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.nonNegative()
-)
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+const IsoDateStringSchema = NonEmptyTrimmedStringSchema.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/))
+const NonNegativeNumberSchema = Schema.Number.pipe(Schema.finite(), Schema.nonNegative())
 const PositiveOrderScanSchema = Schema.Number.pipe(
   Schema.finite(),
   Schema.int(),
@@ -24,9 +16,7 @@ const PositiveOrderScanSchema = Schema.Number.pipe(
   Schema.lessThanOrEqualTo(MAX_COMPLETED_ORDER_ITEM_SCAN)
 )
 
-export const OrderDetailsInputSchema = Schema.Struct({
-  orderId: NonEmptyTrimmedStringSchema
-})
+export const OrderDetailsInputSchema = Schema.Struct({ orderId: NonEmptyTrimmedStringSchema })
 
 export type OrderDetailsInput = Schema.Schema.Type<typeof OrderDetailsInputSchema>
 
@@ -48,9 +38,9 @@ const RawOrderDetailSellerSchema = Schema.asSchema(
 )
 
 const RawOrderDetailProductPriceSchema = Schema.asSchema(
-  Schema.Struct({
-    current: Schema.optionalWith(MoneySchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ current: Schema.optionalWith(MoneySchema, { exact: true }) }).pipe(
+    Schema.extend(UnknownStringRecordSchema)
+  )
 )
 
 export const RawOrderDetailProductSchema = Schema.asSchema(
@@ -87,9 +77,11 @@ const RawOrderDetailBaseItemSchema = Schema.asSchema(
 )
 
 export const RawOrderDetailItemSchema = Schema.asSchema(
-  RawOrderDetailBaseItemSchema.pipe(Schema.extend(Schema.Struct({
-    substitutes: Schema.optionalWith(Schema.Array(RawOrderDetailBaseItemSchema), { exact: true })
-  })))
+  RawOrderDetailBaseItemSchema.pipe(
+    Schema.extend(
+      Schema.Struct({ substitutes: Schema.optionalWith(Schema.Array(RawOrderDetailBaseItemSchema), { exact: true }) })
+    )
+  )
 )
 
 export type RawOrderDetailItem = Schema.Schema.Type<typeof RawOrderDetailItemSchema>
@@ -110,9 +102,9 @@ const RawOrderDetailSlotSchema = Schema.asSchema(
 )
 
 const RawOrderDetailPricesSchema = Schema.asSchema(
-  Schema.Struct({
-    total: Schema.optionalWith(MoneySchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  Schema.Struct({ total: Schema.optionalWith(MoneySchema, { exact: true }) }).pipe(
+    Schema.extend(UnknownStringRecordSchema)
+  )
 )
 
 export const RawOrderDetailOrderSchema = Schema.asSchema(
@@ -193,12 +185,7 @@ export const NormalizedOrderDetailsResultSchema = Schema.Struct({
   items: Schema.Array(NormalizedOrderItemSchema),
   orderId: Schema.String,
   orderReference: Schema.optionalWith(Schema.String, { exact: true }),
-  orderTotals: Schema.optionalWith(
-    Schema.Struct({
-      totalPrice: MoneySchema
-    }),
-    { exact: true }
-  ),
+  orderTotals: Schema.optionalWith(Schema.Struct({ totalPrice: MoneySchema }), { exact: true }),
   regionId: Schema.optionalWith(Schema.String, { exact: true }),
   retailerRegionId: Schema.optionalWith(Schema.String, { exact: true }),
   status: Schema.optionalWith(Schema.String, { exact: true })
@@ -234,6 +221,4 @@ export const NormalizedCompletedOrderItemsResultSchema = Schema.Struct({
   })
 })
 
-export type NormalizedCompletedOrderItemsResult = Schema.Schema.Type<
-  typeof NormalizedCompletedOrderItemsResultSchema
->
+export type NormalizedCompletedOrderItemsResult = Schema.Schema.Type<typeof NormalizedCompletedOrderItemsResultSchema>

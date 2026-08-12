@@ -5,18 +5,13 @@ export const DeliveryMethodSchema = Schema.Literal("HOME_DELIVERY", "CUSTOMER_CO
 export type DeliveryMethod = Schema.Schema.Type<typeof DeliveryMethodSchema>
 
 export const DeliveryDestinationsInputSchema = Schema.Struct({
-  deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, {
-    default: () => "HOME_DELIVERY" as const
-  })
+  deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { default: () => "HOME_DELIVERY" as const })
 })
 
 export type DeliveryDestinationsInput = Schema.Schema.Type<typeof DeliveryDestinationsInputSchema>
 
 export const DeliveryDestinationByIdInputSchema = Schema.Struct({
-  deliveryDestinationId: Schema.String.pipe(
-    Schema.trimmed(),
-    Schema.minLength(1)
-  )
+  deliveryDestinationId: Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
 })
 
 export type DeliveryDestinationByIdInput = Schema.Schema.Type<typeof DeliveryDestinationByIdInputSchema>
@@ -76,11 +71,7 @@ const DeliveryDestinationDiagnosticItemSchema = Schema.Struct({
 export type DeliveryDestinationDiagnosticItem = Schema.Schema.Type<typeof DeliveryDestinationDiagnosticItemSchema>
 
 export const DeliveryDestinationsDiagnosticSchema = Schema.Struct({
-  count: Schema.Number.pipe(
-    Schema.finite(),
-    Schema.int(),
-    Schema.nonNegative()
-  ),
+  count: Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative()),
   destinations: Schema.Array(DeliveryDestinationDiagnosticItemSchema)
 })
 

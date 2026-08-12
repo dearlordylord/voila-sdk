@@ -79,37 +79,25 @@ const safeTokenCharacter = fc.constantFrom(
 )
 
 const trimmedText = (character: fc.Arbitrary<string>): fc.Arbitrary<string> =>
-  fc.tuple(
-    character.filter((value) => value !== " "),
-    fc.array(character, { maxLength: 12 }),
-    character.filter((value) => value !== " ")
-  ).map(([first, middle, last]) => [first, ...middle, last].join(""))
+  fc
+    .tuple(
+      character.filter((value) => value !== " "),
+      fc.array(character, { maxLength: 12 }),
+      character.filter((value) => value !== " ")
+    )
+    .map(([first, middle, last]) => [first, ...middle, last].join(""))
 
 const categoryContextArbitrary = fc.oneof(
-  fc.record({
-    categoryId: trimmedText(safeTokenCharacter)
-  }),
-  fc.record({
-    retailerCategoryId: trimmedText(safeTokenCharacter)
-  }),
-  fc.record({
-    categoryId: trimmedText(safeTokenCharacter),
-    retailerCategoryId: trimmedText(safeTokenCharacter)
-  })
+  fc.record({ categoryId: trimmedText(safeTokenCharacter) }),
+  fc.record({ retailerCategoryId: trimmedText(safeTokenCharacter) }),
+  fc.record({ categoryId: trimmedText(safeTokenCharacter), retailerCategoryId: trimmedText(safeTokenCharacter) })
 )
 
-const optionalPageTokenArbitrary = fc.oneof(
-  fc.constant({}),
-  fc.record({
-    pageToken: trimmedText(safeTokenCharacter)
-  })
-)
+const optionalPageTokenArbitrary = fc.oneof(fc.constant({}), fc.record({ pageToken: trimmedText(safeTokenCharacter) }))
 
 const optionalCategoryContextArbitrary = fc.oneof(
   fc.constant({}),
-  fc.record({
-    categoryContext: categoryContextArbitrary
-  })
+  fc.record({ categoryContext: categoryContextArbitrary })
 )
 
 const requiredSearchInputArbitrary = fc.record({
@@ -117,15 +105,9 @@ const requiredSearchInputArbitrary = fc.record({
   query: trimmedText(safeSearchCharacter)
 })
 
-const searchInputArbitrary = fc.tuple(
-  requiredSearchInputArbitrary,
-  optionalPageTokenArbitrary,
-  optionalCategoryContextArbitrary
-).map(([required, pageToken, categoryContext]) => ({
-  ...required,
-  ...pageToken,
-  ...categoryContext
-}))
+const searchInputArbitrary = fc
+  .tuple(requiredSearchInputArbitrary, optionalPageTokenArbitrary, optionalCategoryContextArbitrary)
+  .map(([required, pageToken, categoryContext]) => ({ ...required, ...pageToken, ...categoryContext }))
 
 describe("search request properties", () => {
   it("builds stable equivalent requests and preserves decoded query parameters", () => {

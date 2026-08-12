@@ -149,11 +149,7 @@ export const NormalizedCheckoutSummarySchema = Schema.Struct({
 
 export type NormalizedCheckoutSummary = Schema.Schema.Type<typeof NormalizedCheckoutSummarySchema>
 
-export const CheckoutReadinessStatusSchema = Schema.Literal(
-  "blocked",
-  "needs-review",
-  "ready-for-manual-checkout"
-)
+export const CheckoutReadinessStatusSchema = Schema.Literal("blocked", "needs-review", "ready-for-manual-checkout")
 
 export type CheckoutReadinessStatus = Schema.Schema.Type<typeof CheckoutReadinessStatusSchema>
 

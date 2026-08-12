@@ -16,15 +16,9 @@ import type { CompletedOrdersRequestError } from "./order-urls.js"
 import { makeCompletedOrdersRequest } from "./order-urls.js"
 import type { CookieJarPort } from "./session-snapshot.js"
 
-export type CompletedOrdersGraphqlError = {
-  readonly _tag: "CompletedOrdersGraphqlError"
-  readonly message: string
-}
+export type CompletedOrdersGraphqlError = { readonly _tag: "CompletedOrdersGraphqlError"; readonly message: string }
 
-export type CompletedOrdersUnavailableError = {
-  readonly _tag: "CompletedOrdersUnavailable"
-  readonly message: string
-}
+export type CompletedOrdersUnavailableError = { readonly _tag: "CompletedOrdersUnavailable"; readonly message: string }
 
 export type GetCompletedOrdersError =
   | CompletedOrdersGraphqlError
@@ -42,11 +36,7 @@ const normalizeSlot = (slot: RawCompletedOrderSlot) => {
     case "ImportedOrderSlot":
       return {
         addressNickName: slot.name,
-        dates: {
-          deliveryEndDate: slot.end,
-          deliveryStartDate: slot.start,
-          timeZoneId: slot.timeZone
-        },
+        dates: { deliveryEndDate: slot.end, deliveryStartDate: slot.start, timeZoneId: slot.timeZone },
         deliveryMethod: HOME_DELIVERY,
         slotType: STANDARD_SLOT
       }
@@ -62,11 +52,7 @@ const normalizeSlot = (slot: RawCompletedOrderSlot) => {
         deliveryMethod: slot.deliveryDestination.deliveryMethod,
         ...(slot.externalLocker === undefined || slot.externalLocker === null
           ? {}
-          : {
-            externalAddress: {
-              externalCollectionPointId: slot.externalLocker.externalLockerId
-            }
-          }),
+          : { externalAddress: { externalCollectionPointId: slot.externalLocker.externalLockerId } }),
         ...(slot.shippingGroupType === undefined ? {} : { shippingGroupType: slot.shippingGroupType }),
         slotType: slot.type
       }
@@ -76,16 +62,10 @@ const normalizeSlot = (slot: RawCompletedOrderSlot) => {
 const normalizeCompletedOrder = (order: RawCompletedOrderNode): NormalizedCompletedOrder => ({
   ...normalizeSlot(order.slot),
   orderId: order.orderId,
-  orderTotals: {
-    totalPrice: order.prices.total
-  },
+  orderTotals: { totalPrice: order.prices.total },
   ...(order.recurringOrderDefinition === undefined || order.recurringOrderDefinition === null
     ? {}
-    : {
-      recurringShoppingDefinition: {
-        name: order.recurringOrderDefinition.name
-      }
-    }),
+    : { recurringShoppingDefinition: { name: order.recurringOrderDefinition.name } }),
   regionId: order.region.regionId,
   retailerRegionId: order.region.retailerRegionId,
   status: order.status
@@ -95,9 +75,7 @@ export const normalizeCompletedOrdersResponse = (
   connection: RawCompletedOrdersConnection
 ): NormalizedCompletedOrdersResult => {
   const orders = connection.edges.flatMap((edge) =>
-    edge?.node === undefined || edge.node === null
-      ? []
-      : [normalizeCompletedOrder(edge.node)]
+    edge?.node === undefined || edge.node === null ? [] : [normalizeCompletedOrder(edge.node)]
   )
 
   return {
@@ -127,11 +105,7 @@ const getCompletedOrdersConnection = (
     return Either.left(graphqlError())
   }
 
-  if (
-    response.data === undefined
-    || response.data === null
-    || response.data.completedOrders === null
-  ) {
+  if (response.data === undefined || response.data === null || response.data.completedOrders === null) {
     return Either.left(completedOrdersUnavailable())
   }
 
@@ -158,12 +132,10 @@ export const getCompletedOrders = async (
     cookieJarPort
   )
 
-  return Either.flatMap(
-    response,
-    (result) =>
-      Either.map(getCompletedOrdersConnection(result.value), (connection) => ({
-        session: result.session,
-        value: normalizeCompletedOrdersResponse(connection)
-      }))
+  return Either.flatMap(response, (result) =>
+    Either.map(getCompletedOrdersConnection(result.value), (connection) => ({
+      session: result.session,
+      value: normalizeCompletedOrdersResponse(connection)
+    }))
   )
 }

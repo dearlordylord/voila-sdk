@@ -11,10 +11,7 @@ export const MAX_DISCOUNT_QUERY_SCAN_PAGES = 5
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.minLength(1)
-)
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
 
 const DiscountPageSizeSchema = Schema.Number.pipe(
   Schema.finite(),
@@ -23,10 +20,7 @@ const DiscountPageSizeSchema = Schema.Number.pipe(
   Schema.lessThanOrEqualTo(MAX_DISCOUNT_PAGE_SIZE)
 )
 
-const NonNegativeNumberSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.nonNegative()
-)
+const NonNegativeNumberSchema = Schema.Number.pipe(Schema.finite(), Schema.nonNegative())
 
 export const DiscountSortSchema = Schema.Literal("best-percent", "best-amount", "price-asc")
 
@@ -83,11 +77,7 @@ export const RawPromotionProductGroupSchema = Schema.Struct({
 
 export type RawPromotionProductGroup = Schema.Schema.Type<typeof RawPromotionProductGroupSchema>
 
-const NonNegativeIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.nonNegative()
-)
+const NonNegativeIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative())
 
 export const PromotionProductsResponseSchema = Schema.Struct({
   nextPageToken: Schema.optionalWith(Schema.String, { exact: true }),

@@ -20,28 +20,14 @@ const completedOrdersResponse = {
         {
           node: {
             orderId: "sanitized-order-id-1",
-            prices: {
-              total: {
-                amount: "42.50",
-                currency: "CAD"
-              }
-            },
-            recurringOrderDefinition: {
-              name: "Weekly staples"
-            },
-            region: {
-              regionId: "sanitized-region-id",
-              retailerRegionId: "sanitized-retailer-region-id"
-            },
+            prices: { total: { amount: "42.50", currency: "CAD" } },
+            recurringOrderDefinition: { name: "Weekly staples" },
+            region: { regionId: "sanitized-region-id", retailerRegionId: "sanitized-retailer-region-id" },
             slot: {
               __typename: "InternalOrderSlot",
-              carrier: {
-                carrierId: "sanitized-carrier-id"
-              },
+              carrier: { carrierId: "sanitized-carrier-id" },
               deliveryDestination: {
-                address: {
-                  timeZone: "America/Montreal"
-                },
+                address: { timeZone: "America/Montreal" },
                 deliveryMethod: "HOME_DELIVERY",
                 name: "Home"
               },
@@ -57,17 +43,9 @@ const completedOrdersResponse = {
         {
           node: {
             orderId: "sanitized-order-id-2",
-            prices: {
-              total: {
-                amount: "18.20",
-                currency: "CAD"
-              }
-            },
+            prices: { total: { amount: "18.20", currency: "CAD" } },
             recurringOrderDefinition: null,
-            region: {
-              regionId: "sanitized-region-id",
-              retailerRegionId: "sanitized-retailer-region-id"
-            },
+            region: { regionId: "sanitized-region-id", retailerRegionId: "sanitized-retailer-region-id" },
             slot: {
               __typename: "ImportedOrderSlot",
               end: "2026-05-15T14:00:00-04:00",
@@ -79,10 +57,7 @@ const completedOrdersResponse = {
           }
         }
       ],
-      pageInfo: {
-        endCursor: "sanitized-next-order-cursor",
-        hasNextPage: true
-      },
+      pageInfo: { endCursor: "sanitized-next-order-cursor", hasNextPage: true },
       retentionPeriod: "ONE_YEAR"
     }
   }
@@ -115,10 +90,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -132,14 +106,9 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeCompletedOrdersResponse = (
-  body: string = fixtureText,
-  status: number = 200
-): VoilaTransportResponse => ({
+const makeCompletedOrdersResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
-  headers: {
-    "set-cookie": "fresh-order-cookie=after; Path=/; Secure"
-  },
+  headers: { "set-cookie": "fresh-order-cookie=after; Path=/; Secure" },
   status
 })
 
@@ -150,10 +119,10 @@ describe("completed order history", () => {
     expect(Either.isRight(parsed)).toBe(true)
 
     if (
-      Either.isRight(parsed)
-      && parsed.right.data !== undefined
-      && parsed.right.data !== null
-      && parsed.right.data.completedOrders !== null
+      Either.isRight(parsed) &&
+      parsed.right.data !== undefined &&
+      parsed.right.data !== null &&
+      parsed.right.data.completedOrders !== null
     ) {
       const result = normalizeCompletedOrdersResponse(parsed.right.data.completedOrders)
 
@@ -167,15 +136,8 @@ describe("completed order history", () => {
         carrierId: "sanitized-carrier-id",
         deliveryMethod: "HOME_DELIVERY",
         orderId: "sanitized-order-id-1",
-        orderTotals: {
-          totalPrice: {
-            amount: "42.50",
-            currency: "CAD"
-          }
-        },
-        recurringShoppingDefinition: {
-          name: "Weekly staples"
-        },
+        orderTotals: { totalPrice: { amount: "42.50", currency: "CAD" } },
+        recurringShoppingDefinition: { name: "Weekly staples" },
         slotType: "STANDARD",
         status: "DELIVERED"
       })
@@ -194,36 +156,22 @@ describe("completed order history", () => {
         completedOrders: {
           edges: [
             null,
-            {
-              node: null
-            },
+            { node: null },
             {
               node: {
                 orderId: "sanitized-order-id-3",
-                prices: {
-                  total: {
-                    amount: "9.99",
-                    currency: "CAD"
-                  }
-                },
-                region: {
-                  regionId: "sanitized-region-id",
-                  retailerRegionId: "sanitized-retailer-region-id"
-                },
+                prices: { total: { amount: "9.99", currency: "CAD" } },
+                region: { regionId: "sanitized-region-id", retailerRegionId: "sanitized-retailer-region-id" },
                 slot: {
                   __typename: "InternalOrderSlot",
                   carrier: null,
                   deliveryDestination: {
-                    address: {
-                      timeZone: "America/Toronto"
-                    },
+                    address: { timeZone: "America/Toronto" },
                     deliveryMethod: "CUSTOMER_COLLECTION",
                     name: "Pickup"
                   },
                   end: "2026-04-10T12:00:00-04:00",
-                  externalLocker: {
-                    externalLockerId: "sanitized-locker-id"
-                  },
+                  externalLocker: { externalLockerId: "sanitized-locker-id" },
                   start: "2026-04-10T11:00:00-04:00",
                   type: "STANDARD"
                 },
@@ -231,10 +179,7 @@ describe("completed order history", () => {
               }
             }
           ],
-          pageInfo: {
-            endCursor: null,
-            hasNextPage: false
-          }
+          pageInfo: { endCursor: null, hasNextPage: false }
         }
       }
     })
@@ -242,35 +187,32 @@ describe("completed order history", () => {
     expect(Either.isRight(parsed)).toBe(true)
 
     if (
-      Either.isRight(parsed)
-      && parsed.right.data !== undefined
-      && parsed.right.data !== null
-      && parsed.right.data.completedOrders !== null
+      Either.isRight(parsed) &&
+      parsed.right.data !== undefined &&
+      parsed.right.data !== null &&
+      parsed.right.data.completedOrders !== null
     ) {
       const result = normalizeCompletedOrdersResponse(parsed.right.data.completedOrders)
 
       expect(result.orders).toHaveLength(1)
       expect(result.orders[0]).toMatchObject({
-        externalAddress: {
-          externalCollectionPointId: "sanitized-locker-id"
-        },
+        externalAddress: { externalCollectionPointId: "sanitized-locker-id" },
         orderId: "sanitized-order-id-3"
       })
       expect(result.orders[0]).not.toHaveProperty("carrierId")
       expect(result.orders[0]).not.toHaveProperty("recurringShoppingDefinition")
       expect(result.orders[0]).not.toHaveProperty("shippingGroupType")
-      expect(result.pagination).toEqual({
-        hasNextPage: false
-      })
+      expect(result.pagination).toEqual({ hasNextPage: false })
     }
   })
 
   it("fetches completed orders through the active session and persists cookies", async () => {
     const fake = makeResponseTransport(makeCompletedOrdersResponse())
-    const result = await getCompletedOrders(makeSession(), {
-      pageSize: 2,
-      pageToken: "previous-cursor"
-    }, fake.transport)
+    const result = await getCompletedOrders(
+      makeSession(),
+      { pageSize: 2, pageToken: "previous-cursor" },
+      fake.transport
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -283,10 +225,7 @@ describe("completed order history", () => {
       expect(request?.headers.cookie).toContain("voila-session=before")
       expect(JSON.parse(request?.body ?? "{}")).toMatchObject({
         operationName: "GetCompletedOrders",
-        variables: {
-          after: "previous-cursor",
-          first: 2
-        }
+        variables: { after: "previous-cursor", first: 2 }
       })
       expect(result.right.value.orders).toHaveLength(2)
       expect(result.right.value.pagination.nextPageToken).toBe("sanitized-next-order-cursor")
@@ -295,9 +234,7 @@ describe("completed order history", () => {
 
   it("rejects invalid completed order inputs before network I/O", async () => {
     const fake = makeResponseTransport(makeCompletedOrdersResponse())
-    const result = await getCompletedOrders(makeSession(), {
-      pageSize: 0
-    }, fake.transport)
+    const result = await getCompletedOrders(makeSession(), { pageSize: 0 }, fake.transport)
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests()).toHaveLength(0)
@@ -311,11 +248,9 @@ describe("completed order history", () => {
     const result = await getCompletedOrders(
       makeSession(),
       {},
-      makeResponseTransport(makeCompletedOrdersResponse(JSON.stringify({
-        errors: [{
-          message: "secret-account-required-detail"
-        }]
-      }))).transport
+      makeResponseTransport(
+        makeCompletedOrdersResponse(JSON.stringify({ errors: [{ message: "secret-account-required-detail" }] }))
+      ).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -330,11 +265,7 @@ describe("completed order history", () => {
     const result = await getCompletedOrders(
       makeSession(),
       {},
-      makeResponseTransport(makeCompletedOrdersResponse(JSON.stringify({
-        data: {
-          completedOrders: null
-        }
-      }))).transport
+      makeResponseTransport(makeCompletedOrdersResponse(JSON.stringify({ data: { completedOrders: null } }))).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -348,9 +279,7 @@ describe("completed order history", () => {
     const result = await getCompletedOrders(
       makeSession(" "),
       {},
-      makeResponseTransport(
-        makeCompletedOrdersResponse()
-      ).transport
+      makeResponseTransport(makeCompletedOrdersResponse()).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)

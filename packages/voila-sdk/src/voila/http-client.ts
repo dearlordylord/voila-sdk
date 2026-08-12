@@ -48,42 +48,15 @@ export const VoilaRequestBlockedSchema = Schema.Struct({
 export type VoilaRequestBlocked = Schema.Schema.Type<typeof VoilaRequestBlockedSchema>
 
 export type VoilaSdkError =
-  | {
-    readonly _tag: "VoilaMissingCsrfToken"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "VoilaUnsupportedOrigin"
-    readonly message: string
-    readonly origin: string
-  }
-  | {
-    readonly _tag: "VoilaSessionPersistenceFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "VoilaNetworkFailure"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "VoilaUnauthorizedSession"
-    readonly message: string
-    readonly status: 401 | 403
-  }
+  | { readonly _tag: "VoilaMissingCsrfToken"; readonly message: string }
+  | { readonly _tag: "VoilaUnsupportedOrigin"; readonly message: string; readonly origin: string }
+  | { readonly _tag: "VoilaSessionPersistenceFailure"; readonly message: string }
+  | { readonly _tag: "VoilaNetworkFailure"; readonly message: string }
+  | { readonly _tag: "VoilaUnauthorizedSession"; readonly message: string; readonly status: 401 | 403 }
   | VoilaRequestBlocked
-  | {
-    readonly _tag: "VoilaNon2xxResponse"
-    readonly message: string
-    readonly status: number
-  }
-  | {
-    readonly _tag: "VoilaMalformedJson"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "VoilaSchemaDecodeFailure"
-    readonly message: string
-  }
+  | { readonly _tag: "VoilaNon2xxResponse"; readonly message: string; readonly status: number }
+  | { readonly _tag: "VoilaMalformedJson"; readonly message: string }
+  | { readonly _tag: "VoilaSchemaDecodeFailure"; readonly message: string }
 
 const emptyStringLength = 0
 const unauthorizedStatus = 401
@@ -92,10 +65,7 @@ const serviceUnavailableStatus = 503
 const successStatusMin = 200
 const successStatusMax = 300
 const setCookieHeader = "set-cookie"
-const blockedBodyMarkers = [
-  "error: the request could not be satisfied",
-  "request blocked."
-]
+const blockedBodyMarkers = ["error: the request could not be satisfied", "request blocked."]
 const edgeRequestIdHeader = "x-amz-cf-id"
 
 const missingCsrfToken = (): VoilaSdkError => ({
@@ -130,10 +100,7 @@ const unauthorizedSession = (status: 401 | 403): VoilaSdkError => ({
   status
 })
 
-const requestBlocked = (
-  response: VoilaTransportResponse,
-  request: VoilaHttpRequest
-): VoilaRequestBlocked => {
+const requestBlocked = (response: VoilaTransportResponse, request: VoilaHttpRequest): VoilaRequestBlocked => {
   const [edgeRequestId] = getHeaderValues(response.headers, edgeRequestIdHeader)
 
   return {
@@ -151,10 +118,7 @@ const non2xxResponse = (status: number): VoilaSdkError => ({
   status
 })
 
-const malformedJson = (): VoilaSdkError => ({
-  _tag: "VoilaMalformedJson",
-  message: "Voila returned malformed JSON"
-})
+const malformedJson = (): VoilaSdkError => ({ _tag: "VoilaMalformedJson", message: "Voila returned malformed JSON" })
 
 const schemaDecodeFailure = (): VoilaSdkError => ({
   _tag: "VoilaSchemaDecodeFailure",
@@ -183,11 +147,7 @@ const makeRequestHeaders = (
 ): Readonly<Record<string, string>> => {
   const cookieHeaders = cookieHeader.length === emptyStringLength ? {} : { cookie: cookieHeader }
 
-  return {
-    ...request.headers,
-    ...makeVoilaHeaders(session.metadata, session.csrf.token),
-    ...cookieHeaders
-  }
+  return { ...request.headers, ...makeVoilaHeaders(session.metadata, session.csrf.token), ...cookieHeaders }
 }
 
 const applySetCookieHeaders = (
@@ -209,11 +169,7 @@ const applySetCookieHeaders = (
 
       return Either.flatMap(
         Either.mapLeft(cookieJarPort.serialize(cookieJar), sessionPersistenceFailure),
-        (cookieJarSnapshot) =>
-          Either.right({
-            ...session,
-            cookieJar: cookieJarSnapshot
-          })
+        (cookieJarSnapshot) => Either.right({ ...session, cookieJar: cookieJarSnapshot })
       )
     }
   )
@@ -245,12 +201,8 @@ export const requestVoilaJson = async <A, I>(
     method: request.method,
     url: request.url
   }
-  const transportRequest: VoilaTransportRequest = request.body === undefined
-    ? transportRequestBase
-    : {
-      ...transportRequestBase,
-      body: request.body
-    }
+  const transportRequest: VoilaTransportRequest =
+    request.body === undefined ? transportRequestBase : { ...transportRequestBase, body: request.body }
 
   let response: Either.Either<VoilaTransportResponse, unknown>
 
@@ -282,15 +234,10 @@ export const requestVoilaJson = async <A, I>(
     return Either.left(updatedSession.left)
   }
 
-  return Either.flatMap(
-    Either.mapLeft(parseJson(response.right.body), malformedJson),
-    (payload) =>
-      Either.map(
-        Either.mapLeft(parseUnknown(schema, payload), schemaDecodeFailure),
-        (value) => ({
-          session: updatedSession.right,
-          value
-        })
-      )
+  return Either.flatMap(Either.mapLeft(parseJson(response.right.body), malformedJson), (payload) =>
+    Either.map(Either.mapLeft(parseUnknown(schema, payload), schemaDecodeFailure), (value) => ({
+      session: updatedSession.right,
+      value
+    }))
   )
 }

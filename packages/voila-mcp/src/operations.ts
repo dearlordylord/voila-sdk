@@ -68,15 +68,8 @@ export interface OperationFailure {
 }
 
 export type OperationExecutionResult =
-  | {
-    readonly authGuidance?: OperationAuthGuidance
-    readonly ok: true
-    readonly value: unknown
-  }
-  | {
-    readonly error: OperationFailure
-    readonly ok: false
-  }
+  | { readonly authGuidance?: OperationAuthGuidance; readonly ok: true; readonly value: unknown }
+  | { readonly error: OperationFailure; readonly ok: false }
 
 export interface OperationSessionPort {
   readonly load: () => Promise<Either.Either<SdkSessionSnapshot, OperationFailure>>
@@ -111,27 +104,21 @@ const success = (value: unknown, authGuidance?: OperationAuthGuidance): Operatio
 })
 
 const failure = (error: OperationFailure, authGuidance?: OperationAuthGuidance): OperationExecutionResult => ({
-  error: {
-    ...error,
-    ...(authGuidance === undefined ? {} : { authGuidance })
-  },
+  error: { ...error, ...(authGuidance === undefined ? {} : { authGuidance }) },
   ok: false
 })
 
 const isTaggedError = (value: unknown): value is OperationFailure =>
-  typeof value === "object"
-  && value !== null
-  && "_tag" in value
-  && typeof value._tag === "string"
-  && "message" in value
-  && typeof value.message === "string"
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  typeof value._tag === "string" &&
+  "message" in value &&
+  typeof value.message === "string"
 
 const redactError = (error: unknown): OperationFailure => {
   if (!isTaggedError(error)) {
-    return {
-      _tag: "VoilaOperationFailed",
-      message: "Voila operation failed"
-    }
+    return { _tag: "VoilaOperationFailed", message: "Voila operation failed" }
   }
 
   return {
@@ -141,10 +128,8 @@ const redactError = (error: unknown): OperationFailure => {
   }
 }
 
-const parseInput = <A, I>(
-  schema: Schema.Schema<A, I, never>,
-  input: unknown
-): Either.Either<A, OperationFailure> => Either.mapLeft(parseUnknown(schema, input), inputInvalid)
+const parseInput = <A, I>(schema: Schema.Schema<A, I, never>, input: unknown): Either.Either<A, OperationFailure> =>
+  Either.mapLeft(parseUnknown(schema, input), inputInvalid)
 
 const updateSdkSession = (
   previous: SdkSessionSnapshot,
@@ -153,9 +138,9 @@ const updateSdkSession = (
   previous.kind === "guest"
     ? Either.mapLeft(makeGuestSdkSessionSnapshot(session), sessionUpdateInvalid)
     : Either.mapLeft(
-      makeAuthenticatedSdkSessionSnapshot(session, previous.state, previous.account),
-      sessionUpdateInvalid
-    )
+        makeAuthenticatedSdkSessionSnapshot(session, previous.state, previous.account),
+        sessionUpdateInvalid
+      )
 
 const saveUpdatedSession = async (
   env: OperationEnvironment,
@@ -189,9 +174,8 @@ export const makeGuestSessionSnapshot = async (
   return Either.mapLeft(makeGuestSdkSessionSnapshot(bootstrapped.right.session), sessionUpdateInvalid)
 }
 
-const loadSession = async (
-  env: OperationEnvironment
-): Promise<Either.Either<SdkSessionSnapshot, OperationFailure>> => env.session.load()
+const loadSession = async (env: OperationEnvironment): Promise<Either.Either<SdkSessionSnapshot, OperationFailure>> =>
+  env.session.load()
 
 const persistResultSession = async (
   env: OperationEnvironment,
@@ -238,10 +222,7 @@ const runSessionOperation = async <A, I>(
   return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
 }
 
-const runHealth = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> => {
+const runHealth = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> => {
   const parsed = parseInput(EmptyOperationInputSchema, input)
 
   if (Either.isLeft(parsed)) {
@@ -266,94 +247,50 @@ const runHealth = async (
     return failure(saved.left)
   }
 
-  return success({
-    diagnostic: redactSdkSessionSnapshot(health.right.session),
-    ...(health.right.status === "retry" ? { reason: health.right.reason } : {}),
-    status: health.right.status
-  }, authGuidanceForHealth(env.authGuidance, health.right))
+  return success(
+    {
+      diagnostic: redactSdkSessionSnapshot(health.right.session),
+      ...(health.right.status === "retry" ? { reason: health.right.reason } : {}),
+      status: health.right.status
+    },
+    authGuidanceForHealth(env.authGuidance, health.right)
+  )
 }
 
-const runSearch = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    ProductListOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => searchProducts(session, makeSdkSearchInput(parsed), env.transport)
+const runSearch = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(ProductListOperationInputSchema, input, env, (session, parsed) =>
+    searchProducts(session, makeSdkSearchInput(parsed), env.transport)
   )
 
-const runCategoryProducts = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    CategoryProductsOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => getCategoryProducts(session, makeSdkCategoryInput(parsed), env.transport)
+const runCategoryProducts = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(CategoryProductsOperationInputSchema, input, env, (session, parsed) =>
+    getCategoryProducts(session, makeSdkCategoryInput(parsed), env.transport)
   )
 
-const runDiscountedProducts = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    DiscountedProductsOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => getDiscountedProducts(session, makeSdkDiscountInput(parsed), env.transport)
+const runDiscountedProducts = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(DiscountedProductsOperationInputSchema, input, env, (session, parsed) =>
+    getDiscountedProducts(session, makeSdkDiscountInput(parsed), env.transport)
   )
 
-const runActiveShoppingContext = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    ActiveShoppingContextOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => getActiveShoppingContext(session, makeSdkActiveShoppingContextInput(parsed), env.transport)
+const runActiveShoppingContext = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(ActiveShoppingContextOperationInputSchema, input, env, (session, parsed) =>
+    getActiveShoppingContext(session, makeSdkActiveShoppingContextInput(parsed), env.transport)
   )
 
-const runSlotListings = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    SlotListingsOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => getSlotListings(session, makeSdkSlotListingsInput(parsed), env.transport)
+const runSlotListings = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(SlotListingsOperationInputSchema, input, env, (session, parsed) =>
+    getSlotListings(session, makeSdkSlotListingsInput(parsed), env.transport)
   )
 
-const runReserveSlot = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    SlotReservationOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => reserveSlot(session, makeSdkSlotReservationInput(parsed), env.transport)
+const runReserveSlot = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(SlotReservationOperationInputSchema, input, env, (session, parsed) =>
+    reserveSlot(session, makeSdkSlotReservationInput(parsed), env.transport)
   )
 
-const runGetCart = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    EmptyOperationInputSchema,
-    input,
-    env,
-    (session) => getCart(session, env.transport)
-  )
+const runGetCart = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+  runSessionOperation(EmptyOperationInputSchema, input, env, (session) => getCart(session, env.transport))
 
-const runCompletedOrders = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
+const runCompletedOrders = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
   runSessionOperation(
     OrderListOperationInputSchema,
     input,
@@ -362,10 +299,7 @@ const runCompletedOrders = async (
     true
   )
 
-const runOrderDetails = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
+const runOrderDetails = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
   runSessionOperation(
     OrderDetailsOperationInputSchema,
     input,
@@ -374,10 +308,7 @@ const runOrderDetails = async (
     true
   )
 
-const runCompletedOrderItems = async (
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> =>
+const runCompletedOrderItems = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
   runSessionOperation(
     OrderItemsOperationInputSchema,
     input,
@@ -391,11 +322,8 @@ const runCartItems = async (
   env: OperationEnvironment,
   apply: typeof addCartItems
 ): Promise<OperationExecutionResult> =>
-  runSessionOperation(
-    CartItemOperationInputSchema,
-    input,
-    env,
-    (session, parsed) => apply(session, parsed.items, env.transport)
+  runSessionOperation(CartItemOperationInputSchema, input, env, (session, parsed) =>
+    apply(session, parsed.items, env.transport)
   )
 
 export const runVoilaOperation = async (
@@ -434,8 +362,5 @@ export const runVoilaOperation = async (
 }
 
 export const normalizeCliCartInput = (productId: string, quantity: number): CartItemOperationInput => ({
-  items: [{
-    productId,
-    quantity
-  }]
+  items: [{ productId, quantity }]
 })

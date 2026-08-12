@@ -51,44 +51,19 @@ const makeProduct = (
   brand: "Sanitized Brand",
   maxQuantityReached: false,
   name,
-  price: {
-    amount: price,
-    currency: "CAD"
-  },
+  price: { amount: price, currency: "CAD" },
   productId,
-  promoPrice: {
-    amount: promoPrice,
-    currency: "CAD"
-  },
-  promoUnitPrice: {
-    price: {
-      amount: "0.40",
-      currency: "CAD"
-    },
-    unit: "fop.price.per.100g"
-  },
-  promotions: [{
-    label: promotionLabel,
-    promotionId: "sanitized-promotion-id"
-  }],
+  promoPrice: { amount: promoPrice, currency: "CAD" },
+  promoUnitPrice: { price: { amount: "0.40", currency: "CAD" }, unit: "fop.price.per.100g" },
+  promotions: [{ label: promotionLabel, promotionId: "sanitized-promotion-id" }],
   quantityInBasket: 0,
   retailerProductId: `${productId}-retailer`,
-  unitPrice: {
-    price: {
-      amount: "0.50",
-      currency: "CAD"
-    },
-    unit: "fop.price.per.100g"
-  }
+  unitPrice: { price: { amount: "0.50", currency: "CAD" }, unit: "fop.price.per.100g" }
 })
 
 const makePromotionResponse = (products: ReadonlyArray<ReturnType<typeof makeProduct>>, nextPageToken?: string) => ({
   ...(nextPageToken === undefined ? {} : { nextPageToken }),
-  productGroups: [{
-    decoratedProducts: products,
-    name: "Promotions",
-    type: "promotion"
-  }],
+  productGroups: [{ decoratedProducts: products, name: "Promotions", type: "promotion" }],
   totalProducts: products.length
 })
 
@@ -96,29 +71,19 @@ const makeMinimalProduct = (name: string, price: string, promoPrice: string, pro
   available: false,
   maxQuantityReached: false,
   name,
-  price: {
-    amount: price,
-    currency: "CAD"
-  },
+  price: { amount: price, currency: "CAD" },
   productId,
-  promoPrice: {
-    amount: promoPrice,
-    currency: "CAD"
-  },
+  promoPrice: { amount: promoPrice, currency: "CAD" },
   quantityInBasket: 0,
   retailerProductId: `${productId}-retailer`
 })
 
-const requestInput = {
-  pageSize: 24
-} satisfies DiscountedProductsInput
+const requestInput = { pageSize: 24 } satisfies DiscountedProductsInput
 
 describe("discounted product normalization", () => {
   it("decodes raw promotion payloads and computes savings fields", () => {
     const result = parseDiscountedProductsResponse(
-      makePromotionResponse([
-        makeProduct("Discounted milk", "5.00", "4.00", "milk-id")
-      ]),
+      makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")]),
       requestInput
     )
 
@@ -131,10 +96,7 @@ describe("discounted product normalization", () => {
       expect(product?.discountPrice.amount).toBe("4.00")
       expect(product?.savingsAmount).toBe(1)
       expect(product?.savingsPercent).toBe(20)
-      expect(product?.savingsPrice).toEqual({
-        amount: "1.00",
-        currency: "CAD"
-      })
+      expect(product?.savingsPrice).toEqual({ amount: "1.00", currency: "CAD" })
       expect(product?.promoUnitPrice?.price.amount).toBe("0.40")
       expect(product?.promotionSummary).toBe("Member price")
       expect(product?.sourceGroupName).toBe("Promotions")
@@ -148,14 +110,7 @@ describe("discounted product normalization", () => {
         makeProduct("Cheap real discount", "1.00", "0.89", "cheap-id")
       ]),
       requestInput,
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 24,
-        returnedProducts: 0
-      }
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual(["cheap-id"])
@@ -170,19 +125,8 @@ describe("discounted product normalization", () => {
         makeProduct("Discounted oat milk", "5.00", "4.00", "milk-id"),
         makeProduct("Premium milk", "10.00", "8.00", "premium-milk-id")
       ]),
-      {
-        pageSize: 2,
-        query: "milk",
-        sort: "price-asc"
-      },
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 2,
-        returnedProducts: 0
-      }
+      { pageSize: 2, query: "milk", sort: "price-asc" },
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 2, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual(["milk-id", "premium-milk-id"])
@@ -196,18 +140,8 @@ describe("discounted product normalization", () => {
         makeProduct("Percent winner", "5.00", "4.00", "percent-id"),
         makeProduct("Amount winner", "20.00", "17.00", "amount-id")
       ]),
-      {
-        pageSize: 2,
-        sort: "best-amount"
-      },
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 2,
-        returnedProducts: 0
-      }
+      { pageSize: 2, sort: "best-amount" },
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 2, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual(["amount-id", "percent-id"])
@@ -219,18 +153,8 @@ describe("discounted product normalization", () => {
         makeProduct("Amount winner", "20.00", "17.00", "amount-id"),
         makeProduct("Percent winner", "5.00", "4.00", "percent-id")
       ]),
-      {
-        pageSize: 2,
-        sort: "best-percent"
-      },
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 2,
-        returnedProducts: 0
-      }
+      { pageSize: 2, sort: "best-percent" },
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 2, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual(["percent-id", "amount-id"])
@@ -239,41 +163,29 @@ describe("discounted product normalization", () => {
   it("uses promotion metadata fallback fields for summaries", () => {
     const result = normalizeDiscountedProductsResponse(
       {
-        productGroups: [{
-          products: [
-            {
-              ...makeMinimalProduct("Name promo", "5.00", "4.00", "name-id"),
-              packSizeDescription: "500 g",
-              promotions: [{
-                name: "Name summary"
-              }]
-            },
-            {
-              ...makeMinimalProduct("Description promo", "5.00", "4.00", "description-id"),
-              promotions: [{
-                description: "Description summary"
-              }]
-            },
-            {
-              ...makeMinimalProduct("Type promo", "5.00", "4.00", "type-id"),
-              promotions: [{
-                label: " ",
-                type: "TYPE_SUMMARY"
-              }]
-            }
-          ],
-          type: "promotion"
-        }]
+        productGroups: [
+          {
+            products: [
+              {
+                ...makeMinimalProduct("Name promo", "5.00", "4.00", "name-id"),
+                packSizeDescription: "500 g",
+                promotions: [{ name: "Name summary" }]
+              },
+              {
+                ...makeMinimalProduct("Description promo", "5.00", "4.00", "description-id"),
+                promotions: [{ description: "Description summary" }]
+              },
+              {
+                ...makeMinimalProduct("Type promo", "5.00", "4.00", "type-id"),
+                promotions: [{ label: " ", type: "TYPE_SUMMARY" }]
+              }
+            ],
+            type: "promotion"
+          }
+        ]
       },
       requestInput,
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 24,
-        returnedProducts: 0
-      }
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.promotionSummary)).toEqual([
@@ -287,40 +199,28 @@ describe("discounted product normalization", () => {
   it("matches queries when optional searchable fields are absent", () => {
     const result = normalizeDiscountedProductsResponse(
       {
-        productGroups: [{
-          products: [
-            {
-              ...makeMinimalProduct("Retailer match", "5.00", "4.00", "retailer-match-id"),
-              packSizeDescription: "750 g"
-            },
-            {
-              ...makeMinimalProduct("Description match", "5.00", "4.00", "description-match-id"),
-              promotions: [{
-                description: "Coupon text"
-              }]
-            },
-            {
-              ...makeMinimalProduct("Type-only match", "5.00", "4.00", "type-match-id"),
-              promotions: [{
-                type: "TYPE_ONLY"
-              }]
-            }
-          ],
-          type: "promotion"
-        }]
+        productGroups: [
+          {
+            products: [
+              {
+                ...makeMinimalProduct("Retailer match", "5.00", "4.00", "retailer-match-id"),
+                packSizeDescription: "750 g"
+              },
+              {
+                ...makeMinimalProduct("Description match", "5.00", "4.00", "description-match-id"),
+                promotions: [{ description: "Coupon text" }]
+              },
+              {
+                ...makeMinimalProduct("Type-only match", "5.00", "4.00", "type-match-id"),
+                promotions: [{ type: "TYPE_ONLY" }]
+              }
+            ],
+            type: "promotion"
+          }
+        ]
       },
-      {
-        pageSize: 3,
-        query: "match"
-      },
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 3,
-        returnedProducts: 0
-      }
+      { pageSize: 3, query: "match" },
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 3, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual([
@@ -333,20 +233,12 @@ describe("discounted product normalization", () => {
   it("omits optional normalized fields when Voila omits source fields", () => {
     const result = normalizeDiscountedProductsResponse(
       {
-        productGroups: [{
-          products: [makeMinimalProduct("Minimal discount", "8.00", "6.00", "minimal-id")],
-          type: "promotion"
-        }]
+        productGroups: [
+          { products: [makeMinimalProduct("Minimal discount", "8.00", "6.00", "minimal-id")], type: "promotion" }
+        ]
       },
       requestInput,
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 24,
-        returnedProducts: 0
-      }
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
     )
 
     const [product] = result.products
@@ -362,51 +254,39 @@ describe("discounted product normalization", () => {
   it("filters products without usable regular and promo prices", () => {
     const result = normalizeDiscountedProductsResponse(
       {
-        productGroups: [{
-          products: [
-            {
-              available: true,
-              maxQuantityReached: false,
-              name: "Missing promo",
-              price: {
-                amount: "5.00",
-                currency: "CAD"
+        productGroups: [
+          {
+            products: [
+              {
+                available: true,
+                maxQuantityReached: false,
+                name: "Missing promo",
+                price: { amount: "5.00", currency: "CAD" },
+                productId: "missing-promo-id",
+                quantityInBasket: 0,
+                retailerProductId: "missing-promo-retailer"
               },
-              productId: "missing-promo-id",
-              quantityInBasket: 0,
-              retailerProductId: "missing-promo-retailer"
-            },
-            makeMinimalProduct("Invalid regular", "not-a-price", "4.00", "invalid-regular-id"),
-            makeMinimalProduct("Invalid promo", "5.00", "not-a-price", "invalid-promo-id"),
-            makeMinimalProduct("Not discounted", "5.00", "5.00", "not-discounted-id"),
-            makeMinimalProduct("Real discount", "5.00", "4.00", "real-id")
-          ],
-          type: "promotion"
-        }]
+              makeMinimalProduct("Invalid regular", "not-a-price", "4.00", "invalid-regular-id"),
+              makeMinimalProduct("Invalid promo", "5.00", "not-a-price", "invalid-promo-id"),
+              makeMinimalProduct("Not discounted", "5.00", "5.00", "not-discounted-id"),
+              makeMinimalProduct("Real discount", "5.00", "4.00", "real-id")
+            ],
+            type: "promotion"
+          }
+        ]
       },
       requestInput,
-      {
-        exhausted: true,
-        matchedProducts: 0,
-        maxPages: 1,
-        pagesScanned: 1,
-        requestedPageSize: 24,
-        returnedProducts: 0
-      }
+      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual(["real-id"])
   })
 
   it("returns a typed schema mismatch for malformed promotion responses", () => {
-    const result = parseDiscountedProductsResponse({
-      productGroups: [{
-        products: [{
-          available: true
-        }],
-        type: "promotion"
-      }]
-    }, requestInput)
+    const result = parseDiscountedProductsResponse(
+      { productGroups: [{ products: [{ available: true }], type: "promotion" }] },
+      requestInput
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -416,23 +296,20 @@ describe("discounted product normalization", () => {
   })
 
   it("preserves pagination and started scan token metadata", () => {
-    const result = parseDiscountedProductsResponse({
-      nextPageToken: "next-token",
-      productGroups: [{
-        products: [makeMinimalProduct("Paged discount", "5.00", "4.00", "paged-id")],
-        type: "promotion"
-      }]
-    }, {
-      pageSize: 1,
-      pageToken: "start-token"
-    })
+    const result = parseDiscountedProductsResponse(
+      {
+        nextPageToken: "next-token",
+        productGroups: [
+          { products: [makeMinimalProduct("Paged discount", "5.00", "4.00", "paged-id")], type: "promotion" }
+        ]
+      },
+      { pageSize: 1, pageToken: "start-token" }
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right.pagination).toEqual({
-        nextPageToken: "next-token"
-      })
+      expect(result.right.pagination).toEqual({ nextPageToken: "next-token" })
       expect(result.right.scan).toMatchObject({
         exhausted: false,
         nextPageToken: "next-token",
@@ -474,9 +351,7 @@ describe("discounted product normalization", () => {
   })
 
   it("rejects invalid promotions endpoint request inputs", () => {
-    const request = makeDiscountedProductsRequest({
-      pageSize: 0
-    })
+    const request = makeDiscountedProductsRequest({ pageSize: 0 })
 
     expect(Either.isLeft(request)).toBe(true)
   })
@@ -498,18 +373,19 @@ describe("discounted product normalization", () => {
     ]
     const requests: Array<URL> = []
     let index = 0
-    const result = await getDiscountedProducts(makeSession(), {
-      pageSize: 1,
-      query: "milk"
-    }, {
-      request: async (request) => {
-        requests.push(request.url)
-        const response = responses[index]
-        index += 1
+    const result = await getDiscountedProducts(
+      makeSession(),
+      { pageSize: 1, query: "milk" },
+      {
+        request: async (request) => {
+          requests.push(request.url)
+          const response = responses[index]
+          index += 1
 
-        return response === undefined ? Either.left("missing response") : Either.right(response)
+          return response === undefined ? Either.left("missing response") : Either.right(response)
+        }
       }
-    })
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -526,33 +402,39 @@ describe("discounted product normalization", () => {
   it("returns all query matches from scanned pages when a page overshoots the fill target", async () => {
     const responses: ReadonlyArray<VoilaTransportResponse> = [
       {
-        body: JSON.stringify(makePromotionResponse([
-          makeProduct("Discounted milk one", "5.00", "4.00", "milk-id-1")
-        ], "p2")),
+        body: JSON.stringify(
+          makePromotionResponse([makeProduct("Discounted milk one", "5.00", "4.00", "milk-id-1")], "p2")
+        ),
         headers: {},
         status: 200
       },
       {
-        body: JSON.stringify(makePromotionResponse([
-          makeProduct("Discounted milk two", "5.00", "4.00", "milk-id-2"),
-          makeProduct("Discounted milk three", "5.00", "4.00", "milk-id-3")
-        ], "p3")),
+        body: JSON.stringify(
+          makePromotionResponse(
+            [
+              makeProduct("Discounted milk two", "5.00", "4.00", "milk-id-2"),
+              makeProduct("Discounted milk three", "5.00", "4.00", "milk-id-3")
+            ],
+            "p3"
+          )
+        ),
         headers: {},
         status: 200
       }
     ]
     let index = 0
-    const result = await getDiscountedProducts(makeSession(), {
-      pageSize: 2,
-      query: "milk"
-    }, {
-      request: async () => {
-        const response = responses[index]
-        index += 1
+    const result = await getDiscountedProducts(
+      makeSession(),
+      { pageSize: 2, query: "milk" },
+      {
+        request: async () => {
+          const response = responses[index]
+          index += 1
 
-        return response === undefined ? Either.left("missing response") : Either.right(response)
+          return response === undefined ? Either.left("missing response") : Either.right(response)
+        }
       }
-    })
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -563,32 +445,27 @@ describe("discounted product normalization", () => {
         "milk-id-3"
       ])
       expect(result.right.value.pagination.nextPageToken).toBe("p3")
-      expect(result.right.value.scan).toMatchObject({
-        matchedProducts: 3,
-        requestedPageSize: 2,
-        returnedProducts: 3
-      })
+      expect(result.right.value.scan).toMatchObject({ matchedProducts: 3, requestedPageSize: 2, returnedProducts: 3 })
     }
   })
 
   it("passes explicit page tokens through no-query promotion requests", async () => {
     const requests: Array<URL> = []
-    const result = await getDiscountedProducts(makeSession(), {
-      pageSize: 1,
-      pageToken: "start-token"
-    }, {
-      request: async (request) => {
-        requests.push(request.url)
+    const result = await getDiscountedProducts(
+      makeSession(),
+      { pageSize: 1, pageToken: "start-token" },
+      {
+        request: async (request) => {
+          requests.push(request.url)
 
-        return Either.right({
-          body: JSON.stringify(makePromotionResponse([
-            makeProduct("Discounted milk", "5.00", "4.00", "milk-id")
-          ])),
-          headers: {},
-          status: 200
-        })
+          return Either.right({
+            body: JSON.stringify(makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")])),
+            headers: {},
+            status: 200
+          })
+        }
       }
-    })
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -603,23 +480,27 @@ describe("discounted product normalization", () => {
   it("stops query scans at five pages and exposes incomplete scan metadata", async () => {
     const requests: Array<URL> = []
     let index = 0
-    const result = await getDiscountedProducts(makeSession(), {
-      pageSize: 1,
-      query: "milk"
-    }, {
-      request: async (request) => {
-        requests.push(request.url)
-        index += 1
+    const result = await getDiscountedProducts(
+      makeSession(),
+      { pageSize: 1, query: "milk" },
+      {
+        request: async (request) => {
+          requests.push(request.url)
+          index += 1
 
-        return Either.right({
-          body: JSON.stringify(makePromotionResponse([
-            makeProduct(`Discounted cereal ${index}`, "6.00", "5.00", `cereal-id-${index}`)
-          ], `p${index + 1}`)),
-          headers: {},
-          status: 200
-        })
+          return Either.right({
+            body: JSON.stringify(
+              makePromotionResponse(
+                [makeProduct(`Discounted cereal ${index}`, "6.00", "5.00", `cereal-id-${index}`)],
+                `p${index + 1}`
+              )
+            ),
+            headers: {},
+            status: 200
+          })
+        }
       }
-    })
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -637,15 +518,17 @@ describe("discounted product normalization", () => {
 
   it("propagates invalid SDK input before making a promotions request", async () => {
     let called = false
-    const result = await getDiscountedProducts(makeSession(), {
-      pageSize: 0
-    }, {
-      request: async () => {
-        called = true
+    const result = await getDiscountedProducts(
+      makeSession(),
+      { pageSize: 0 },
+      {
+        request: async () => {
+          called = true
 
-        return Either.left("unused")
+          return Either.left("unused")
+        }
       }
-    })
+    )
 
     expect(Either.isLeft(result)).toBe(true)
     expect(called).toBe(false)
@@ -657,19 +540,21 @@ describe("discounted product normalization", () => {
 
   it("uses the SDK default page size for direct discounted product calls", async () => {
     const requests: Array<URL> = []
-    const result = await getDiscountedProducts(makeSession(), {}, {
-      request: async (request) => {
-        requests.push(request.url)
+    const result = await getDiscountedProducts(
+      makeSession(),
+      {},
+      {
+        request: async (request) => {
+          requests.push(request.url)
 
-        return Either.right({
-          body: JSON.stringify(makePromotionResponse([
-            makeProduct("Discounted milk", "5.00", "4.00", "milk-id")
-          ])),
-          headers: {},
-          status: 200
-        })
+          return Either.right({
+            body: JSON.stringify(makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")])),
+            headers: {},
+            status: 200
+          })
+        }
       }
-    })
+    )
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -681,16 +566,11 @@ describe("discounted product normalization", () => {
   })
 
   it("propagates HTTP client failures as typed recoverable errors", async () => {
-    const result = await getDiscountedProducts(makeSession(), {
-      pageSize: 1
-    }, {
-      request: async () =>
-        Either.right({
-          body: "{}",
-          headers: {},
-          status: 500
-        })
-    })
+    const result = await getDiscountedProducts(
+      makeSession(),
+      { pageSize: 1 },
+      { request: async () => Either.right({ body: "{}", headers: {}, status: 500 }) }
+    )
 
     expect(Either.isLeft(result)).toBe(true)
 

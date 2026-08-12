@@ -1,0 +1,134 @@
+{
+  "packages/voila-cli/src/auth-capture.ts": [
+    {
+      "complexity": 10,
+      "signature": "async ( page: Page, timeoutMs: number, observer: BrowserCaptureObserver ): Promise<CapturedBrowserSession | OperationExecutionResult> =>"
+    }
+  ],
+  "packages/voila-cli/src/auth-login.ts": [
+    {
+      "complexity": 11,
+      "signature": "async (options: CliLoginOptions): Promise<OperationExecutionResult> =>"
+    }
+  ],
+  "packages/voila-cli/src/cli-discounts.ts": [
+    {
+      "complexity": 14,
+      "signature": "( parsed: DiscountCliParsedOptions, usage: (message: string) => DiscountCliRunResult, parsePositiveInteger: (value: string | undefined, optionName: string) => number | DiscountCliRunResult ): DiscountsOperationInput | DiscountCliRunResult =>"
+    }
+  ],
+  "packages/voila-cli/src/cli.ts": [
+    {
+      "complexity": 9,
+      "signature": "async (args: ReadonlyArray<string>, ports: CliPorts): Promise<CliRunResult> =>"
+    }
+  ],
+  "packages/voila-mcp/src/operations.ts": [
+    {
+      "complexity": 14,
+      "signature": "async ( name: VoilaOperationName, input: unknown, env: OperationEnvironment ): Promise<OperationExecutionResult> =>"
+    }
+  ],
+  "packages/voila-mcp/src/sdk-operation-inputs.ts": [
+    {
+      "complexity": 9,
+      "signature": "(input: DiscountedProductsOperationInput) => ("
+    }
+  ],
+  "packages/voila-sdk/src/voila/browser-login-adapter.ts": [
+    {
+      "complexity": 15,
+      "signature": "async (request: BrowserLoginRequest) =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/browser-login.ts": [
+    {
+      "complexity": 10,
+      "signature": "async ( browser: BrowserLoginPort, options?: unknown ): Promise<Either.Either<BrowserLoginResult, BrowserLoginError>> =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/cart-view.ts": [
+    {
+      "complexity": 11,
+      "signature": "(response: AnyCartViewResponse): NormalizedCartView =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/checkout-summary.ts": [
+    {
+      "complexity": 11,
+      "signature": "(charges: CheckoutCharges | undefined): NormalizedCheckoutFees =>"
+    },
+    {
+      "complexity": 9,
+      "signature": "(delivery: RawCheckoutDelivery | undefined): CheckoutSlotSummary | undefined => delivery === undefined ? undefined :"
+    },
+    {
+      "complexity": 16,
+      "signature": "(response: RawCheckoutSummaryResponse): NormalizedCheckoutSummary =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/delivery-destinations.ts": [
+    {
+      "complexity": 9,
+      "signature": "(destination: RawDeliveryDestination): DeliveryDestination =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/discounted-products.ts": [
+    {
+      "complexity": 14,
+      "signature": "( product: RawPromotionProduct, sourceGroup: PromotionProductsResponse[\"productGroups\"][number], input: DiscountedProductsInput ): NormalizedDiscountProduct | undefined =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/http-client.ts": [
+    {
+      "complexity": 13,
+      "signature": "async <A, I>( schema: Schema.Schema<A, I, never>, session: SessionSnapshot, request: VoilaHttpRequest, transport: VoilaTransport, cookieJarPort: CookieJarPort = toughCookieJarPort ): Promise<Either.Either<VoilaJsonResult<A>, VoilaSdkError>> =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/initial-state.ts": [
+    {
+      "complexity": 10,
+      "signature": "(html: string, fromIndex: number): number =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/order-details.ts": [
+    {
+      "complexity": 35,
+      "signature": "( aggregate: ItemAggregate | undefined, item: NormalizedOrderItem, order: NormalizedCompletedOrder ): ItemAggregate =>"
+    },
+    {
+      "complexity": 27,
+      "signature": "( item: RawOrderDetailItem, groupKind: OrderItemGroupKind, products: ProductDirectory, substitutionForProductId?: string, substitutionRole?: \"requested\" | \"substitute\" ): NormalizedOrderItem =>"
+    },
+    {
+      "complexity": 12,
+      "signature": "( response: RawDecoratedOrderResponse, orderId: string ): Either.Either<NormalizedOrderDetailsResult, OrderDetailsUnavailableError> =>"
+    },
+    {
+      "complexity": 10,
+      "signature": "(order: RawOrderDetailOrder) => order.slot?.start === undefined && order.slot?.end === undefined && order.slot?.timeZone === undefined ?"
+    },
+    {
+      "complexity": 13,
+      "signature": "async ( session: SessionSnapshot, input: unknown, transport: VoilaTransport, cookieJarPort?: CookieJarPort ): Promise<Either.Either<GetCompletedOrderItemsResult, GetCompletedOrderItemsError>> =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/session-health.ts": [
+    {
+      "complexity": 9,
+      "signature": "async ( session: SessionSnapshot, transport: VoilaTransport, cookieJarPort: CookieJarPort ): Promise<ActiveCustomerSessionRequestResult> =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/shopping-context.ts": [
+    {
+      "complexity": 11,
+      "signature": "async ( session: SessionSnapshot, input: unknown, transport: VoilaTransport, cookieJarPort?: CookieJarPort ): Promise<Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError>> =>"
+    }
+  ],
+  "packages/voila-sdk/src/voila/slots.ts": [
+    {
+      "complexity": 15,
+      "signature": "( carrier: RawSlotCarrier, date: string, slotListingId: string | undefined, slot: RawSlot ): NormalizedSlot => ("
+    }
+  ]
+}

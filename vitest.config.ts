@@ -1,5 +1,11 @@
 import { defineConfig } from "vitest/config"
 
+import { coveragePolicy } from "./scripts/coverage-policy.mjs"
+
+const coverageThresholds = Object.fromEntries(
+  coveragePolicy.metrics.map((metric) => [metric, coveragePolicy.threshold])
+)
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -11,12 +17,15 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["packages/*/src/**/*.test.ts", "packages/*/test/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "packages/*/test/**/*.test.ts", "scripts/*.test.ts"],
+    reporters: ["dot"],
+    silent: "passed-only",
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
       exclude: [
         "node_modules/",
+        "scripts/",
         "**/dist/**",
         "packages/*/test/",
         "packages/voila-cli/src/**",
@@ -26,12 +35,8 @@ export default defineConfig({
         "packages/*/src/index.ts",
         "packages/*/src/bin.ts"
       ],
-      thresholds: {
-        branches: 99,
-        functions: 99,
-        lines: 99,
-        statements: 99
-      }
+      skipFull: true,
+      thresholds: coverageThresholds
     }
   }
 })

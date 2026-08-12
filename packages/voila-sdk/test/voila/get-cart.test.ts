@@ -40,10 +40,9 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (response: VoilaTransportResponse): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
+const makeResponseTransport = (
+  response: VoilaTransportResponse
+): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
   const requests: Array<VoilaTransportRequest> = []
 
   return {
@@ -57,9 +56,7 @@ const makeResponseTransport = (response: VoilaTransportResponse): {
   }
 }
 
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => Either.left(failure)
-})
+const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
 
 const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
   request: async () => {
@@ -69,9 +66,7 @@ const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
 
 const makeCartResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
-  headers: {
-    "set-cookie": "fresh-cart-cookie=after; Path=/; Secure"
-  },
+  headers: { "set-cookie": "fresh-cart-cookie=after; Path=/; Secure" },
   status
 })
 
@@ -113,65 +108,49 @@ describe("getCart", () => {
   })
 
   it("normalizes the current root active cart response shape", async () => {
-    const fake = makeResponseTransport(makeCartResponse(JSON.stringify({
-      activeCheckoutGroup: {
-        checkoutRestrictions: ["NOT_REACHED_THRESHOLD", "MISSING_SLOT"]
-      },
-      cartId: "sanitized-current-cart-id",
-      checkoutGroups: {
-        assignedCheckoutGroups: [{
-          itemGroups: [{
-            items: [{
-              finalPrice: {
-                amount: "4.99",
-                currency: "CAD"
-              },
-              name: "Fresh Farms Strawberries 454 g",
-              price: {
-                amount: "4.99",
-                currency: "CAD"
-              },
-              productId: "sanitized-current-strawberries-product-id",
-              quantity: 2,
-              retailerProductId: "111222EA"
-            }],
-            name: "Fruits & Vegetables"
-          }],
+    const fake = makeResponseTransport(
+      makeCartResponse(
+        JSON.stringify({
+          activeCheckoutGroup: { checkoutRestrictions: ["NOT_REACHED_THRESHOLD", "MISSING_SLOT"] },
+          cartId: "sanitized-current-cart-id",
+          checkoutGroups: {
+            assignedCheckoutGroups: [
+              {
+                itemGroups: [
+                  {
+                    items: [
+                      {
+                        finalPrice: { amount: "4.99", currency: "CAD" },
+                        name: "Fresh Farms Strawberries 454 g",
+                        price: { amount: "4.99", currency: "CAD" },
+                        productId: "sanitized-current-strawberries-product-id",
+                        quantity: 2,
+                        retailerProductId: "111222EA"
+                      }
+                    ],
+                    name: "Fruits & Vegetables"
+                  }
+                ],
+                totals: {
+                  itemPriceAfterPromos: { amount: "9.98", currency: "CAD" },
+                  itemsRetailPrice: { amount: "9.98", currency: "CAD" },
+                  savingsPrice: { amount: "0.00", currency: "CAD" },
+                  taxation: "TAX_EXCLUDED"
+                }
+              }
+            ]
+          },
+          pricingNotifications: [],
           totals: {
-            itemPriceAfterPromos: {
-              amount: "9.98",
-              currency: "CAD"
-            },
-            itemsRetailPrice: {
-              amount: "9.98",
-              currency: "CAD"
-            },
-            savingsPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
+            itemPriceAfterPromos: { amount: "9.98", currency: "CAD" },
+            itemsRetailPrice: { amount: "9.98", currency: "CAD" },
+            savingsPrice: { amount: "0.00", currency: "CAD" },
             taxation: "TAX_EXCLUDED"
-          }
-        }]
-      },
-      pricingNotifications: [],
-      totals: {
-        itemPriceAfterPromos: {
-          amount: "9.98",
-          currency: "CAD"
-        },
-        itemsRetailPrice: {
-          amount: "9.98",
-          currency: "CAD"
-        },
-        savingsPrice: {
-          amount: "0.00",
-          currency: "CAD"
-        },
-        taxation: "TAX_EXCLUDED"
-      },
-      unavailableData: []
-    })))
+          },
+          unavailableData: []
+        })
+      )
+    )
     const result = await getCart(makeSession(), fake.transport)
 
     expect(Either.isRight(result)).toBe(true)
@@ -189,24 +168,19 @@ describe("getCart", () => {
   it("normalizes an empty current root active cart response without optional groups", async () => {
     const result = await getCart(
       makeSession(),
-      makeResponseTransport(makeCartResponse(JSON.stringify({
-        cartId: "sanitized-empty-current-cart-id",
-        totals: {
-          itemPriceAfterPromos: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          itemsRetailPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          savingsPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          taxation: "TAX_EXCLUDED"
-        }
-      }))).transport
+      makeResponseTransport(
+        makeCartResponse(
+          JSON.stringify({
+            cartId: "sanitized-empty-current-cart-id",
+            totals: {
+              itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+              itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+              savingsPrice: { amount: "0.00", currency: "CAD" },
+              taxation: "TAX_EXCLUDED"
+            }
+          })
+        )
+      ).transport
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -258,11 +232,7 @@ describe("getCart", () => {
   it("propagates schema decode failures as typed recoverable errors", async () => {
     const result = await getCart(
       makeSession(),
-      makeResponseTransport(makeCartResponse(JSON.stringify({
-        basket: {
-          basketId: "basket-id"
-        }
-      }))).transport
+      makeResponseTransport(makeCartResponse(JSON.stringify({ basket: { basketId: "basket-id" } }))).transport
     )
 
     expect(Either.isLeft(result)).toBe(true)

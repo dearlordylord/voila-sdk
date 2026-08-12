@@ -26,9 +26,7 @@ const sampleMetadata = {
   regionId: "region-id"
 }
 
-const sampleCsrf = {
-  token: secretCsrfToken
-}
+const sampleCsrf = { token: secretCsrfToken }
 
 const minimalCookieJarSnapshot = {
   cookies: [],
@@ -37,46 +35,19 @@ const minimalCookieJarSnapshot = {
   version: "tough-cookie@6.0.0"
 }
 
-const cookieJarSnapshotWithoutCookies = {
-  rejectPublicSuffixes: true,
-  storeType: null,
-  version: "tough-cookie@6.0.0"
-}
+const cookieJarSnapshotWithoutCookies = { rejectPublicSuffixes: true, storeType: null, version: "tough-cookie@6.0.0" }
 
-const cookieJarSnapshotWithoutRejectPublicSuffixes = {
-  cookies: [],
-  storeType: null,
-  version: "tough-cookie@6.0.0"
-}
+const cookieJarSnapshotWithoutRejectPublicSuffixes = { cookies: [], storeType: null, version: "tough-cookie@6.0.0" }
 
 const missingRequiredFieldSnapshots = [
-  {
-    csrf: sampleCsrf,
-    metadata: sampleMetadata
-  },
-  {
-    cookieJar: minimalCookieJarSnapshot,
-    metadata: sampleMetadata
-  },
-  {
-    cookieJar: minimalCookieJarSnapshot,
-    csrf: sampleCsrf
-  },
-  {
-    cookieJar: cookieJarSnapshotWithoutCookies,
-    csrf: sampleCsrf,
-    metadata: sampleMetadata
-  },
-  {
-    cookieJar: cookieJarSnapshotWithoutRejectPublicSuffixes,
-    csrf: sampleCsrf,
-    metadata: sampleMetadata
-  }
+  { csrf: sampleCsrf, metadata: sampleMetadata },
+  { cookieJar: minimalCookieJarSnapshot, metadata: sampleMetadata },
+  { cookieJar: minimalCookieJarSnapshot, csrf: sampleCsrf },
+  { cookieJar: cookieJarSnapshotWithoutCookies, csrf: sampleCsrf, metadata: sampleMetadata },
+  { cookieJar: cookieJarSnapshotWithoutRejectPublicSuffixes, csrf: sampleCsrf, metadata: sampleMetadata }
 ]
 
-const unsupportedSerializableCookieJar = {
-  serializeSync: () => undefined
-}
+const unsupportedSerializableCookieJar = { serializeSync: () => undefined }
 
 const malformedSerializableCookieJar = {
   serializeSync: () => ({
@@ -243,10 +214,7 @@ describe("session snapshots", () => {
   })
 
   it("returns a typed error for malformed session snapshots", () => {
-    const result = decodeSessionSnapshot({
-      csrf: sampleCsrf,
-      metadata: sampleMetadata
-    })
+    const result = decodeSessionSnapshot({ csrf: sampleCsrf, metadata: sampleMetadata })
 
     expect(Either.isLeft(result)).toBe(true)
 

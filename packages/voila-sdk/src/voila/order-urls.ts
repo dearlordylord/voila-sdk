@@ -75,10 +75,7 @@ export interface CompletedOrdersRequest {
   readonly url: URL
 }
 
-export type CompletedOrdersRequestError = {
-  readonly _tag: "CompletedOrdersInputInvalid"
-  readonly message: string
-}
+export type CompletedOrdersRequestError = { readonly _tag: "CompletedOrdersInputInvalid"; readonly message: string }
 
 export interface OrderDetailsRequest {
   readonly method: "GET"
@@ -86,10 +83,7 @@ export interface OrderDetailsRequest {
   readonly url: URL
 }
 
-export type OrderDetailsRequestError = {
-  readonly _tag: "OrderDetailsInputInvalid"
-  readonly message: string
-}
+export type OrderDetailsRequestError = { readonly _tag: "OrderDetailsInputInvalid"; readonly message: string }
 
 const completedOrdersInputInvalid = (): CompletedOrdersRequestError => ({
   _tag: "CompletedOrdersInputInvalid",
@@ -125,9 +119,7 @@ export const makeCompletedOrdersRequest = (
 const makeOrderDetailsUrl = (input: OrderDetailsInput): URL =>
   new URL(`${ORDER_PATH_PREFIX}${encodeURIComponent(input.orderId)}/decorated`, VOILA_BASE_URL)
 
-export const makeOrderDetailsRequest = (
-  input: unknown
-): Either.Either<OrderDetailsRequest, OrderDetailsRequestError> =>
+export const makeOrderDetailsRequest = (input: unknown): Either.Either<OrderDetailsRequest, OrderDetailsRequestError> =>
   Either.map(
     Either.mapLeft(parseUnknown(OrderDetailsInputSchema, input), orderDetailsInputInvalid),
     (orderDetailsInput) => ({

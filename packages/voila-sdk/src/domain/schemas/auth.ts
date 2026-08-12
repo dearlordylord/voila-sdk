@@ -2,11 +2,7 @@ import { Schema } from "effect"
 
 import { AuthAccountSummarySchema, SessionSnapshotSchema } from "./session.js"
 
-const BrowserLoginTimeoutMsSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.positive()
-)
+const BrowserLoginTimeoutMsSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.positive())
 
 export const BrowserLoginOptionsSchema = Schema.Struct({
   timeoutMs: Schema.optionalWith(BrowserLoginTimeoutMsSchema, { exact: true })
@@ -15,9 +11,7 @@ export const BrowserLoginOptionsSchema = Schema.Struct({
 export type BrowserLoginOptions = Schema.Schema.Type<typeof BrowserLoginOptionsSchema>
 
 export const BrowserLoginRequestSchema = BrowserLoginOptionsSchema.pipe(
-  Schema.extend(Schema.Struct({
-    loginUrl: Schema.String
-  }))
+  Schema.extend(Schema.Struct({ loginUrl: Schema.String }))
 )
 
 export type BrowserLoginRequest = Schema.Schema.Type<typeof BrowserLoginRequestSchema>

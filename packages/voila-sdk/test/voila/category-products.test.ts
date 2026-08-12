@@ -52,10 +52,7 @@ describe("category product page normalization", () => {
       expect(strawberries?.brand).toBe("Fresh Farms")
       expect(strawberries?.name).toBe("Fresh Farms Strawberries 454 g")
       expect(strawberries?.packSizeDescription).toBe("454g")
-      expect(strawberries?.price).toEqual({
-        amount: "4.99",
-        currency: "CAD"
-      })
+      expect(strawberries?.price).toEqual({ amount: "4.99", currency: "CAD" })
       expect(strawberries?.unitPrice?.price.amount).toBe("1.10")
       expect(strawberries?.unitPrice?.unitName).toBe("PER_100G")
       expect(strawberries?.image?.src).toBe("https://voila.ca/images/sanitized-strawberries.jpg")
@@ -75,10 +72,7 @@ describe("category product page normalization", () => {
 
   it("omits optional filter and pagination fields when Voila omits them", () => {
     const result = normalizeCategoryProductsResponse({
-      category: {
-        categoryId: "category-id",
-        retailerCategoryId: "retailer-category-id"
-      },
+      category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
       productGroups: []
     })
 
@@ -89,37 +83,34 @@ describe("category product page normalization", () => {
 
   it("keeps products from both category product arrays when Voila sends both", () => {
     const result = normalizeCategoryProductsResponse({
-      category: {
-        categoryId: "category-id",
-        retailerCategoryId: "retailer-category-id"
-      },
-      productGroups: [{
-        decoratedProducts: [{
-          available: true,
-          maxQuantityReached: false,
-          name: "Decorated category product",
-          price: {
-            amount: "1.00",
-            currency: "CAD"
-          },
-          productId: "decorated-category-product-id",
-          quantityInBasket: 0,
-          retailerProductId: "decorated-category-retailer-product-id"
-        }],
-        products: [{
-          available: true,
-          maxQuantityReached: false,
-          name: "Standard category product",
-          price: {
-            amount: "2.00",
-            currency: "CAD"
-          },
-          productId: "standard-category-product-id",
-          quantityInBasket: 0,
-          retailerProductId: "standard-category-retailer-product-id"
-        }],
-        type: "mixed"
-      }]
+      category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
+      productGroups: [
+        {
+          decoratedProducts: [
+            {
+              available: true,
+              maxQuantityReached: false,
+              name: "Decorated category product",
+              price: { amount: "1.00", currency: "CAD" },
+              productId: "decorated-category-product-id",
+              quantityInBasket: 0,
+              retailerProductId: "decorated-category-retailer-product-id"
+            }
+          ],
+          products: [
+            {
+              available: true,
+              maxQuantityReached: false,
+              name: "Standard category product",
+              price: { amount: "2.00", currency: "CAD" },
+              productId: "standard-category-product-id",
+              quantityInBasket: 0,
+              retailerProductId: "standard-category-retailer-product-id"
+            }
+          ],
+          type: "mixed"
+        }
+      ]
     })
 
     expect(result.products.map((product) => product.productId)).toEqual([
@@ -129,12 +120,7 @@ describe("category product page normalization", () => {
   })
 
   it("fails at the schema boundary when category metadata drifts", () => {
-    const result = parseCategoryProductsResponse({
-      category: {
-        categoryId: "category-id"
-      },
-      productGroups: []
-    })
+    const result = parseCategoryProductsResponse({ category: { categoryId: "category-id" }, productGroups: [] })
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -147,19 +133,8 @@ describe("category product page normalization", () => {
   it("fails at the schema boundary when filter counts are not non-negative integers", () => {
     for (const count of [-1, 1.5]) {
       const result = parseCategoryProductsResponse({
-        category: {
-          categoryId: "category-id",
-          retailerCategoryId: "retailer-category-id"
-        },
-        filters: [{
-          id: "brand",
-          label: "Brand",
-          options: [{
-            count,
-            id: "fresh-farms",
-            label: "Fresh Farms"
-          }]
-        }],
+        category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
+        filters: [{ id: "brand", label: "Brand", options: [{ count, id: "fresh-farms", label: "Fresh Farms" }] }],
         productGroups: []
       })
 
@@ -174,10 +149,7 @@ describe("category product page normalization", () => {
   it("fails at the schema boundary when total product count is not a non-negative integer", () => {
     for (const totalProducts of [-1, 1.5]) {
       const result = parseCategoryProductsResponse({
-        category: {
-          categoryId: "category-id",
-          retailerCategoryId: "retailer-category-id"
-        },
+        category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
         productGroups: [],
         totalProducts
       })
@@ -192,24 +164,22 @@ describe("category product page normalization", () => {
 
   it("fails at the schema boundary when product fields drift", () => {
     const result = parseCategoryProductsResponse({
-      category: {
-        categoryId: "category-id",
-        retailerCategoryId: "retailer-category-id"
-      },
-      productGroups: [{
-        products: [{
-          available: true,
-          name: "Broken category product",
-          price: {
-            amount: "1.00",
-            currency: "CAD"
-          },
-          productId: "product-id",
-          quantityInBasket: 0,
-          retailerProductId: "retailer-product-id"
-        }],
-        type: "standard"
-      }]
+      category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
+      productGroups: [
+        {
+          products: [
+            {
+              available: true,
+              name: "Broken category product",
+              price: { amount: "1.00", currency: "CAD" },
+              productId: "product-id",
+              quantityInBasket: 0,
+              retailerProductId: "retailer-product-id"
+            }
+          ],
+          type: "standard"
+        }
+      ]
     })
 
     expect(Either.isLeft(result)).toBe(true)

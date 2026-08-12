@@ -25,9 +25,7 @@ export const SessionMetadataDiagnosticSchema = Schema.Struct({
 
 export type SessionMetadataDiagnostic = Schema.Schema.Type<typeof SessionMetadataDiagnosticSchema>
 
-export const CsrfStateSchema = Schema.Struct({
-  token: Schema.String
-})
+export const CsrfStateSchema = Schema.Struct({ token: Schema.String })
 
 export type CsrfState = Schema.Schema.Type<typeof CsrfStateSchema>
 
@@ -113,21 +111,25 @@ const RedactedAuthAccountSummarySchema = Schema.Struct({
 })
 
 export const GuestSdkSessionSnapshotDiagnosticSchema = SessionSnapshotDiagnosticSchema.pipe(
-  Schema.extend(Schema.Struct({
-    account: Schema.optionalWith(Schema.Never, { exact: true }),
-    kind: Schema.Literal("guest"),
-    state: Schema.Literal("guest")
-  }))
+  Schema.extend(
+    Schema.Struct({
+      account: Schema.optionalWith(Schema.Never, { exact: true }),
+      kind: Schema.Literal("guest"),
+      state: Schema.Literal("guest")
+    })
+  )
 )
 
 export type GuestSdkSessionSnapshotDiagnostic = Schema.Schema.Type<typeof GuestSdkSessionSnapshotDiagnosticSchema>
 
 export const AuthenticatedSdkSessionSnapshotDiagnosticSchema = SessionSnapshotDiagnosticSchema.pipe(
-  Schema.extend(Schema.Struct({
-    account: Schema.optionalWith(RedactedAuthAccountSummarySchema, { exact: true }),
-    kind: Schema.Literal("authenticated"),
-    state: AuthSessionStateSchema
-  }))
+  Schema.extend(
+    Schema.Struct({
+      account: Schema.optionalWith(RedactedAuthAccountSummarySchema, { exact: true }),
+      kind: Schema.Literal("authenticated"),
+      state: AuthSessionStateSchema
+    })
+  )
 )
 
 export type AuthenticatedSdkSessionSnapshotDiagnostic = Schema.Schema.Type<
@@ -185,14 +187,8 @@ export type ReauthenticationRequiredSdkSessionSnapshot = Schema.Schema.Type<
 >
 
 export const ActiveSessionHealthSchema = Schema.Union(
-  Schema.Struct({
-    session: GuestSdkSessionSnapshotSchema,
-    status: Schema.Literal("active")
-  }),
-  Schema.Struct({
-    session: ActiveAuthenticatedSdkSessionSnapshotSchema,
-    status: Schema.Literal("active")
-  })
+  Schema.Struct({ session: GuestSdkSessionSnapshotSchema, status: Schema.Literal("active") }),
+  Schema.Struct({ session: ActiveAuthenticatedSdkSessionSnapshotSchema, status: Schema.Literal("active") })
 )
 
 export type ActiveSessionHealth = Schema.Schema.Type<typeof ActiveSessionHealthSchema>
@@ -245,30 +241,17 @@ interface InitialStateBasket extends CartUpdateResult {
 
 interface InitialStateShape {
   readonly csrf: CsrfState
-  readonly data: {
-    readonly basket: InitialStateBasket
-    readonly categories?: RawCategoryTree
-  }
-  readonly session: {
-    readonly metadata: SessionMetadata
-  }
+  readonly data: { readonly basket: InitialStateBasket; readonly categories?: RawCategoryTree }
+  readonly session: { readonly metadata: SessionMetadata }
 }
 
 export const InitialStateSchema: Schema.Schema<InitialStateShape> = Schema.Struct({
   csrf: CsrfStateSchema,
   data: Schema.Struct({
-    basket: Schema.extend(
-      CartUpdateResultSchema,
-      Schema.Struct({
-        basketId: Schema.String,
-        regionId: Schema.String
-      })
-    ),
+    basket: Schema.extend(CartUpdateResultSchema, Schema.Struct({ basketId: Schema.String, regionId: Schema.String })),
     categories: Schema.optionalWith(RawCategoryTreeSchema, { exact: true })
   }),
-  session: Schema.Struct({
-    metadata: SessionMetadataSchema
-  })
+  session: Schema.Struct({ metadata: SessionMetadataSchema })
 })
 
 export type InitialState = Schema.Schema.Type<typeof InitialStateSchema>

@@ -24,21 +24,10 @@ import {
 } from "../domain/schemas/index.js"
 
 export type CookieJarPortError =
-  | {
-    readonly _tag: "CookieJarSerializationUnsupported"
-  }
-  | {
-    readonly _tag: "CookieJarSerializationFailed"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "CookieJarSnapshotSchemaMismatch"
-    readonly message: string
-  }
-  | {
-    readonly _tag: "CookieJarSnapshotImportFailed"
-    readonly message: string
-  }
+  | { readonly _tag: "CookieJarSerializationUnsupported" }
+  | { readonly _tag: "CookieJarSerializationFailed"; readonly message: string }
+  | { readonly _tag: "CookieJarSnapshotSchemaMismatch"; readonly message: string }
+  | { readonly _tag: "CookieJarSnapshotImportFailed"; readonly message: string }
 
 export interface CookieJarPort {
   readonly create: () => CookieJar
@@ -52,14 +41,9 @@ export interface SerializableCookieJar {
 
 export type SessionSnapshotError =
   | CookieJarPortError
-  | {
-    readonly _tag: "SessionSnapshotSchemaMismatch"
-    readonly message: string
-  }
+  | { readonly _tag: "SessionSnapshotSchemaMismatch"; readonly message: string }
 
-const cookieJarSerializationUnsupported = (): CookieJarPortError => ({
-  _tag: "CookieJarSerializationUnsupported"
-})
+const cookieJarSerializationUnsupported = (): CookieJarPortError => ({ _tag: "CookieJarSerializationUnsupported" })
 
 const cookieJarSerializationFailed = (_cause: unknown): CookieJarPortError => ({
   _tag: "CookieJarSerializationFailed",
@@ -120,32 +104,19 @@ export const toughCookieJarPort: CookieJarPort = {
 export const decodeSessionSnapshot = (input: unknown): Either.Either<SessionSnapshot, SessionSnapshotError> =>
   Either.mapLeft(parseUnknown(SessionSnapshotSchema, input), sessionSnapshotSchemaMismatch)
 
-export const decodeSdkSessionSnapshot = (
-  input: unknown
-): Either.Either<SdkSessionSnapshot, SessionSnapshotError> =>
+export const decodeSdkSessionSnapshot = (input: unknown): Either.Either<SdkSessionSnapshot, SessionSnapshotError> =>
   Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, input), sessionSnapshotSchemaMismatch)
 
 export const makeSessionSnapshot = (
   metadata: SessionMetadata,
   csrf: CsrfState,
   cookieJar: SerializedCookieJarSnapshot
-): Either.Either<SessionSnapshot, SessionSnapshotError> =>
-  decodeSessionSnapshot({
-    cookieJar,
-    csrf,
-    metadata
-  })
+): Either.Either<SessionSnapshot, SessionSnapshotError> => decodeSessionSnapshot({ cookieJar, csrf, metadata })
 
 export const makeGuestSdkSessionSnapshot = (
   session: SessionSnapshot
 ): Either.Either<GuestSdkSessionSnapshot, SessionSnapshotError> =>
-  Either.mapLeft(
-    parseUnknown(GuestSdkSessionSnapshotSchema, {
-      kind: "guest",
-      session
-    }),
-    sessionSnapshotSchemaMismatch
-  )
+  Either.mapLeft(parseUnknown(GuestSdkSessionSnapshotSchema, { kind: "guest", session }), sessionSnapshotSchemaMismatch)
 
 export const makeAuthenticatedSdkSessionSnapshot = (
   session: SessionSnapshot,
@@ -185,16 +156,14 @@ export const redactSessionSnapshot = (snapshot: SessionSnapshot): SessionSnapsho
 export const formatSessionSnapshotDiagnostic = (snapshot: SessionSnapshot): string =>
   JSON.stringify(redactSessionSnapshot(snapshot))
 
-const redactAccountSummary = (
-  account: AuthAccountSummary | undefined
-): SdkSessionSnapshotDiagnostic["account"] =>
+const redactAccountSummary = (account: AuthAccountSummary | undefined): SdkSessionSnapshotDiagnostic["account"] =>
   account === undefined
     ? undefined
     : {
-      ...(account.displayName === undefined ? {} : { displayName: "[redacted]" as const }),
-      ...(account.emailHint === undefined ? {} : { emailHint: "[redacted]" as const }),
-      ...(account.stableAccountIdHash === undefined ? {} : { stableAccountIdHash: "[redacted]" as const })
-    }
+        ...(account.displayName === undefined ? {} : { displayName: "[redacted]" as const }),
+        ...(account.emailHint === undefined ? {} : { emailHint: "[redacted]" as const }),
+        ...(account.stableAccountIdHash === undefined ? {} : { stableAccountIdHash: "[redacted]" as const })
+      }
 
 export const redactSdkSessionSnapshot = (snapshot: SdkSessionSnapshot): SdkSessionSnapshotDiagnostic =>
   Either.getOrThrow(

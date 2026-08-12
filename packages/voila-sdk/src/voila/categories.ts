@@ -14,10 +14,7 @@ const makeFullUrlPath = (parentPath: string | undefined, urlPath: string): strin
   return `${slash}${[trimSlashes(parentPath), normalizedPath].filter(Boolean).join(slash)}`
 }
 
-const normalizeCategory = (
-  category: RawCategory,
-  parentPath: string | undefined
-): NormalizedCategory => {
+const normalizeCategory = (category: RawCategory, parentPath: string | undefined): NormalizedCategory => {
   const fullUrlPath = makeFullUrlPath(parentPath, category.urlPath)
 
   return {
@@ -29,10 +26,8 @@ const normalizeCategory = (
   }
 }
 
-export const normalizeCategoryTree = (
-  categories: ReadonlyArray<RawCategory>
-): NormalizedCategoryTree => categories.map((category) => normalizeCategory(category, undefined))
+export const normalizeCategoryTree = (categories: ReadonlyArray<RawCategory>): NormalizedCategoryTree =>
+  categories.map((category) => normalizeCategory(category, undefined))
 
-export const getInitialStateCategories = (
-  initialState: InitialState
-): NormalizedCategoryTree => normalizeCategoryTree(initialState.data.categories ?? [])
+export const getInitialStateCategories = (initialState: InitialState): NormalizedCategoryTree =>
+  normalizeCategoryTree(initialState.data.categories ?? [])

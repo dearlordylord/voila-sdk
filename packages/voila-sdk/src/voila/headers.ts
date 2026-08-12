@@ -2,10 +2,7 @@ import type { SessionMetadata } from "../domain/schemas/index.js"
 
 export type ResponseHeaders = Readonly<Record<string, ReadonlyArray<string> | string | undefined>>
 
-export const makeVoilaHeaders = (
-  metadata: SessionMetadata,
-  csrfToken: string
-): Readonly<Record<string, string>> => ({
+export const makeVoilaHeaders = (metadata: SessionMetadata, csrfToken: string): Readonly<Record<string, string>> => ({
   "X-CSRF-TOKEN": csrfToken,
   "client-route-id": metadata.clientRouteId,
   "content-type": "application/json",
@@ -14,10 +11,7 @@ export const makeVoilaHeaders = (
   "page-view-id": metadata.pageViewId
 })
 
-export const getHeaderValues = (
-  headers: ResponseHeaders,
-  headerName: string
-): ReadonlyArray<string> => {
+export const getHeaderValues = (headers: ResponseHeaders, headerName: string): ReadonlyArray<string> => {
   const found = Object.entries(headers).find(([key]) => key.toLowerCase() === headerName)
 
   if (found === undefined) {

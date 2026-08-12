@@ -27,10 +27,7 @@ import type { OrderDetailsRequestError } from "./order-urls.js"
 import { makeOrderDetailsRequest } from "./order-urls.js"
 import type { CookieJarPort } from "./session-snapshot.js"
 
-export type OrderDetailsUnavailableError = {
-  readonly _tag: "OrderDetailsUnavailable"
-  readonly message: string
-}
+export type OrderDetailsUnavailableError = { readonly _tag: "OrderDetailsUnavailable"; readonly message: string }
 
 export type CompletedOrderItemsInputInvalidError = {
   readonly _tag: "CompletedOrderItemsInputInvalid"
@@ -146,10 +143,7 @@ const normalizePlainGroup = (
   kind: OrderItemGroupKind,
   items: ReadonlyArray<RawOrderDetailItem> | undefined,
   products: ProductDirectory
-): NormalizedOrderItemGroup => ({
-  items: (items ?? []).map((item) => makeNormalizedItem(item, kind, products)),
-  kind
-})
+): NormalizedOrderItemGroup => ({ items: (items ?? []).map((item) => makeNormalizedItem(item, kind, products)), kind })
 
 const normalizeSubstitutionGroup = (
   items: ReadonlyArray<RawOrderDetailItem> | undefined,
@@ -182,12 +176,12 @@ const datesFor = (order: RawOrderDetailOrder) =>
   order.slot?.start === undefined && order.slot?.end === undefined && order.slot?.timeZone === undefined
     ? {}
     : {
-      dates: {
-        ...(order.slot.start === undefined ? {} : { deliveryStartDate: order.slot.start }),
-        ...(order.slot.end === undefined ? {} : { deliveryEndDate: order.slot.end }),
-        ...(order.slot.timeZone === undefined ? {} : { timeZoneId: order.slot.timeZone })
+        dates: {
+          ...(order.slot.start === undefined ? {} : { deliveryStartDate: order.slot.start }),
+          ...(order.slot.end === undefined ? {} : { deliveryEndDate: order.slot.end }),
+          ...(order.slot.timeZone === undefined ? {} : { timeZoneId: order.slot.timeZone })
+        }
       }
-    }
 
 export const normalizeOrderDetailsResponse = (
   response: RawDecoratedOrderResponse,
@@ -227,7 +221,7 @@ const parseCents = (money: Money): number | undefined => {
   const fractional = match?.[2] ?? ""
   const centsText = fractional.length === 1 ? `${fractional}0` : fractional.padEnd(2, "0")
 
-  return (Number.parseInt(whole, decimalRadix) * centsPerUnit) + Number.parseInt(centsText, decimalRadix)
+  return Number.parseInt(whole, decimalRadix) * centsPerUnit + Number.parseInt(centsText, decimalRadix)
 }
 
 const formatCents = (cents: number): string => {
@@ -270,13 +264,12 @@ const aggregateItem = (
   const orderIds = new Set(aggregate?.orderIds ?? [])
   orderIds.add(order.orderId)
   const cents = item.totalPrice === undefined ? undefined : parseCents(item.totalPrice)
-  const nextSpend = aggregate?.spendCents === undefined || cents === undefined
-      || aggregate.spendCurrency !== item.totalPrice?.currency
-    ? undefined
-    : aggregate.spendCents + cents
-  const initialSpend = aggregate === undefined && cents !== undefined && item.totalPrice !== undefined
-    ? cents
-    : nextSpend
+  const nextSpend =
+    aggregate?.spendCents === undefined || cents === undefined || aggregate.spendCurrency !== item.totalPrice?.currency
+      ? undefined
+      : aggregate.spendCents + cents
+  const initialSpend =
+    aggregate === undefined && cents !== undefined && item.totalPrice !== undefined ? cents : nextSpend
   const brand = item.brand ?? aggregate?.brand
   const name = item.name ?? aggregate?.name
   const productId = item.productId ?? aggregate?.productId
@@ -313,12 +306,7 @@ const toCompletedOrderItem = (aggregate: ItemAggregate): NormalizedCompletedOrde
   ...(aggregate.retailerProductId === undefined ? {} : { retailerProductId: aggregate.retailerProductId }),
   ...(aggregate.spendCents === undefined || aggregate.spendCurrency === undefined
     ? {}
-    : {
-      totalSpend: {
-        amount: formatCents(aggregate.spendCents),
-        currency: aggregate.spendCurrency
-      }
-    })
+    : { totalSpend: { amount: formatCents(aggregate.spendCents), currency: aggregate.spendCurrency } })
 })
 
 export const getOrderDetails = async (
@@ -341,13 +329,11 @@ export const getOrderDetails = async (
     cookieJarPort
   )
 
-  return Either.flatMap(
-    response,
-    (result) =>
-      Either.map(normalizeOrderDetailsResponse(result.value, request.right.orderId), (value) => ({
-        session: result.session,
-        value
-      }))
+  return Either.flatMap(response, (result) =>
+    Either.map(normalizeOrderDetailsResponse(result.value, request.right.orderId), (value) => ({
+      session: result.session,
+      value
+    }))
   )
 }
 
@@ -376,9 +362,7 @@ export const getCompletedOrderItems = async (
   let currentSession = session
   let ordersScanned = 0
   let pageToken = parsed.right.pageToken
-  let pagination: NormalizedCompletedOrderItemsResult["pagination"] = {
-    hasNextPage: false
-  }
+  let pagination: NormalizedCompletedOrderItemsResult["pagination"] = { hasNextPage: false }
 
   do {
     const ordersResult = await getCompletedOrders(
@@ -426,17 +410,12 @@ export const getCompletedOrderItems = async (
     }
   }
 
-  const items = Array.from(aggregates.values()).map(toCompletedOrderItem)
+  const items = Array.from(aggregates.values())
+    .map(toCompletedOrderItem)
     .sort((left, right) => right.totalQuantity - left.totalQuantity || left.itemKey.localeCompare(right.itemKey))
 
   return Either.right({
     session: currentSession,
-    value: {
-      itemCount: items.length,
-      items,
-      ordersMatched: matchingOrders.length,
-      ordersScanned,
-      pagination
-    }
+    value: { itemCount: items.length, items, ordersMatched: matchingOrders.length, ordersScanned, pagination }
   })
 }

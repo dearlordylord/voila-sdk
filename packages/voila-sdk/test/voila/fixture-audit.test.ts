@@ -5,10 +5,7 @@ import { dirname, join } from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-type FixtureEntry = {
-  readonly contents: string
-  readonly path: string
-}
+type FixtureEntry = { readonly contents: string; readonly path: string }
 
 const makeFixtureDirectory = (entries: ReadonlyArray<FixtureEntry>) => {
   const directory = mkdtempSync(join(tmpdir(), "voila-fixture-audit-"))
@@ -23,22 +20,19 @@ const makeFixtureDirectory = (entries: ReadonlyArray<FixtureEntry>) => {
 }
 
 const runFixtureAudit = (directory: string) =>
-  spawnSync(process.execPath, ["scripts/audit-fixtures.mjs", directory], {
-    cwd: process.cwd(),
-    encoding: "utf8"
-  })
+  spawnSync(process.execPath, ["scripts/audit-fixtures.mjs", directory], { cwd: process.cwd(), encoding: "utf8" })
 
 describe("fixture audit script", () => {
   it("accepts public product identifiers and sanitized sensitive placeholders", () => {
-    const directory = makeFixtureDirectory([{
-      contents: JSON.stringify({
-        nextPageToken: "sanitized-next-page-token",
-        products: [{
-          retailerProductId: "12345"
-        }]
-      }),
-      path: "safe.json"
-    }])
+    const directory = makeFixtureDirectory([
+      {
+        contents: JSON.stringify({
+          nextPageToken: "sanitized-next-page-token",
+          products: [{ retailerProductId: "12345" }]
+        }),
+        path: "safe.json"
+      }
+    ])
 
     const result = runFixtureAudit(directory)
 
@@ -47,8 +41,9 @@ describe("fixture audit script", () => {
   })
 
   it("rejects unsanitized sensitive fields embedded in HTML fixtures", () => {
-    const directory = makeFixtureDirectory([{
-      contents: `<script>
+    const directory = makeFixtureDirectory([
+      {
+        contents: `<script>
 window.__INITIAL_STATE__ = {
   "csrf": {
     "token":
@@ -56,27 +51,30 @@ window.__INITIAL_STATE__ = {
   }
 }
 </script>`,
-      path: "homepage.html"
-    }])
+        path: "homepage.html"
+      }
+    ])
 
     const result = runFixtureAudit(directory)
 
     expect(result.status).toBe(1)
-    expect(`${result.stdout}${result.stderr}`).toContain("field \"token\" must contain a sanitized placeholder value")
+    expect(`${result.stdout}${result.stderr}`).toContain('field "token" must contain a sanitized placeholder value')
   })
 
   it("rejects documented session, auth, and destination identifiers", () => {
-    const directory = makeFixtureDirectory([{
-      contents: JSON.stringify({
-        Authorization: "Bearer raw-auth-header",
-        checkoutCorrelationId: 12345,
-        deliveryDestinationId: "destination-123",
-        destinationId: "destination-456",
-        orderId: "order-123",
-        sessionId: "session-123"
-      }),
-      path: "account.json"
-    }])
+    const directory = makeFixtureDirectory([
+      {
+        contents: JSON.stringify({
+          Authorization: "Bearer raw-auth-header",
+          checkoutCorrelationId: 12345,
+          deliveryDestinationId: "destination-123",
+          destinationId: "destination-456",
+          orderId: "order-123",
+          sessionId: "session-123"
+        }),
+        path: "account.json"
+      }
+    ])
 
     const result = runFixtureAudit(directory)
 
@@ -85,15 +83,12 @@ window.__INITIAL_STATE__ = {
   })
 
   it("rejects parsed cookie-entry-like fixture shapes", () => {
-    const directory = makeFixtureDirectory([{
-      contents: JSON.stringify([{
-        domain: "voila.ca",
-        key: "voila-session",
-        path: "/",
-        value: "raw-cookie-value"
-      }]),
-      path: "cookies.json"
-    }])
+    const directory = makeFixtureDirectory([
+      {
+        contents: JSON.stringify([{ domain: "voila.ca", key: "voila-session", path: "/", value: "raw-cookie-value" }]),
+        path: "cookies.json"
+      }
+    ])
 
     const result = runFixtureAudit(directory)
 
@@ -102,8 +97,9 @@ window.__INITIAL_STATE__ = {
   })
 
   it("rejects embedded HTML cookie-entry-like fixture shapes", () => {
-    const directory = makeFixtureDirectory([{
-      contents: `<script>
+    const directory = makeFixtureDirectory([
+      {
+        contents: `<script>
 window.__INITIAL_STATE__ = {
   "jar": [{
     "key": "voila-session",
@@ -113,8 +109,9 @@ window.__INITIAL_STATE__ = {
   }]
 }
 </script>`,
-      path: "homepage.html"
-    }])
+        path: "homepage.html"
+      }
+    ])
 
     const result = runFixtureAudit(directory)
 
@@ -123,15 +120,17 @@ window.__INITIAL_STATE__ = {
   })
 
   it("rejects embedded HTML non-string sensitive identifiers", () => {
-    const directory = makeFixtureDirectory([{
-      contents: `<script>
+    const directory = makeFixtureDirectory([
+      {
+        contents: `<script>
 window.__INITIAL_STATE__ = {
   "customerAccountId": 12345,
   "addressId": 67890
 }
 </script>`,
-      path: "homepage.html"
-    }])
+        path: "homepage.html"
+      }
+    ])
 
     const result = runFixtureAudit(directory)
 
@@ -140,12 +139,9 @@ window.__INITIAL_STATE__ = {
   })
 
   it("scans nested fixture directories", () => {
-    const directory = makeFixtureDirectory([{
-      contents: JSON.stringify({
-        token: "raw-nested-token"
-      }),
-      path: "nested/raw.json"
-    }])
+    const directory = makeFixtureDirectory([
+      { contents: JSON.stringify({ token: "raw-nested-token" }), path: "nested/raw.json" }
+    ])
 
     const result = runFixtureAudit(directory)
 

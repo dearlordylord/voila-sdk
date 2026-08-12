@@ -59,75 +59,88 @@ describe("category tree normalization", () => {
   })
 
   it("normalizes root URL paths without duplicate slashes", () => {
-    const categories = normalizeCategoryTree([{
-      ...validRawCategory,
-      urlPath: "pantry/"
-    }])
+    const categories = normalizeCategoryTree([{ ...validRawCategory, urlPath: "pantry/" }])
 
     expect(categories[0]?.fullUrlPath).toBe("/pantry")
   })
 
   it("preserves already-rooted child URL paths", () => {
-    const categories = normalizeCategoryTree([{
-      ...validRawCategory,
-      categories: [{
-        categoryId: "child-category-id",
-        name: "Canned Goods",
-        retailerCategoryId: "child-retailer-category-id",
-        urlPath: "/pantry/canned-goods"
-      }]
-    }])
+    const categories = normalizeCategoryTree([
+      {
+        ...validRawCategory,
+        categories: [
+          {
+            categoryId: "child-category-id",
+            name: "Canned Goods",
+            retailerCategoryId: "child-retailer-category-id",
+            urlPath: "/pantry/canned-goods"
+          }
+        ]
+      }
+    ])
 
     expect(categories[0]?.children[0]?.fullUrlPath).toBe("/pantry/canned-goods")
   })
 
   it("normalizes children below a root URL path without duplicate leading slashes", () => {
-    const categories = normalizeCategoryTree([{
-      ...validRawCategory,
-      categories: [{
-        categoryId: "child-category-id",
-        name: "Fresh Fruit",
-        retailerCategoryId: "child-retailer-category-id",
-        urlPath: "fresh-fruit"
-      }],
-      urlPath: "/"
-    }])
+    const categories = normalizeCategoryTree([
+      {
+        ...validRawCategory,
+        categories: [
+          {
+            categoryId: "child-category-id",
+            name: "Fresh Fruit",
+            retailerCategoryId: "child-retailer-category-id",
+            urlPath: "fresh-fruit"
+          }
+        ],
+        urlPath: "/"
+      }
+    ])
 
     expect(categories[0]?.fullUrlPath).toBe("/")
     expect(categories[0]?.children[0]?.fullUrlPath).toBe("/fresh-fruit")
   })
 
   it("keeps normalized categories under the public category schema", () => {
-    const categories = normalizeCategoryTree([{
-      ...validRawCategory,
-      categories: [{
-        categoryId: "child-category-id",
-        name: "Canned Goods",
-        retailerCategoryId: "child-retailer-category-id",
-        urlPath: "canned-goods"
-      }]
-    }])
+    const categories = normalizeCategoryTree([
+      {
+        ...validRawCategory,
+        categories: [
+          {
+            categoryId: "child-category-id",
+            name: "Canned Goods",
+            retailerCategoryId: "child-retailer-category-id",
+            urlPath: "canned-goods"
+          }
+        ]
+      }
+    ])
 
     const decoded = assertDecodeSuccess(NormalizedCategoryTreeSchema, categories)
     expect(assertEncodeSuccess(NormalizedCategoryTreeSchema, decoded)).toEqual(categories)
   })
 
   it("rejects normalized categories without rooted full URL paths", () => {
-    const duplicateSlashResult = Schema.decodeUnknownEither(NormalizedCategoryTreeSchema)([{
-      categoryId: "category-id",
-      children: [],
-      fullUrlPath: "//pantry",
-      name: "Pantry",
-      retailerCategoryId: "retailer-category-id"
-    }])
+    const duplicateSlashResult = Schema.decodeUnknownEither(NormalizedCategoryTreeSchema)([
+      {
+        categoryId: "category-id",
+        children: [],
+        fullUrlPath: "//pantry",
+        name: "Pantry",
+        retailerCategoryId: "retailer-category-id"
+      }
+    ])
 
-    assertDecodeFailure(NormalizedCategoryTreeSchema, [{
-      categoryId: "category-id",
-      children: [],
-      fullUrlPath: "pantry",
-      name: "Pantry",
-      retailerCategoryId: "retailer-category-id"
-    }])
+    assertDecodeFailure(NormalizedCategoryTreeSchema, [
+      {
+        categoryId: "category-id",
+        children: [],
+        fullUrlPath: "pantry",
+        name: "Pantry",
+        retailerCategoryId: "retailer-category-id"
+      }
+    ])
 
     expect(Either.isLeft(duplicateSlashResult)).toBe(true)
 
@@ -139,50 +152,31 @@ describe("category tree normalization", () => {
   })
 
   it("rejects malformed raw categories at the schema boundary", () => {
-    for (
-      const category of [
-        {
-          ...validRawCategory,
-          categoryId: ""
-        },
-        {
-          ...validRawCategory,
-          categoryId: " category-id"
-        },
-        {
-          ...validRawCategory,
-          name: ""
-        },
-        {
-          ...validRawCategory,
-          retailerCategoryId: ""
-        },
-        {
-          ...validRawCategory,
-          urlPath: ""
-        },
-        {
-          ...validRawCategory,
-          retailerCategoryId: validRawCategory.categoryId
-        }
-      ]
-    ) {
+    for (const category of [
+      { ...validRawCategory, categoryId: "" },
+      { ...validRawCategory, categoryId: " category-id" },
+      { ...validRawCategory, name: "" },
+      { ...validRawCategory, retailerCategoryId: "" },
+      { ...validRawCategory, urlPath: "" },
+      { ...validRawCategory, retailerCategoryId: validRawCategory.categoryId }
+    ]) {
       assertDecodeFailure(RawCategoryTreeSchema, [category])
     }
   })
 
   it("explains category identifier collisions through schemas", () => {
-    const rawResult = Schema.decodeUnknownEither(RawCategoryTreeSchema)([{
-      ...validRawCategory,
-      retailerCategoryId: validRawCategory.categoryId
-    }])
-    const normalizedResult = Schema.decodeUnknownEither(NormalizedCategoryTreeSchema)([{
-      categoryId: "category-id",
-      children: [],
-      fullUrlPath: "/pantry",
-      name: "Pantry",
-      retailerCategoryId: "category-id"
-    }])
+    const rawResult = Schema.decodeUnknownEither(RawCategoryTreeSchema)([
+      { ...validRawCategory, retailerCategoryId: validRawCategory.categoryId }
+    ])
+    const normalizedResult = Schema.decodeUnknownEither(NormalizedCategoryTreeSchema)([
+      {
+        categoryId: "category-id",
+        children: [],
+        fullUrlPath: "/pantry",
+        name: "Pantry",
+        retailerCategoryId: "category-id"
+      }
+    ])
 
     expect(Either.isLeft(rawResult)).toBe(true)
     expect(Either.isLeft(normalizedResult)).toBe(true)

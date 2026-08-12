@@ -31,25 +31,14 @@ describe("cart mutation response normalization", () => {
       expect(result.right.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
       expect(result.right.itemGroups[0]?.items[0]?.quantity).toBe(2)
       expect(result.right.totals).toEqual({
-        itemPriceAfterPromos: {
-          amount: "8.88",
-          currency: "CAD"
-        },
-        itemsRetailPrice: {
-          amount: "9.98",
-          currency: "CAD"
-        },
-        savingsPrice: {
-          amount: "1.10",
-          currency: "CAD"
-        },
+        itemPriceAfterPromos: { amount: "8.88", currency: "CAD" },
+        itemsRetailPrice: { amount: "9.98", currency: "CAD" },
+        savingsPrice: { amount: "1.10", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       })
-      expect(result.right.pricingNotifications).toEqual([{
-        code: "PROMO_APPLIED",
-        message: "A promotion was applied",
-        severity: "INFO"
-      }])
+      expect(result.right.pricingNotifications).toEqual([
+        { code: "PROMO_APPLIED", message: "A promotion was applied", severity: "INFO" }
+      ])
       expect(result.right.limitedItems).toEqual([])
       expect(result.right.limitedPromotionIds).toEqual([])
       expect(result.right.unavailableData).toEqual([])
@@ -64,27 +53,33 @@ describe("cart mutation response normalization", () => {
     if (Either.isRight(result)) {
       expect(result.right.itemCount).toBe(1)
       expect(result.right.totals.itemPriceAfterPromos.amount).toBe("4.99")
-      expect(result.right.limitedItems).toEqual([{
-        code: "MAX_QUANTITY",
-        message: "Only one strawberry package can be added",
-        productId: "sanitized-strawberries-product-id",
-        quantity: 1,
-        reason: "MAX_QUANTITY",
-        severity: "WARNING"
-      }])
+      expect(result.right.limitedItems).toEqual([
+        {
+          code: "MAX_QUANTITY",
+          message: "Only one strawberry package can be added",
+          productId: "sanitized-strawberries-product-id",
+          quantity: 1,
+          reason: "MAX_QUANTITY",
+          severity: "WARNING"
+        }
+      ])
       expect(result.right.limitedPromotionIds).toEqual(["sanitized-promo-id"])
-      expect(result.right.pricingNotifications).toEqual([{
-        code: "PRICE_CHANGED",
-        message: "A product price changed while applying the cart delta",
-        productId: "sanitized-strawberries-product-id",
-        severity: "INFO"
-      }])
-      expect(result.right.unavailableData).toEqual([{
-        code: "UNAVAILABLE",
-        message: "Blueberries are unavailable",
-        productId: "sanitized-blueberries-product-id",
-        severity: "WARNING"
-      }])
+      expect(result.right.pricingNotifications).toEqual([
+        {
+          code: "PRICE_CHANGED",
+          message: "A product price changed while applying the cart delta",
+          productId: "sanitized-strawberries-product-id",
+          severity: "INFO"
+        }
+      ])
+      expect(result.right.unavailableData).toEqual([
+        {
+          code: "UNAVAILABLE",
+          message: "Blueberries are unavailable",
+          productId: "sanitized-blueberries-product-id",
+          severity: "WARNING"
+        }
+      ])
     }
   })
 
@@ -103,18 +98,9 @@ describe("cart mutation response normalization", () => {
     const result = normalizeCartMutationResponse({
       basketUpdateResult: {
         totals: {
-          itemPriceAfterPromos: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          itemsRetailPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          savingsPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
+          itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+          itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+          savingsPrice: { amount: "0.00", currency: "CAD" },
           taxation: "TAX_EXCLUDED"
         }
       },
@@ -148,25 +134,13 @@ describe("cart mutation response normalization", () => {
     const result = parseCartMutationResponse({
       basketUpdateResult: {
         totals: {
-          itemPriceAfterPromos: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          itemsRetailPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
-          savingsPrice: {
-            amount: "0.00",
-            currency: "CAD"
-          },
+          itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+          itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+          savingsPrice: { amount: "0.00", currency: "CAD" },
           taxation: "TAX_EXCLUDED"
         }
       },
-      limitedItems: [{
-        productId: "product-id",
-        quantity: 1
-      }],
+      limitedItems: [{ productId: "product-id", quantity: 1 }],
       limitedPromotionIds: [],
       pricingNotifications: [],
       unavailableData: []
@@ -184,25 +158,11 @@ describe("cart mutation response normalization", () => {
     for (const quantity of [-1, 1.5]) {
       const result = parseCartMutationResponse({
         basketUpdateResult: {
-          itemGroups: [{
-            items: [{
-              productId: "product-id",
-              quantity
-            }]
-          }],
+          itemGroups: [{ items: [{ productId: "product-id", quantity }] }],
           totals: {
-            itemPriceAfterPromos: {
-              amount: "0.00",
-              currency: "CAD"
-            },
-            itemsRetailPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
-            savingsPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
+            itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+            itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+            savingsPrice: { amount: "0.00", currency: "CAD" },
             taxation: "TAX_EXCLUDED"
           }
         },
@@ -225,26 +185,13 @@ describe("cart mutation response normalization", () => {
       const result = parseCartMutationResponse({
         basketUpdateResult: {
           totals: {
-            itemPriceAfterPromos: {
-              amount: "0.00",
-              currency: "CAD"
-            },
-            itemsRetailPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
-            savingsPrice: {
-              amount: "0.00",
-              currency: "CAD"
-            },
+            itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+            itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+            savingsPrice: { amount: "0.00", currency: "CAD" },
             taxation: "TAX_EXCLUDED"
           }
         },
-        limitedItems: [{
-          productId: "product-id",
-          quantity,
-          reason: "MAX_QUANTITY"
-        }],
+        limitedItems: [{ productId: "product-id", quantity, reason: "MAX_QUANTITY" }],
         limitedPromotionIds: [],
         pricingNotifications: [],
         unavailableData: []

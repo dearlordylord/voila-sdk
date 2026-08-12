@@ -66,10 +66,9 @@ const makeAuthenticatedSnapshot = () => {
   return snapshot.right
 }
 
-const makeMemoryStorage = (initialContents: unknown = ""): {
-  readonly readContents: () => unknown
-  readonly storage: SessionStoragePort
-} => {
+const makeMemoryStorage = (
+  initialContents: unknown = ""
+): { readonly readContents: () => unknown; readonly storage: SessionStoragePort } => {
   let contents = initialContents
 
   return {
@@ -135,11 +134,7 @@ describe("session storage", () => {
     const memory = makeMemoryStorage("unchanged")
     const result = await saveSdkSessionSnapshot(memory.storage, {
       kind: "authenticated",
-      session: {
-        csrf: {
-          token: secretCsrfToken
-        }
-      }
+      session: { csrf: { token: secretCsrfToken } }
     })
 
     expect(Either.isLeft(result)).toBe(true)
@@ -181,11 +176,7 @@ describe("session storage", () => {
     {
       contents: JSON.stringify({
         kind: "authenticated",
-        session: {
-          csrf: {
-            token: secretCsrfToken
-          }
-        },
+        session: { csrf: { token: secretCsrfToken } },
         state: "authenticated"
       }),
       name: "stale session JSON"

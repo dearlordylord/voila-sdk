@@ -34,9 +34,7 @@ const DELIVERY_DESTINATIONS_PATH = "/api/ecomdeliverydestinations/v4/delivery-ad
 const DELIVERY_PROPOSITIONS_PATH = "/api/ecomdeliverydestinations/v1/propositions"
 const TAG_WEB = "web"
 const filterSeparator = ":"
-const CartQuantityDeltaArraySchema = Schema.Array(CartQuantityDeltaSchema).pipe(
-  Schema.minItems(1)
-)
+const CartQuantityDeltaArraySchema = Schema.Array(CartQuantityDeltaSchema).pipe(Schema.minItems(1))
 
 export interface SearchRequest {
   readonly method: "GET"
@@ -103,20 +101,11 @@ export interface DeliveryDestinationRequest {
   readonly url: URL
 }
 
-export type SearchRequestError = {
-  readonly _tag: "SearchInputInvalid"
-  readonly message: string
-}
+export type SearchRequestError = { readonly _tag: "SearchInputInvalid"; readonly message: string }
 
-export type CategoryProductsRequestError = {
-  readonly _tag: "CategoryPageInputInvalid"
-  readonly message: string
-}
+export type CategoryProductsRequestError = { readonly _tag: "CategoryPageInputInvalid"; readonly message: string }
 
-export type CartQuantityRequestError = {
-  readonly _tag: "CartQuantityInputInvalid"
-  readonly message: string
-}
+export type CartQuantityRequestError = { readonly _tag: "CartQuantityInputInvalid"; readonly message: string }
 
 export type DeliveryDestinationsRequestError = {
   readonly _tag: "DeliveryDestinationsInputInvalid"
@@ -213,13 +202,7 @@ const applyDeliveryContextChangeInputInvalid = (): ApplyDeliveryContextChangeReq
   message: "Apply delivery context change input does not match the SDK schema"
 })
 
-const addProductPageParameters = (
-  url: URL,
-  input: Readonly<{
-    pageSize: number
-    pageToken?: string
-  }>
-): URL => {
+const addProductPageParameters = (url: URL, input: Readonly<{ pageSize: number; pageToken?: string }>): URL => {
   url.searchParams.set("tag", TAG_WEB)
   url.searchParams.set("includeAdditionalPageInfo", "true")
   url.searchParams.set("maxProductsToDecorate", String(input.pageSize))
@@ -300,13 +283,10 @@ const makeAccountContextHeaders = (input: AccountContextHeadersInput): Readonly<
 }
 
 export const makeSearchRequest = (input: unknown): Either.Either<SearchRequest, SearchRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(SearchInputSchema, input), searchInputInvalid),
-    (searchInput) => ({
-      method: "GET",
-      url: buildSearchUrl(searchInput)
-    })
-  )
+  Either.map(Either.mapLeft(parseUnknown(SearchInputSchema, input), searchInputInvalid), (searchInput) => ({
+    method: "GET",
+    url: buildSearchUrl(searchInput)
+  }))
 
 export const makeCategoryProductsRequest = (
   input: unknown
@@ -334,10 +314,7 @@ export const makeActiveShoppingContextRequest = (
 ): Either.Either<ActiveShoppingContextRequest, ActiveShoppingContextRequestError> =>
   Either.map(
     Either.mapLeft(parseUnknown(ActiveShoppingContextInputSchema, input), activeShoppingContextInputInvalid),
-    (activeShoppingContextInput) => ({
-      method: "GET",
-      url: buildActiveShoppingContextUrl(activeShoppingContextInput)
-    })
+    (activeShoppingContextInput) => ({ method: "GET", url: buildActiveShoppingContextUrl(activeShoppingContextInput) })
   )
 
 export const makeDeliveryDestinationsRequest = (
@@ -345,10 +322,7 @@ export const makeDeliveryDestinationsRequest = (
 ): Either.Either<DeliveryDestinationsRequest, DeliveryDestinationsRequestError> =>
   Either.map(
     Either.mapLeft(parseUnknown(DeliveryDestinationsInputSchema, input), deliveryDestinationsInputInvalid),
-    (deliveryDestinationsInput) => ({
-      method: "GET",
-      url: buildDeliveryDestinationsUrl(deliveryDestinationsInput)
-    })
+    (deliveryDestinationsInput) => ({ method: "GET", url: buildDeliveryDestinationsUrl(deliveryDestinationsInput) })
   )
 
 export const makeDeliveryDestinationRequest = (
@@ -358,10 +332,7 @@ export const makeDeliveryDestinationRequest = (
     Either.mapLeft(parseUnknown(DeliveryDestinationByIdInputSchema, input), deliveryDestinationInputInvalid),
     ({ deliveryDestinationId }) => ({
       method: "GET",
-      url: new URL(
-        `${DELIVERY_DESTINATIONS_PATH}/${encodeURIComponent(deliveryDestinationId)}`,
-        VOILA_BASE_URL
-      )
+      url: new URL(`${DELIVERY_DESTINATIONS_PATH}/${encodeURIComponent(deliveryDestinationId)}`, VOILA_BASE_URL)
     })
   )
 
@@ -369,10 +340,7 @@ export const makeDeliveryPropositionDetailsRequest = (
   input: unknown
 ): Either.Either<DeliveryPropositionDetailsRequest, DeliveryPropositionDetailsRequestError> =>
   Either.map(
-    Either.mapLeft(
-      parseUnknown(DeliveryPropositionDetailsInputSchema, input),
-      deliveryPropositionDetailsInputInvalid
-    ),
+    Either.mapLeft(parseUnknown(DeliveryPropositionDetailsInputSchema, input), deliveryPropositionDetailsInputInvalid),
     (deliveryPropositionDetailsInput) => ({
       method: "GET",
       url: buildDeliveryPropositionDetailsUrl(deliveryPropositionDetailsInput)
@@ -406,10 +374,7 @@ export const makeSetActiveDeliveryDestinationRequest = (
       const headers = makeAccountContextHeaders(setInput)
 
       return {
-        body: JSON.stringify({
-          deliveryDestinationId: setInput.deliveryDestinationId,
-          regionId: setInput.regionId
-        }),
+        body: JSON.stringify({ deliveryDestinationId: setInput.deliveryDestinationId, regionId: setInput.regionId }),
         ...(headers === undefined ? {} : { headers }),
         method: "PUT",
         url: new URL(ACTIVE_CUSTOMER_SESSION_PATH, VOILA_BASE_URL)
@@ -421,10 +386,7 @@ export const makeSetActiveCartPropositionRequest = (
   input: unknown
 ): Either.Either<SetActiveCartPropositionRequest, SetActiveCartPropositionRequestError> =>
   Either.map(
-    Either.mapLeft(
-      parseUnknown(SetActiveCartPropositionInputSchema, input),
-      setActiveCartPropositionInputInvalid
-    ),
+    Either.mapLeft(parseUnknown(SetActiveCartPropositionInputSchema, input), setActiveCartPropositionInputInvalid),
     (setInput) => {
       const headers = makeAccountContextHeaders(setInput)
 
@@ -443,25 +405,12 @@ export const makeSetActiveCartPropositionRequest = (
 export const parseApplyDeliveryContextChangeInput = (
   input: unknown
 ): Either.Either<ApplyDeliveryContextChangeInput, ApplyDeliveryContextChangeRequestError> =>
-  Either.mapLeft(
-    parseUnknown(ApplyDeliveryContextChangeInputSchema, input),
-    applyDeliveryContextChangeInputInvalid
-  )
+  Either.mapLeft(parseUnknown(ApplyDeliveryContextChangeInputSchema, input), applyDeliveryContextChangeInputInvalid)
 
 export const makeApplyQuantityRequest = (
   deltas: unknown
-): Either.Either<
-  Readonly<{
-    body: string
-    method: "POST"
-    url: URL
-  }>,
-  CartQuantityRequestError
-> => {
-  const parsedDeltas = Either.mapLeft(
-    parseUnknown(CartQuantityDeltaArraySchema, deltas),
-    cartQuantityInputInvalid
-  )
+): Either.Either<Readonly<{ body: string; method: "POST"; url: URL }>, CartQuantityRequestError> => {
+  const parsedDeltas = Either.mapLeft(parseUnknown(CartQuantityDeltaArraySchema, deltas), cartQuantityInputInvalid)
 
   if (Either.isLeft(parsedDeltas)) {
     return Either.left(parsedDeltas.left)
@@ -470,9 +419,5 @@ export const makeApplyQuantityRequest = (
   const url = new URL(CART_APPLY_QUANTITY_PATH, VOILA_BASE_URL)
   url.searchParams.set("cartProductSorting", "CATEGORIES")
 
-  return Either.right({
-    body: JSON.stringify(parsedDeltas.right),
-    method: "POST",
-    url
-  })
+  return Either.right({ body: JSON.stringify(parsedDeltas.right), method: "POST", url })
 }

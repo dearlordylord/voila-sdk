@@ -11,18 +11,12 @@ import {
 } from "../../src/index.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
-const blockedFixtureText = readFileSync(
-  new URL("../fixtures/checkout-summary-blocked.json", import.meta.url),
-  "utf8"
-)
+const blockedFixtureText = readFileSync(new URL("../fixtures/checkout-summary-blocked.json", import.meta.url), "utf8")
 const unavailableFixtureText = readFileSync(
   new URL("../fixtures/checkout-summary-unavailable-item.json", import.meta.url),
   "utf8"
 )
-const readyFixtureText = readFileSync(
-  new URL("../fixtures/checkout-summary-ready.json", import.meta.url),
-  "utf8"
-)
+const readyFixtureText = readFileSync(new URL("../fixtures/checkout-summary-ready.json", import.meta.url), "utf8")
 
 const readSummaryFixture = (fixtureText: string) => {
   const parsedJson = parseJson(fixtureText)
@@ -57,11 +51,7 @@ describe("checkout readiness decisions", () => {
   })
 
   it("classifies warning-bearing summaries as needing review without dropping warning signals", () => {
-    const summary = {
-      ...readSummaryFixture(unavailableFixtureText),
-      canCheckout: true,
-      checkoutRestrictions: []
-    }
+    const summary = { ...readSummaryFixture(unavailableFixtureText), canCheckout: true, checkoutRestrictions: [] }
     const decision = decideCheckoutReadiness(summary)
 
     expect(decision.status).toBe("needs-review")

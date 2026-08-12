@@ -21,9 +21,7 @@ const EnvSchema = Schema.Struct({
     exact: true
   }),
   VOILA_GUEST: Schema.optionalWith(Schema.Literal("1"), { exact: true }),
-  VOILA_USER_AGENT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
-    exact: true
-  }),
+  VOILA_USER_AGENT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), { exact: true }),
   VOILA_SESSION_WRITE_PATH: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
     exact: true
   })
@@ -36,10 +34,7 @@ const envInvalid = (): OperationFailure => ({
   message: "Voila MCP environment variables are invalid"
 })
 
-const storageFailure = (tag: string, message: string): OperationFailure => ({
-  _tag: tag,
-  message
-})
+const storageFailure = (tag: string, message: string): OperationFailure => ({ _tag: tag, message })
 
 const makeFileStorage = (path: string): SessionStoragePort => ({
   read: () => readFile(path, "utf8"),
@@ -74,10 +69,7 @@ const saveSessionFile = async (
   return Either.mapLeft(saved, (error) => storageFailure(error._tag, error.message))
 }
 
-const makeSessionPort = (
-  config: EnvConfig,
-  transport: VoilaTransport
-): OperationEnvironment["session"] => {
+const makeSessionPort = (config: EnvConfig, transport: VoilaTransport): OperationEnvironment["session"] => {
   let cachedSession: SdkSessionSnapshot | undefined
   const writePath = config.VOILA_SESSION_WRITE_PATH ?? config.VOILA_AUTH_SESSION_PATH
 
@@ -109,7 +101,7 @@ const makeSessionPort = (
         return loadGuest()
       }
 
-      if (!await fileExists(config.VOILA_AUTH_SESSION_PATH)) {
+      if (!(await fileExists(config.VOILA_AUTH_SESSION_PATH))) {
         return loadGuest()
       }
 
@@ -149,7 +141,7 @@ const getMostPopularUserAgent = (): string => {
 export type NodeFetchPort = (input: URL, init: RequestInit) => Promise<Response>
 
 export const makeFetchVoilaTransport = (
-  configuredUserAgent: string | undefined = undefined,
+  configuredUserAgent?: string,
   fetchPort: NodeFetchPort = fetch
 ): VoilaTransport => ({
   request: async (request: VoilaTransportRequest) => {
@@ -157,10 +149,7 @@ export const makeFetchVoilaTransport = (
     const hasRequestUserAgent = Object.keys(request.headers).some((name) => name.toLowerCase() === "user-agent")
     const headers = hasRequestUserAgent
       ? request.headers
-      : {
-        ...request.headers,
-        "user-agent": configuredUserAgent ?? getMostPopularUserAgent()
-      }
+      : { ...request.headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent() }
 
     try {
       response = await fetchPort(request.url, {
@@ -187,18 +176,15 @@ export const makeNodeOperationEnvironment = (
   transport?: VoilaTransport,
   fetchPort: NodeFetchPort = fetch
 ): Either.Either<OperationEnvironment, OperationFailure> =>
-  Either.map(
-    Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid),
-    (config) => {
-      const effectiveTransport = transport ?? makeFetchVoilaTransport(config.VOILA_USER_AGENT, fetchPort)
+  Either.map(Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid), (config) => {
+    const effectiveTransport = transport ?? makeFetchVoilaTransport(config.VOILA_USER_AGENT, fetchPort)
 
-      return {
-        ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-        session: makeSessionPort(config, effectiveTransport),
-        transport: effectiveTransport
-      }
+    return {
+      ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
+      session: makeSessionPort(config, effectiveTransport),
+      transport: effectiveTransport
     }
-  )
+  })
 
 export const defaultNodeOperationEnvironment = (): OperationEnvironment => {
   const env = makeNodeOperationEnvironment()
