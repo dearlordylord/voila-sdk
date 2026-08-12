@@ -13,6 +13,7 @@ The server reads configuration from environment variables:
 - `VOILA_AUTH_SESSION_PATH`: path to an SDK session snapshot JSON file.
 - `VOILA_SESSION_WRITE_PATH`: optional path for updated session snapshots. Defaults to `VOILA_AUTH_SESSION_PATH`.
 - `VOILA_GUEST=1`: force guest-session behavior.
+- `VOILA_USER_AGENT`: optional browser identity override. The built-in default works for most users.
 - `MCP_TRANSPORT`: `stdio` by default, or `http`.
 - `MCP_HTTP_HOST`: HTTP bind host. Defaults to `127.0.0.1`.
 - `MCP_HTTP_PORT` / `PORT`: HTTP port. Defaults to `3000`.
@@ -73,3 +74,10 @@ MCP_TRANSPORT=http MCP_HTTP_HOST=0.0.0.0 PORT=8080 VOILA_GUEST=1 npx -y @firfi/v
 `voila_get_completed_order_items` aggregates received items across completed orders, optionally filtered by `fromDate` and `toDate`, so a client can answer questions such as what the user ordered last month.
 
 The server does not expose checkout or order-placement tools.
+
+## Connection Compatibility
+
+Voila can change its unofficial web endpoints and security rules at any time. The server uses a stable
+browser identity by default, allows an override with `VOILA_USER_AGENT`, and reports blocked requests
+without exposing private session data. See [request identity and blocking](https://github.com/dearlordylord/voila-sdk/blob/master/docs/request-identity.md)
+for precedence, diagnostics, and the read-only smoke test.

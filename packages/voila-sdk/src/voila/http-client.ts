@@ -1,5 +1,4 @@
-import type { Schema } from "effect"
-import { Either } from "effect"
+import { Either, Schema } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import { type SessionSnapshot } from "../domain/schemas/index.js"
@@ -38,6 +37,16 @@ export interface VoilaJsonResult<A> {
   readonly value: A
 }
 
+export const VoilaRequestBlockedSchema = Schema.Struct({
+  _tag: Schema.Literal("VoilaRequestBlocked"),
+  edgeRequestId: Schema.optionalWith(Schema.String, { exact: true }),
+  message: Schema.String,
+  method: Schema.Literal("DELETE", "GET", "PATCH", "POST", "PUT"),
+  status: Schema.Number
+})
+
+export type VoilaRequestBlocked = Schema.Schema.Type<typeof VoilaRequestBlockedSchema>
+
 export type VoilaSdkError =
   | {
     readonly _tag: "VoilaMissingCsrfToken"
@@ -61,11 +70,7 @@ export type VoilaSdkError =
     readonly message: string
     readonly status: 401 | 403
   }
-  | {
-    readonly _tag: "VoilaRequestBlocked"
-    readonly message: string
-    readonly status: number
-  }
+  | VoilaRequestBlocked
   | {
     readonly _tag: "VoilaNon2xxResponse"
     readonly message: string
@@ -83,10 +88,15 @@ export type VoilaSdkError =
 const emptyStringLength = 0
 const unauthorizedStatus = 401
 const forbiddenStatus = 403
+const serviceUnavailableStatus = 503
 const successStatusMin = 200
 const successStatusMax = 300
 const setCookieHeader = "set-cookie"
-const blockedBodyMarker = "request blocked"
+const blockedBodyMarkers = [
+  "error: the request could not be satisfied",
+  "request blocked."
+]
+const edgeRequestIdHeader = "x-amz-cf-id"
 
 const missingCsrfToken = (): VoilaSdkError => ({
   _tag: "VoilaMissingCsrfToken",
@@ -120,11 +130,20 @@ const unauthorizedSession = (status: 401 | 403): VoilaSdkError => ({
   status
 })
 
-const requestBlocked = (status: number): VoilaSdkError => ({
-  _tag: "VoilaRequestBlocked",
-  message: "Voila request was blocked",
-  status
-})
+const requestBlocked = (
+  response: VoilaTransportResponse,
+  request: VoilaHttpRequest
+): VoilaRequestBlocked => {
+  const [edgeRequestId] = getHeaderValues(response.headers, edgeRequestIdHeader)
+
+  return {
+    _tag: "VoilaRequestBlocked",
+    ...(edgeRequestId === undefined ? {} : { edgeRequestId }),
+    message: "Voila request was blocked",
+    method: request.method,
+    status: response.status
+  }
+}
 
 const non2xxResponse = (status: number): VoilaSdkError => ({
   _tag: "VoilaNon2xxResponse",
@@ -147,8 +166,15 @@ const isSuccessStatus = (status: number): boolean => status >= successStatusMin 
 const isUnauthorizedStatus = (status: number): status is 401 | 403 =>
   status === unauthorizedStatus || status === forbiddenStatus
 
-const isBlockedResponse = (response: VoilaTransportResponse): boolean =>
-  response.body.toLowerCase().includes(blockedBodyMarker)
+const isBlockedResponse = (response: VoilaTransportResponse): boolean => {
+  if (response.status !== forbiddenStatus && response.status !== serviceUnavailableStatus) {
+    return false
+  }
+
+  const normalizedBody = response.body.toLowerCase()
+
+  return blockedBodyMarkers.every((marker) => normalizedBody.includes(marker))
+}
 
 const makeRequestHeaders = (
   request: VoilaHttpRequest,
@@ -239,7 +265,7 @@ export const requestVoilaJson = async <A, I>(
   }
 
   if (!isSuccessStatus(response.right.status) && isBlockedResponse(response.right)) {
-    return Either.left(requestBlocked(response.right.status))
+    return Either.left(requestBlocked(response.right, request))
   }
 
   if (isUnauthorizedStatus(response.right.status)) {

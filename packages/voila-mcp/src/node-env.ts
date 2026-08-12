@@ -21,6 +21,9 @@ const EnvSchema = Schema.Struct({
     exact: true
   }),
   VOILA_GUEST: Schema.optionalWith(Schema.Literal("1"), { exact: true }),
+  VOILA_USER_AGENT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
+    exact: true
+  }),
   VOILA_SESSION_WRITE_PATH: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
     exact: true
   })
@@ -130,15 +133,8 @@ const makeSessionPort = (
   }
 }
 
-const collectResponseHeaders = (headers: Headers): VoilaTransportResponse["headers"] => {
-  const collected: Record<string, string> = {}
-
-  headers.forEach((value, key) => {
-    collected[key] = value
-  })
-
-  return collected
-}
+const collectResponseHeaders = (headers: Headers): VoilaTransportResponse["headers"] =>
+  Object.fromEntries(headers.entries())
 
 const getMostPopularUserAgent = (): string => {
   const [mostPopularUserAgent] = topDesktopUserAgents
@@ -150,14 +146,26 @@ const getMostPopularUserAgent = (): string => {
   return mostPopularUserAgent
 }
 
-export const fetchVoilaTransport: VoilaTransport = {
+export type NodeFetchPort = (input: URL, init: RequestInit) => Promise<Response>
+
+export const makeFetchVoilaTransport = (
+  configuredUserAgent: string | undefined = undefined,
+  fetchPort: NodeFetchPort = fetch
+): VoilaTransport => ({
   request: async (request: VoilaTransportRequest) => {
     let response: Response
+    const hasRequestUserAgent = Object.keys(request.headers).some((name) => name.toLowerCase() === "user-agent")
+    const headers = hasRequestUserAgent
+      ? request.headers
+      : {
+        ...request.headers,
+        "user-agent": configuredUserAgent ?? getMostPopularUserAgent()
+      }
 
     try {
-      response = await fetch(request.url, {
+      response = await fetchPort(request.url, {
         ...(request.body === undefined ? {} : { body: request.body }),
-        headers: { "User-Agent": getMostPopularUserAgent(), ...request.headers },
+        headers,
         method: request.method
       })
     } catch (error) {
@@ -170,19 +178,26 @@ export const fetchVoilaTransport: VoilaTransport = {
       status: response.status
     })
   }
-}
+})
+
+export const fetchVoilaTransport: VoilaTransport = makeFetchVoilaTransport()
 
 export const makeNodeOperationEnvironment = (
   env: Readonly<Record<string, string | undefined>> = process.env,
-  transport: VoilaTransport = fetchVoilaTransport
+  transport?: VoilaTransport,
+  fetchPort: NodeFetchPort = fetch
 ): Either.Either<OperationEnvironment, OperationFailure> =>
   Either.map(
     Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid),
-    (config) => ({
-      ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-      session: makeSessionPort(config, transport),
-      transport
-    })
+    (config) => {
+      const effectiveTransport = transport ?? makeFetchVoilaTransport(config.VOILA_USER_AGENT, fetchPort)
+
+      return {
+        ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
+        session: makeSessionPort(config, effectiveTransport),
+        transport: effectiveTransport
+      }
+    }
   )
 
 export const defaultNodeOperationEnvironment = (): OperationEnvironment => {

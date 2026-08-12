@@ -362,18 +362,21 @@ describe("requestVoilaJson", () => {
     }
   })
 
-  it.each([403, 503])("returns a blocked error for a non-success %s body marked blocked", async (status) => {
+  it.each([403, 503])("returns redacted WAF diagnostics for a known blocked response at status %s", async (status) => {
     const result = await requestVoilaJson(
       OkResponseSchema,
       makeSession(),
       {
         method: "GET",
-        url: voilaUrl
+        url: new URL("/api/orders/secret-order-id/decorated?token=secret-query", VOILA_BASE_URL)
       },
       makeResponseTransport({
         body:
           "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY><H1>403 ERROR</H1>Request blocked.</BODY></HTML>",
-        headers: { server: "WAF" },
+        headers: {
+          "set-cookie": "secret-cookie=must-not-leak",
+          "x-amz-cf-id": "safe-edge-request-id"
+        },
         status
       }).transport
     )
@@ -384,8 +387,65 @@ describe("requestVoilaJson", () => {
       expect(result.left._tag).toBe("VoilaRequestBlocked")
 
       if (result.left._tag === "VoilaRequestBlocked") {
-        expect(result.left.status).toBe(status)
+        expect(result.left).toEqual({
+          _tag: "VoilaRequestBlocked",
+          edgeRequestId: "safe-edge-request-id",
+          message: "Voila request was blocked",
+          method: "GET",
+          status
+        })
+        expect(JSON.stringify(result.left)).not.toContain("secret-cookie")
+        expect(JSON.stringify(result.left)).not.toContain("secret-order-id")
+        expect(JSON.stringify(result.left)).not.toContain("secret-query")
       }
+    }
+  })
+
+  it.each([
+    [403, "VoilaUnauthorizedSession"],
+    [503, "VoilaNon2xxResponse"]
+  ])("does not classify a generic blocked phrase as a WAF response at status %s", async (status, expectedTag) => {
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      {
+        method: "GET",
+        url: voilaUrl
+      },
+      makeResponseTransport({
+        body: "The request blocked a downstream operation",
+        headers: {},
+        status
+      }).transport
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe(expectedTag)
+    }
+  })
+
+  it("does not classify the known WAF body at an undocumented status", async () => {
+    const result = await requestVoilaJson(
+      OkResponseSchema,
+      makeSession(),
+      {
+        method: "GET",
+        url: voilaUrl
+      },
+      makeResponseTransport({
+        body:
+          "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY>Request blocked.</BODY></HTML>",
+        headers: {},
+        status: 500
+      }).transport
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("VoilaNon2xxResponse")
     }
   })
 

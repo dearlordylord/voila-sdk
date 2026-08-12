@@ -31,6 +31,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "verify-version": "node -e \"const v=require('./package.json').version; const d=require('fs').readFileSync('dist/bin.cjs','utf8'); if(!d.includes('\\\"'+v+'\\\"'))throw new Error('dist version mismatch: expected '+v)\"",
     "package:audit": "pnpm build && pnpm verify-version && node ../../scripts/audit-package.mjs . bin",
+    "smoke:request-identity": "tsx test/live/request-identity.smoke.ts",
     "test": "vitest run --config ../../vitest.config.ts",
     "test:coverage": "vitest run --coverage --config ../../vitest.config.ts"
   },

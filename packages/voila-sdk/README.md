@@ -144,6 +144,13 @@ The authenticated read-only smoke loads a caller-provided authenticated SDK sess
 
 The endpoint drift audit bootstraps a guest session, searches `milk`, and reads the guest cart to detect likely Voila response-schema drift.
 
+## Edge Blocking Diagnostics
+
+Voila may change its unofficial web endpoints or security rules without notice. Blocked requests return a
+safe `VoilaRequestBlocked` error without response bodies or session secrets. See
+[request identity and blocking](https://github.com/dearlordylord/voila-sdk/blob/master/docs/request-identity.md)
+for details.
+
 ## Release
 
 Use the release gate before publishing:
