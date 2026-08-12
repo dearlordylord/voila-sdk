@@ -1,5 +1,4 @@
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node"
 import { randomUUID } from "node:crypto"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 
@@ -56,47 +55,13 @@ const readJsonBody = async (request: IncomingMessage): Promise<unknown> => {
   return JSON.parse(chunks.join(""))
 }
 
-const makeTransportAdapter = (transport: StreamableHTTPServerTransport): Transport => {
-  const adapter: Transport = {
-    close: () => transport.close(),
-    send: (message, options) => transport.send(message, options),
-    start: () => transport.start()
-  }
-
-  Object.defineProperties(adapter, {
-    onclose: {
-      get: () => transport.onclose,
-      set: (handler: Transport["onclose"]) => {
-        transport.onclose = handler
-      }
-    },
-    onerror: {
-      get: () => transport.onerror,
-      set: (handler: Transport["onerror"]) => {
-        transport.onerror = handler
-      }
-    },
-    onmessage: {
-      get: () => transport.onmessage,
-      set: (handler: Transport["onmessage"]) => {
-        transport.onmessage = handler
-      }
-    },
-    sessionId: {
-      get: () => transport.sessionId
-    }
-  })
-
-  return adapter
-}
-
 const makeConnectedHttpTransport = async (
   env: OperationEnvironment,
-  transports: Map<string, StreamableHTTPServerTransport>,
+  transports: Map<string, NodeStreamableHTTPServerTransport>,
   version?: string
-): Promise<StreamableHTTPServerTransport> => {
+): Promise<NodeStreamableHTTPServerTransport> => {
   const server = createVoilaMcpServer(env, version)
-  const transport = new StreamableHTTPServerTransport({
+  const transport = new NodeStreamableHTTPServerTransport({
     enableJsonResponse: true,
     onsessionclosed: (sessionId) => {
       transports.delete(sessionId)
@@ -107,15 +72,15 @@ const makeConnectedHttpTransport = async (
     sessionIdGenerator: randomUUID
   })
 
-  await server.connect(makeTransportAdapter(transport))
+  await server.connect(transport)
 
   return transport
 }
 
 const lookupHttpTransport = (
   request: IncomingMessage,
-  transports: Map<string, StreamableHTTPServerTransport>
-): StreamableHTTPServerTransport | undefined => {
+  transports: Map<string, NodeStreamableHTTPServerTransport>
+): NodeStreamableHTTPServerTransport | undefined => {
   const sessionId = firstHeaderValue(request.headers["mcp-session-id"])
 
   return sessionId === undefined ? undefined : transports.get(sessionId)
@@ -127,7 +92,7 @@ export const createHttpServer = (
   version?: string
 ): Server => {
   const mcpPath = options.path ?? defaultHttpPath
-  const transports = new Map<string, StreamableHTTPServerTransport>()
+  const transports = new Map<string, NodeStreamableHTTPServerTransport>()
 
   return createServer((request, response) => {
     const pathname = requestPathname(request)
@@ -167,7 +132,7 @@ const handleMcpRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
   env: OperationEnvironment,
-  transports: Map<string, StreamableHTTPServerTransport>,
+  transports: Map<string, NodeStreamableHTTPServerTransport>,
   version?: string
 ): Promise<void> => {
   if (request.method !== "POST") {

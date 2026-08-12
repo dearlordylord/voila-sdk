@@ -94,12 +94,12 @@ const toolByName = (tools: Array<unknown>, name: string): unknown =>
     && tool.name === name
   )
 
-const initializeAndListTools = async (
+const initializeSession = async (
   baseUrl: string,
-  idOffset: number
-): Promise<Array<unknown>> => {
+  id: number
+): Promise<string> => {
   const initialize = await postMcp(`${baseUrl}/mcp`, {
-    id: idOffset,
+    id,
     jsonrpc: "2.0",
     method: "initialize",
     params: {
@@ -116,17 +116,30 @@ const initializeAndListTools = async (
   expect(initialize.status).toBe(httpOk)
   expect(sessionId).toBeTruthy()
 
+  if (sessionId === null) {
+    throw new Error("Expected MCP session ID")
+  }
+
   await postMcp(`${baseUrl}/mcp`, {
     jsonrpc: "2.0",
     method: "notifications/initialized"
-  }, sessionId ?? undefined)
+  }, sessionId)
+
+  return sessionId
+}
+
+const initializeAndListTools = async (
+  baseUrl: string,
+  idOffset: number
+): Promise<Array<unknown>> => {
+  const sessionId = await initializeSession(baseUrl, idOffset)
 
   const tools = await postMcp(`${baseUrl}/mcp`, {
     id: idOffset + 1,
     jsonrpc: "2.0",
     method: "tools/list",
     params: {}
-  }, sessionId ?? undefined)
+  }, sessionId)
 
   expect(tools.status).toBe(httpOk)
 
@@ -166,6 +179,23 @@ describe("Voila MCP HTTP server", () => {
     expect(toolByName(secondTools, "voila_search_products")).toMatchObject({
       annotations: {
         readOnlyHint: true
+      },
+      inputSchema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        additionalProperties: false,
+        properties: {
+          pageSize: {
+            maximum: 24,
+            minimum: 1,
+            type: "integer"
+          },
+          query: {
+            minLength: 1,
+            type: "string"
+          }
+        },
+        required: ["query"],
+        type: "object"
       }
     })
     expect(toolByName(secondTools, "voila_add_cart_items")).toMatchObject({
@@ -174,9 +204,56 @@ describe("Voila MCP HTTP server", () => {
         readOnlyHint: false
       }
     })
+    expect(toolByName(secondTools, "voila_get_cart")).toMatchObject({
+      inputSchema: {
+        additionalProperties: false,
+        properties: {},
+        required: [],
+        type: "object"
+      }
+    })
   })
 
   it("exposes the canonical MCP package name", () => {
     expect(mcpName).toBe("io.github.dearlordylord/voila-mcp")
+  })
+
+  it("rejects tool input that violates the advertised Effect schema", async () => {
+    const server = await createHttpServer(inertEnvironment, {
+      host: "127.0.0.1",
+      port: 0
+    })
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve)
+    })
+    startedServers.push(server)
+
+    const baseUrl = `http://127.0.0.1:${serverPort(server)}`
+    const sessionId = await initializeSession(baseUrl, 10)
+    const response = await postMcp(`${baseUrl}/mcp`, {
+      id: 11,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        arguments: {
+          query: " milk "
+        },
+        name: "voila_search_products"
+      }
+    }, sessionId)
+
+    expect(response.status).toBe(httpOk)
+    expect(await response.json()).toMatchObject({
+      id: 11,
+      jsonrpc: "2.0",
+      result: {
+        content: [{
+          text: expect.stringContaining("Input validation error"),
+          type: "text"
+        }],
+        isError: true
+      }
+    })
   })
 })

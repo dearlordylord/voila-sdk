@@ -41,7 +41,10 @@ const QuantitySchema = Schema.Number.pipe(
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
-export const EmptyOperationInputSchema = Schema.Struct({})
+export const EmptyOperationInputSchema = Schema.Record({
+  key: Schema.String,
+  value: Schema.Never
+})
 
 export type EmptyOperationInput = Schema.Schema.Type<typeof EmptyOperationInputSchema>
 
