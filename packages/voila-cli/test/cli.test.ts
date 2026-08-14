@@ -1,7 +1,14 @@
+import type { KeepaliveStopReason } from "@firfi/voila-sdk"
 import type { OperationExecutionResult, VoilaOperationName } from "@firfi/voila-mcp"
 import { describe, expect, it } from "vitest"
 
-import { type CliLoginOptions, type CliOperationOptions, type CliPorts, runCli } from "../src/cli.js"
+import {
+  type CliKeepaliveOptions,
+  type CliLoginOptions,
+  type CliOperationOptions,
+  type CliPorts,
+  runCli
+} from "../src/cli.js"
 
 const success = (value: unknown): OperationExecutionResult => ({ ok: true, value })
 
@@ -22,13 +29,15 @@ const authGuidanceFailure = (): OperationExecutionResult => ({
 })
 
 const makePorts = (
-  result: OperationExecutionResult = success({ status: "ok" })
+  result: OperationExecutionResult = success({ status: "ok" }),
+  keepaliveReason: KeepaliveStopReason = "cancelled"
 ): {
   readonly calls: ReadonlyArray<{
     readonly input: unknown
     readonly name: VoilaOperationName
     readonly options: CliOperationOptions
   }>
+  readonly keepaliveCalls: ReadonlyArray<CliKeepaliveOptions>
   readonly loginCalls: ReadonlyArray<CliLoginOptions>
   readonly ports: CliPorts
 } => {
@@ -38,11 +47,18 @@ const makePorts = (
     readonly options: CliOperationOptions
   }> = []
   const loginCalls: Array<CliLoginOptions> = []
+  const keepaliveCalls: Array<CliKeepaliveOptions> = []
 
   return {
     calls,
+    keepaliveCalls,
     loginCalls,
     ports: {
+      keepalive: async (options) => {
+        keepaliveCalls.push(options)
+
+        return keepaliveReason
+      },
       login: async (options) => {
         loginCalls.push(options)
 
@@ -252,6 +268,55 @@ describe("Voila CLI", () => {
         options: { sessionPath: "/tmp/orders-session.json" }
       }
     ])
+  })
+
+  it("runs the keepalive loop and reports a clean stop", async () => {
+    const fake = makePorts(success({ status: "ok" }), "cancelled")
+    const result = await runCli(
+      ["auth", "keepalive", "--session", "/tmp/session.json", "--interval", "3600"],
+      fake.ports
+    )
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe("Keepalive stopped.\n")
+    expect(fake.keepaliveCalls).toEqual([{ intervalSeconds: 3600, sessionPath: "/tmp/session.json" }])
+  })
+
+  it("defaults the keepalive interval and session path when omitted", async () => {
+    const fake = makePorts()
+    const result = await runCli(["auth", "keepalive"], fake.ports)
+
+    expect(result.exitCode).toBe(0)
+    expect(fake.keepaliveCalls).toHaveLength(1)
+    expect(fake.keepaliveCalls[0]?.intervalSeconds).toBeUndefined()
+    expect(fake.keepaliveCalls[0]?.sessionPath).toContain("session.json")
+  })
+
+  it("reports a non-zero exit when the keepalive loop detects expiry", async () => {
+    const fake = makePorts(success({ status: "ok" }), "expired")
+    const result = await runCli(["auth", "keepalive", "--session", "/tmp/session.json"], fake.ports)
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain("Session requires re-authentication")
+    expect(result.stdout).toBe("")
+  })
+
+  it("rejects a non-positive keepalive interval before starting the loop", async () => {
+    const fake = makePorts()
+    const result = await runCli(["auth", "keepalive", "--interval", "0"], fake.ports)
+
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr).toContain("Usage:")
+    expect(fake.keepaliveCalls).toEqual([])
+  })
+
+  it("rejects a keepalive interval below the 1-hour floor", async () => {
+    const fake = makePorts()
+    const result = await runCli(["auth", "keepalive", "--interval", "3599"], fake.ports)
+
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr).toContain("at least 3600")
+    expect(fake.keepaliveCalls).toEqual([])
   })
 
   it("passes auth login defaults and overrides to the login port", async () => {

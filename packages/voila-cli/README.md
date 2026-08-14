@@ -13,6 +13,7 @@ Command line interface for personal Voila grocery automation.
 ```bash
 voila auth login --session ~/.config/voila/session.json
 voila auth status --json
+voila auth keepalive --interval 86400
 voila search "milk" --page-size 12
 voila category products <category-id>
 voila orders list --page-size 20
@@ -24,6 +25,8 @@ voila cart remove <product-uuid> --quantity 1
 ```
 
 `auth login` opens Chromium. Log in manually, then close the browser window to save. The CLI saves after Voila session material and cookies are captured, then validates the saved session. If another process wrote a newer session while this login was being saved, the login reports `VoilaAuthSessionSuperseded` rather than writing over it.
+
+`auth keepalive` runs a foreground loop that periodically re-checks the active session (`GET /sessions/active`). Voila has no refresh token; each check folds rotated `Set-Cookie` values back into the saved session, so a running keepalive keeps an idle session warm against server-side sliding expiry. It never mutates the cart. Progress is logged to stderr; the loop exits `0` on Ctrl-C and non-zero if the session drops to a re-authentication-required state (run `voila auth login` again). Default interval is once per day; override with `--interval` (seconds, minimum 3600 / 1 hour). This is convenient as a small background service (systemd/launchd/pm2) for long-lived remote agents.
 
 `orders list` reads completed orders with cursor pagination; pass `--page-token` from the previous response to fetch the next page.
 
