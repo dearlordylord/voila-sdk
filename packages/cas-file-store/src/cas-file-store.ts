@@ -18,6 +18,8 @@ import { randomUUID } from "node:crypto"
 import { link, mkdir, open, readFile, rename, rm } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path"
 
+import type { StateFilePath } from "./state-file-path.js"
+
 /** The file could not be read (unreadable, or gone mid-cycle). */
 export type CasFileStoreReadFailure = { readonly _tag: "CasFileStoreReadFailure"; readonly message: string }
 
@@ -142,7 +144,7 @@ const readOptionalRaw = (path: string): Effect.Effect<string | undefined, CasFil
  * transform as a value, because a transform that never runs cannot create the
  * file.
  */
-export const read = (path: string): Effect.Effect<string, CasFileStoreAbsent | CasFileStoreReadFailure> =>
+export const read = (path: StateFilePath): Effect.Effect<string, CasFileStoreAbsent | CasFileStoreReadFailure> =>
   readOptionalRaw(path).pipe(
     Effect.flatMap((contents) =>
       contents === undefined ? Effect.fail(casFileStoreAbsent(path)) : Effect.succeed(contents)
@@ -349,7 +351,7 @@ const readModifyWrite = <A, E, R>(
  * Schema wrapper. Not part of the package's public surface.
  */
 export const modifyCarrying = <A, E, R>(
-  path: string,
+  path: StateFilePath,
   f: (contents: string | undefined) => Effect.Effect<WriteDecision<WritePayload<A>>, E, R>,
   policy: ConflictPolicy
 ): Effect.Effect<CarryOutcome<A>, CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictExhausted | E, R> => {
@@ -379,7 +381,7 @@ export const modifyCarrying = <A, E, R>(
  * resolve per `policy` (default: drop).
  */
 export const modify = <E = never, R = never>(
-  path: string,
+  path: StateFilePath,
   f: (contents: string | undefined) => Effect.Effect<WriteDecision<string>, E, R>,
   policy: ConflictPolicy = dropPolicy
 ): Effect.Effect<

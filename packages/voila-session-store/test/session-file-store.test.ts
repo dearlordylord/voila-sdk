@@ -8,6 +8,7 @@ import {
   serializeCookieJar,
   toughCookieJarPort
 } from "@firfi/voila-sdk"
+import { type StateFilePath, StateFilePathSchema } from "@firfi/cas-file-store"
 import { Deferred, Effect, Either, Fiber, Schema, TestClock } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
@@ -78,7 +79,9 @@ const authenticatedSnapshot = (regionId = "authenticated-region"): SdkSessionSna
 
 const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "voila-session-store-")))
 
-const sessionFile = (dir: string) => path.join(dir, "session.json")
+// tests own absolute temp paths, so the brand is applied directly; production
+// callers parse a configured path through `parseStateFilePath`
+const sessionFile = (dir: string): StateFilePath => StateFilePathSchema.make(path.join(dir, "session.json"))
 
 const encodeSnapshot = (snapshot: SdkSessionSnapshot) =>
   JSON.stringify(Schema.encodeSync(SdkSessionSnapshotSchema)(snapshot))
@@ -414,8 +417,9 @@ describe("updateSessionFile: failures", () => {
     Effect.gen(function* () {
       const dir = yield* makeTempDir
 
-      const error: SessionFileReadFailure | SessionFileError = yield* updateSessionFile(dir, () =>
-        Effect.succeed(keepSessionFile)
+      const error: SessionFileReadFailure | SessionFileError = yield* updateSessionFile(
+        StateFilePathSchema.make(dir),
+        () => Effect.succeed(keepSessionFile)
       ).pipe(Effect.flip)
 
       expect(error._tag).toBe("SessionFileReadFailure")
@@ -427,7 +431,7 @@ describe("updateSessionFile: failures", () => {
       const dir = yield* makeTempDir
       // a 255-byte basename: the sibling tmp name exceeds the filesystem's
       // component limit, so the write fails while reads still work
-      const file = path.join(dir, `${"s".repeat(250)}.json`)
+      const file = StateFilePathSchema.make(path.join(dir, `${"s".repeat(250)}.json`))
       const onDisk = guestSnapshot("on-disk")
       yield* writeSnapshot(file, onDisk)
 

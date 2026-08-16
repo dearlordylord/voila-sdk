@@ -20,6 +20,7 @@ import {
   persist,
   type WriteDecision
 } from "./cas-file-store.js"
+import type { StateFilePath } from "./state-file-path.js"
 
 const casFileStoreContentsInvalid = (path: string): CasFileStoreContentsInvalid => ({
   _tag: "CasFileStoreContentsInvalid",
@@ -36,7 +37,7 @@ const casFileStoreContentsInvalid = (path: string): CasFileStoreContentsInvalid 
  * it carries the fresh value another process wrote, decoded and ready to adopt.
  */
 export const modifySchema = <A, I, RSchema, E = never, R = never>(
-  path: string,
+  path: StateFilePath,
   schema: Schema.Schema<A, I, RSchema>,
   f: (value: A | undefined) => Effect.Effect<WriteDecision<A>, E, R>,
   policy: ConflictPolicy = dropPolicy

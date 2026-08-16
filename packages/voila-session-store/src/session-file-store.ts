@@ -13,7 +13,14 @@
  * (a guest session costs one request to rebuild; an authenticated one costs an
  * interactive browser login).
  */
-import { keep, modifySchema, type ModifyOutcome, persist, type WriteDecision } from "@firfi/cas-file-store"
+import {
+  keep,
+  modifySchema,
+  type ModifyOutcome,
+  persist,
+  type StateFilePath,
+  type WriteDecision
+} from "@firfi/cas-file-store"
 import { type SdkSessionSnapshot, SdkSessionSnapshotSchema } from "@firfi/voila-sdk"
 import { Effect } from "effect"
 
@@ -88,13 +95,16 @@ const toOutcome = (outcome: ModifyOutcome<SdkSessionSnapshot>): SessionFileUpdat
  * in which case the file and its directory are created inside the same guarded
  * cycle, owner-only.
  *
+ * The path is a `StateFilePath`, parsed once where it is configured: a bare
+ * string would let a relative path name different files in two processes.
+ *
  * `update` is an arbitrary effect: it may perform network I/O (folding
  * `Set-Cookie` from a live response into the snapshot it returns) and fail with
  * its own typed errors, which surface unchanged. The whole read-decide-write
  * window is covered by the conflict check, not just the final write.
  */
 export const updateSessionFile = <E = never, R = never>(
-  path: string,
+  path: StateFilePath,
   update: (current: SdkSessionSnapshot | undefined) => Effect.Effect<SessionFileUpdate, E, R>
 ): Effect.Effect<SessionFileUpdateOutcome, SessionFileError | E, R> =>
   modifySchema(path, SdkSessionSnapshotSchema, (current) =>

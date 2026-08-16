@@ -11,8 +11,10 @@ A state file read by a long-running process and rewritten later is a blind write
 ## API
 
 ```ts
-import { keep, modify, modifySchema, persist, read, retryPolicy } from "@firfi/cas-file-store"
+import { keep, modify, modifySchema, parseStateFilePath, persist, read, retryPolicy } from "@firfi/cas-file-store"
 ```
+
+Every entry point takes a `StateFilePath`, not a string: `parseStateFilePath(configuredPath)` once at the edge where the path is configured. It rejects a relative path, which would name different files in two processes with different working directories — the ambiguity a store shared by several processes cannot afford.
 
 - `read(path)` — current raw contents; a file that does not exist fails with `CasFileStoreAbsent`, its own tag so that "no state yet" is distinguishable from a file that cannot be read.
 - `modify(path, f, policy?)` — fresh read, run `f` on the raw contents, compare the CAS token (the bytes as read), write back atomically only if the file is unchanged.

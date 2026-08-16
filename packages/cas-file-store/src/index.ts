@@ -19,3 +19,9 @@ export {
   type WriteDecision
 } from "./cas-file-store.js"
 export { modifySchema } from "./schema.js"
+export {
+  type CasFileStorePathInvalid,
+  parseStateFilePath,
+  type StateFilePath,
+  StateFilePathSchema
+} from "./state-file-path.js"

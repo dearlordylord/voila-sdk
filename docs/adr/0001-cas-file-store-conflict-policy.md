@@ -9,6 +9,6 @@ Considered and rejected:
 - **Merging on conflict** — never: snapshots are only internally consistent within one lineage; merging across lineages produces broken states.
 - **SQLite or a daemon** — rejected as overengineering for one-row, few-KB state; see the spec issue for the full evaluation.
 
-A missing file is part of the same cycle: the transform runs against absence and the file is created with an exclusive `link`, which refuses to clobber, so a lost creation race surfaces as an ordinary conflict.
+Entry points take a parsed, absolute `StateFilePath` rather than a string, so a relative path cannot mean two different files in two processes. A missing file is part of the same cycle: the transform runs against absence and the file is created with an exclusive `link`, which refuses to clobber, so a lost creation race surfaces as an ordinary conflict.
 
 Consequences: the package core is byte/string-level by design — Schema-aware decoding lives in a thin `modifySchema` wrapper so the CAS token stays raw bytes and the core carries no serialization coupling. A keyed in-process semaphore serializes same-process `modify` calls per path; cross-process safety comes from the CAS check alone. Writes fsync the temp file before rename.

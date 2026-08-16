@@ -11,7 +11,9 @@ import {
   type ConflictExhausted,
   keep,
   modifySchema,
-  persist
+  persist,
+  type StateFilePath,
+  StateFilePathSchema
 } from "../src/index.js"
 
 const StateSchema = Schema.Struct({ lineage: Schema.String, rotations: Schema.Number })
@@ -20,7 +22,9 @@ type State = Schema.Schema.Type<typeof StateSchema>
 
 const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "cas-file-store-schema-")))
 
-const stateFile = (dir: string) => path.join(dir, "state.json")
+const statePath = (value: string): StateFilePath => StateFilePathSchema.make(value)
+
+const stateFile = (dir: string) => statePath(path.join(dir, "state.json"))
 
 const writeRaw = (file: string, contents: string) => Effect.promise(() => fs.writeFile(file, contents, { mode: 0o600 }))
 

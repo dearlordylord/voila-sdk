@@ -16,6 +16,8 @@ import { keepSessionFile, persistSession, updateSessionFile } from "@firfi/voila
 
 `updateSessionFile(path, update)` is the whole surface. There is no `save`, `write`, or `initialize` entry point beside it, so a snapshot built earlier cannot be handed over for a blind write.
 
+The path is a `StateFilePath` from `@firfi/cas-file-store`, parsed once where the session path is configured; the session file is a state file, so it does not get a second brand of its own.
+
 `update` receives the snapshot as it exists on disk right now — or `undefined` when the file does not exist yet — and returns either `persistSession(snapshot)` or `keepSessionFile`. It is an arbitrary effect: it may perform network I/O (folding `Set-Cookie` from a live response into the snapshot it returns) and fail with its own typed errors, which surface unchanged. The whole read-decide-write window is covered by the conflict check, not just the final write.
 
 Outcomes:

@@ -1,5 +1,5 @@
 import { it } from "@effect/vitest"
-import { Deferred, type Duration, Effect, Fiber, Option, Ref, Schedule, TestClock } from "effect"
+import { Deferred, type Duration, Effect, Fiber, Option, Ref, Schedule, Schema, TestClock } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -7,6 +7,7 @@ import { describe, expect } from "vitest"
 
 import {
   type CasFileStoreAbsent,
+  type CasFileStorePathInvalid,
   type CasFileStoreReadFailure,
   type CasFileStoreWriteFailure,
   type ConflictExhausted,
@@ -15,14 +16,21 @@ import {
   keep,
   modify,
   type ModifyOutcome,
+  parseStateFilePath,
   persist,
+  type StateFilePath,
+  StateFilePathSchema,
   read,
   retryPolicy
 } from "../src/index.js"
 
 const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "cas-file-store-")))
 
-const stateFile = (dir: string) => path.join(dir, "state.json")
+// tests own absolute temp paths, so the brand is applied directly; production
+// callers parse a configured path through `parseStateFilePath`
+const statePath = (value: string): StateFilePath => StateFilePathSchema.make(value)
+
+const stateFile = (dir: string) => statePath(path.join(dir, "state.json"))
 
 const writeRaw = (file: string, contents: string) => Effect.promise(() => fs.writeFile(file, contents, { mode: 0o600 }))
 
@@ -92,7 +100,7 @@ describe("read", () => {
     Effect.gen(function* () {
       const dir = yield* makeTempDir
 
-      const error: CasFileStoreAbsent | CasFileStoreReadFailure = yield* read(dir).pipe(Effect.flip)
+      const error: CasFileStoreAbsent | CasFileStoreReadFailure = yield* read(statePath(dir)).pipe(Effect.flip)
 
       expect(error._tag).toBe("CasFileStoreReadFailure")
       expect(error.message).toContain(dir)
@@ -217,7 +225,7 @@ describe("modify: creation", () => {
       const dir = yield* makeTempDir
       // a trailing slash names a directory that does not exist: the tmp file is
       // written next to it, but the link can never land there
-      const file = `${stateFile(dir)}/`
+      const file = statePath(`${stateFile(dir)}/`)
 
       const error = yield* modify(file, () => Effect.succeed(persist("first"))).pipe(Effect.flip)
 
@@ -259,7 +267,7 @@ describe("modify: keep", () => {
 describe("modify: conflict with drop policy", () => {
   // A second process writes between our base read and our write: the default
   // policy drops the in-flight update and the on-disk value stands.
-  const conflictingModify = (file: string, policy?: ConflictPolicy) =>
+  const conflictingModify = (file: StateFilePath, policy?: ConflictPolicy) =>
     Effect.gen(function* () {
       const entered = yield* Deferred.make<void>()
       const transform = () =>
@@ -423,7 +431,7 @@ describe("modify: failures", () => {
       // A 255-byte basename: the sibling tmp name (`.<basename>.<pid>.<uuid>.tmp`)
       // exceeds the filesystem component limit, so the tmp create fails while
       // reads still work. This is permission-independent and root-proof.
-      const file = path.join(dir, `${"s".repeat(250)}.json`)
+      const file = statePath(path.join(dir, `${"s".repeat(250)}.json`))
       yield* writeRaw(file, "base")
 
       const error = yield* modify(file, (contents) => Effect.succeed(persist(`${contents}!`))).pipe(Effect.flip)
@@ -477,11 +485,11 @@ describe("modify: failures", () => {
       const secret = "cookie=super-secret-token"
       // the over-long sibling tmp name makes the write fail while the read of
       // the secret-bearing file succeeds
-      const unwritable = path.join(dir, `${"s".repeat(250)}.json`)
+      const unwritable = statePath(path.join(dir, `${"s".repeat(250)}.json`))
       yield* writeRaw(file, secret)
       yield* writeRaw(unwritable, secret)
 
-      const readError = yield* read(dir).pipe(Effect.flip)
+      const readError = yield* read(statePath(dir)).pipe(Effect.flip)
       const writeError = yield* modify(unwritable, () => Effect.succeed(persist(secret))).pipe(Effect.flip)
 
       expect(readError.message).not.toContain(secret)
@@ -522,7 +530,7 @@ describe("modify: in-process serialization", () => {
 
       const fiberA = yield* Effect.fork(modify(file, increment))
       yield* Effect.yieldNow()
-      const fiberB = yield* Effect.fork(modify(`${dir}//./state.json`, increment))
+      const fiberB = yield* Effect.fork(modify(statePath(`${dir}//./state.json`), increment))
 
       const outcomeA = yield* Fiber.join(fiberA)
       const outcomeB = yield* Fiber.join(fiberB)
@@ -581,6 +589,41 @@ describe("modify: in-process serialization", () => {
       const outcome = yield* modify(file, (contents) => Effect.succeed(persist(`${contents}+after`)))
 
       expect(outcome).toEqual({ _tag: "saved", value: "base+after" })
+    })
+  )
+})
+
+describe("parseStateFilePath", () => {
+  it.effect("accepts an absolute path", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+
+      expect(yield* parseStateFilePath(path.join(dir, "state.json"))).toBe(path.join(dir, "state.json"))
+    })
+  )
+
+  it.effect("rejects a relative path, which would name different files in different processes", () =>
+    Effect.gen(function* () {
+      const error: CasFileStorePathInvalid = yield* parseStateFilePath("state.json").pipe(Effect.flip)
+
+      expect(error._tag).toBe("CasFileStorePathInvalid")
+      // the configured path can name a user or a machine
+      expect(error.message).not.toContain("state.json")
+    })
+  )
+
+  it.effect("explains the rule when the schema is decoded directly", () =>
+    Effect.gen(function* () {
+      const error = yield* Schema.decodeUnknown(StateFilePathSchema)("state.json").pipe(Effect.flip)
+
+      expect(error.message).toContain("must be a non-empty absolute path")
+    })
+  )
+
+  it.effect("rejects a blank path and a non-string", () =>
+    Effect.gen(function* () {
+      expect((yield* parseStateFilePath("   ").pipe(Effect.flip))._tag).toBe("CasFileStorePathInvalid")
+      expect((yield* parseStateFilePath(42).pipe(Effect.flip))._tag).toBe("CasFileStorePathInvalid")
     })
   )
 })
