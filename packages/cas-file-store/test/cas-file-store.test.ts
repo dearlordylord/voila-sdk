@@ -1,0 +1,440 @@
+import { it } from "@effect/vitest"
+import { Deferred, type Duration, Effect, Fiber, Option, Ref, Schedule, TestClock } from "effect"
+import * as fs from "node:fs/promises"
+import * as os from "node:os"
+import * as path from "node:path"
+import { describe, expect } from "vitest"
+
+import {
+  type CasFileStoreReadFailure,
+  type CasFileStoreWriteFailure,
+  type ConflictExhausted,
+  type ConflictPolicy,
+  dropPolicy,
+  modify,
+  type ModifyOutcome,
+  read,
+  retryPolicy
+} from "../src/index.js"
+
+const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "cas-file-store-")))
+
+const stateFile = (dir: string) => path.join(dir, "state.json")
+
+const writeRaw = (file: string, contents: string) => Effect.promise(() => fs.writeFile(file, contents, { mode: 0o600 }))
+
+const readRaw = (file: string) => Effect.promise(() => fs.readFile(file, "utf8"))
+
+const fileMode = (file: string) => Effect.promise(() => fs.stat(file).then((stats) => stats.mode & 0o777))
+
+const tmpEntries = (dir: string) =>
+  Effect.promise(() => fs.readdir(dir).then((entries) => entries.filter((entry) => entry.endsWith(".tmp"))))
+
+// Filesystem work settles on the macrotask queue, not on the TestClock, so
+// waiting on a forked fiber's I/O means draining that queue rather than
+// advancing time.
+const settle = Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)))
+
+const waitUntilContents = (file: string, expected: string) =>
+  settle.pipe(Effect.zipRight(readRaw(file)), Effect.repeat({ until: (contents) => contents === expected }))
+
+// A fiber sleeping on a retry schedule only wakes when the TestClock passes its
+// deadline, and it registers that sleep after filesystem work that the clock
+// knows nothing about — so drain the queue and advance until the fiber is done.
+const joinAdvancingClock = <A, E>(fiber: Fiber.RuntimeFiber<A, E>, step: Duration.DurationInput = "1 second") =>
+  settle.pipe(
+    Effect.zipRight(TestClock.adjust(step)),
+    Effect.zipRight(Fiber.poll(fiber)),
+    Effect.repeat({ until: Option.isSome }),
+    Effect.zipRight(Fiber.join(fiber))
+  )
+
+const transformBoom = { _tag: "TransformBoom" } as const
+
+describe("read", () => {
+  it.effect("returns the current file contents", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "hello")
+
+      const contents = yield* read(file)
+
+      expect(contents).toBe("hello")
+    })
+  )
+
+  it.effect("fails with CasFileStoreReadFailure when the file does not exist", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+
+      const error: CasFileStoreReadFailure = yield* read(file).pipe(Effect.flip)
+
+      expect(error._tag).toBe("CasFileStoreReadFailure")
+      expect(error.message).toContain(file)
+    })
+  )
+})
+
+describe("modify: saved", () => {
+  it.effect("writes the transformed contents back and reports them as saved", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "hello")
+
+      const outcome: ModifyOutcome<string> = yield* modify(file, (contents) => Effect.succeed(`${contents} world`))
+
+      expect(outcome).toEqual({ _tag: "saved", value: "hello world" })
+      expect(yield* readRaw(file)).toBe("hello world")
+    })
+  )
+
+  it.effect("writes atomically via a durable tmp file that leaves no litter behind", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "hello")
+
+      yield* modify(file, (contents) => Effect.succeed(`${contents} world`))
+
+      expect(yield* tmpEntries(dir)).toEqual([])
+      expect(yield* fileMode(file)).toBe(0o600)
+    })
+  )
+})
+
+describe("modify: conflict with drop policy", () => {
+  // A second process writes between our base read and our write: the default
+  // policy drops the in-flight update and the on-disk value stands.
+  const conflictingModify = (file: string, policy?: ConflictPolicy) =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>()
+      const transform = () =>
+        Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.sleep("1 second")), Effect.as("ours"))
+      const fiber = yield* Effect.fork(policy === undefined ? modify(file, transform) : modify(file, transform, policy))
+
+      // f only runs after the base read, so the external write below always
+      // lands between the base read and the CAS comparison.
+      yield* Deferred.await(entered)
+      yield* writeRaw(file, "external")
+      yield* TestClock.adjust("2 seconds")
+
+      return yield* Fiber.join(fiber)
+    })
+
+  it.effect("drops the in-flight update and surfaces the fresh contents (default policy)", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const outcome = yield* conflictingModify(file)
+
+      expect(outcome).toEqual({ _tag: "dropped-conflict", value: "external" })
+      expect(yield* readRaw(file)).toBe("external")
+    })
+  )
+
+  it.effect("drops the in-flight update when the drop policy is passed explicitly", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const outcome = yield* conflictingModify(file, dropPolicy)
+
+      expect(outcome).toEqual({ _tag: "dropped-conflict", value: "external" })
+      expect(yield* readRaw(file)).toBe("external")
+    })
+  )
+})
+
+describe("modify: conflict with retry policy", () => {
+  it.effect("re-runs the transform against the fresh base until the write lands", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const calls = yield* Ref.make(0)
+      const transform = (contents: string) =>
+        Ref.updateAndGet(calls, (n) => n + 1).pipe(
+          Effect.flatMap((n) =>
+            n === 1
+              ? // the first attempt loses to a concurrent writer
+                writeRaw(file, "fresh").pipe(Effect.as("stale-update"))
+              : Effect.succeed(`${contents}+ours`)
+          )
+        )
+
+      const outcome = yield* modify(file, transform, retryPolicy(Schedule.recurs(3)))
+
+      expect(outcome).toEqual({ _tag: "saved", value: "fresh+ours" })
+      expect(yield* Ref.get(calls)).toBe(2)
+      expect(yield* readRaw(file)).toBe("fresh+ours")
+    })
+  )
+
+  it.effect("waits out the schedule's delay before re-running the transform", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const calls = yield* Ref.make(0)
+      const transform = (contents: string) =>
+        Ref.updateAndGet(calls, (n) => n + 1).pipe(
+          Effect.flatMap((n) =>
+            n === 1 ? writeRaw(file, "fresh").pipe(Effect.as("stale-update")) : Effect.succeed(`${contents}+ours`)
+          )
+        )
+
+      const fiber = yield* Effect.fork(modify(file, transform, retryPolicy(Schedule.spaced("1 second"))))
+
+      // the first attempt has conflicted; the retry has not run, because the
+      // clock has not moved
+      yield* waitUntilContents(file, "fresh")
+      expect(yield* Ref.get(calls)).toBe(1)
+
+      const outcome = yield* joinAdvancingClock(fiber)
+
+      expect(outcome).toEqual({ _tag: "saved", value: "fresh+ours" })
+      expect(yield* Ref.get(calls)).toBe(2)
+    })
+  )
+
+  it.effect("surfaces ConflictExhausted when contention outlasts the retry schedule", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const calls = yield* Ref.make(0)
+      // every attempt is beaten by a concurrent writer
+      const transform = (contents: string) =>
+        Ref.update(calls, (n) => n + 1).pipe(Effect.zipRight(writeRaw(file, `${contents}!`)), Effect.as("ours"))
+
+      const error = yield* modify(file, transform, retryPolicy(Schedule.recurs(2))).pipe(Effect.flip)
+
+      if (error._tag !== "ConflictExhausted") {
+        throw new Error(`expected ConflictExhausted, got ${error._tag}`)
+      }
+
+      const exhausted: ConflictExhausted = error
+      expect(exhausted.message).toContain(file)
+      // initial attempt + 2 retries
+      expect(yield* Ref.get(calls)).toBe(3)
+    })
+  )
+
+  it.effect("does not retry transform failures, only conflicts", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const calls = yield* Ref.make(0)
+      const transform = () => Ref.update(calls, (n) => n + 1).pipe(Effect.zipRight(Effect.fail(transformBoom)))
+
+      const error = yield* modify(file, transform, retryPolicy(Schedule.recurs(5))).pipe(Effect.flip)
+
+      expect(error._tag).toBe("TransformBoom")
+      expect(yield* Ref.get(calls)).toBe(1)
+      expect(yield* readRaw(file)).toBe("base")
+    })
+  )
+})
+
+describe("modify: failures", () => {
+  it.effect("propagates a transform failure and leaves the file unchanged", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const error = yield* modify(file, () => Effect.fail(transformBoom)).pipe(Effect.flip)
+
+      expect(error._tag).toBe("TransformBoom")
+      expect(yield* readRaw(file)).toBe("base")
+    })
+  )
+
+  it.effect("fails with CasFileStoreReadFailure when the file does not exist", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+
+      const error: CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictExhausted = yield* modify(
+        file,
+        (contents) => Effect.succeed(contents)
+      ).pipe(Effect.flip)
+
+      expect(error._tag).toBe("CasFileStoreReadFailure")
+    })
+  )
+
+  it.effect("fails with CasFileStoreWriteFailure when the durable write cannot complete", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      // A 255-byte basename: the sibling tmp name (`.<basename>.<pid>.<uuid>.tmp`)
+      // exceeds the filesystem component limit, so the tmp create fails while
+      // reads still work. This is permission-independent and root-proof.
+      const file = path.join(dir, `${"s".repeat(250)}.json`)
+      yield* writeRaw(file, "base")
+
+      const error = yield* modify(file, (contents) => Effect.succeed(`${contents}!`)).pipe(Effect.flip)
+
+      if (error._tag !== "CasFileStoreWriteFailure") {
+        throw new Error(`expected CasFileStoreWriteFailure, got ${error._tag}`)
+      }
+
+      const writeFailure: CasFileStoreWriteFailure = error
+      expect(writeFailure.message).toContain(file)
+      // the original file is untouched and no tmp litter remains
+      expect(yield* readRaw(file)).toBe("base")
+      expect(yield* tmpEntries(dir)).toEqual([])
+    })
+  )
+
+  it.effect("fails with CasFileStoreReadFailure when the file disappears mid-cycle", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const entered = yield* Deferred.make<void>()
+      const fiber = yield* Effect.fork(
+        modify(file, (contents) =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.as(`${contents}!`)
+          )
+        )
+      )
+
+      yield* Deferred.await(entered)
+      yield* Effect.promise(() => fs.rm(file))
+      yield* TestClock.adjust("2 seconds")
+
+      const error = yield* Fiber.join(fiber).pipe(Effect.flip)
+
+      expect(error._tag).toBe("CasFileStoreReadFailure")
+      // the update is neither saved nor dropped: the file is simply gone
+      expect(yield* tmpEntries(dir)).toEqual([])
+    })
+  )
+
+  it.effect("keeps file contents out of error messages", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      const secret = "cookie=super-secret-token"
+      // the over-long sibling tmp name makes the write fail while the read of
+      // the secret-bearing file succeeds
+      const unwritable = path.join(dir, `${"s".repeat(250)}.json`)
+      yield* writeRaw(file, secret)
+      yield* writeRaw(unwritable, secret)
+
+      const readError = yield* read(stateFile(path.join(dir, "missing"))).pipe(Effect.flip)
+      const writeError = yield* modify(unwritable, () => Effect.succeed(secret)).pipe(Effect.flip)
+
+      expect(readError.message).not.toContain(secret)
+      expect(writeError.message).not.toContain(secret)
+    })
+  )
+})
+
+describe("modify: in-process serialization", () => {
+  it.effect("serializes same-process modify calls per path so both updates land", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "0")
+
+      const increment = (contents: string) => Effect.succeed(String(Number(contents) + 1))
+
+      const fiberA = yield* Effect.fork(modify(file, increment))
+      yield* Effect.yieldNow()
+      const fiberB = yield* Effect.fork(modify(file, increment))
+
+      const outcomeA = yield* Fiber.join(fiberA)
+      const outcomeB = yield* Fiber.join(fiberB)
+
+      expect(outcomeA._tag).toBe("saved")
+      expect(outcomeB._tag).toBe("saved")
+      expect(yield* readRaw(file)).toBe("2")
+    })
+  )
+
+  it.effect("serializes calls that spell the same path differently", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "0")
+
+      const increment = (contents: string) => Effect.succeed(String(Number(contents) + 1))
+
+      const fiberA = yield* Effect.fork(modify(file, increment))
+      yield* Effect.yieldNow()
+      const fiberB = yield* Effect.fork(modify(`${dir}//./state.json`, increment))
+
+      const outcomeA = yield* Fiber.join(fiberA)
+      const outcomeB = yield* Fiber.join(fiberB)
+
+      expect(outcomeA._tag).toBe("saved")
+      expect(outcomeB._tag).toBe("saved")
+      // no update is lost: an aliased spelling must not sidestep the semaphore
+      expect(yield* readRaw(file)).toBe("2")
+    })
+  )
+
+  it.effect("does not hold the permit across a retry schedule's delay", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const calls = yield* Ref.make(0)
+      const retrying = (contents: string) =>
+        Ref.updateAndGet(calls, (n) => n + 1).pipe(
+          Effect.flatMap((n) =>
+            n === 1 ? writeRaw(file, "fresh").pipe(Effect.as("stale")) : Effect.succeed(`${contents}+retried`)
+          )
+        )
+
+      const retryFiber = yield* Effect.fork(modify(file, retrying, retryPolicy(Schedule.spaced("1 hour"))))
+      // the first attempt has run and lost; it is now inside the hour-long delay
+      yield* waitUntilContents(file, "fresh")
+      expect(yield* Ref.get(calls)).toBe(1)
+
+      // an unrelated caller must not queue behind that delay: if the permit were
+      // held across it, this call would block until the clock is advanced
+      const outcome = yield* modify(file, (contents) => Effect.succeed(`${contents}+other`))
+
+      expect(outcome).toEqual({ _tag: "saved", value: "fresh+other" })
+
+      expect(yield* joinAdvancingClock(retryFiber, "1 hour")).toEqual({ _tag: "saved", value: "fresh+other+retried" })
+    })
+  )
+
+  it.effect("releases the per-path semaphore when a modify fiber is interrupted", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, "base")
+
+      const entered = yield* Deferred.make<void>()
+      const fiber = yield* Effect.fork(
+        modify(file, () => Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.never)))
+      )
+      yield* Deferred.await(entered)
+      yield* Fiber.interrupt(fiber)
+
+      const outcome = yield* modify(file, (contents) => Effect.succeed(`${contents}+after`))
+
+      expect(outcome).toEqual({ _tag: "saved", value: "base+after" })
+    })
+  )
+})
