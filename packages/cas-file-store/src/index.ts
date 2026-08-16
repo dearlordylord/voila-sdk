@@ -2,6 +2,7 @@
 // the closure-owned read-modify-write cycle, with no primitive that could be
 // used to write a state file blindly.
 export {
+  type CasFileStoreAbsent,
   type CasFileStoreContentsInvalid,
   type CasFileStoreError,
   type CasFileStoreReadFailure,

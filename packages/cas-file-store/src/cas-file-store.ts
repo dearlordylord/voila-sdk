@@ -21,6 +21,13 @@ import { basename, dirname, join, resolve } from "node:path"
 /** The file could not be read (unreadable, or gone mid-cycle). */
 export type CasFileStoreReadFailure = { readonly _tag: "CasFileStoreReadFailure"; readonly message: string }
 
+/**
+ * The file does not exist. Its own tag, because a read-only caller asking
+ * whether there is state yet must be able to tell that apart from a file it
+ * is not allowed to read.
+ */
+export type CasFileStoreAbsent = { readonly _tag: "CasFileStoreAbsent"; readonly message: string }
+
 /** The durable write (tmp create, fsync, rename, or link) could not complete. */
 export type CasFileStoreWriteFailure = { readonly _tag: "CasFileStoreWriteFailure"; readonly message: string }
 
@@ -30,7 +37,11 @@ export type CasFileStoreContentsInvalid = { readonly _tag: "CasFileStoreContents
 /** Conflicts on the file outlasted the caller's retry schedule. */
 export type ConflictExhausted = { readonly _tag: "ConflictExhausted"; readonly message: string }
 
-/** Every expected failure of the store, kept in typed Effect error channels. */
+/**
+ * Every expected failure of a read-modify-write cycle, kept in typed Effect
+ * error channels. Absence is not among them: a cycle runs against a missing
+ * file and creates it, so only the read-only `read` can fail that way.
+ */
 export type CasFileStoreError = CasFileStoreReadFailure | CasFileStoreWriteFailure | CasFileStoreContentsInvalid
 
 /**
@@ -84,6 +95,11 @@ const casFileStoreReadFailure = (path: string): CasFileStoreReadFailure => ({
   message: `State file could not be read: ${path}`
 })
 
+const casFileStoreAbsent = (path: string): CasFileStoreAbsent => ({
+  _tag: "CasFileStoreAbsent",
+  message: `State file does not exist: ${path}`
+})
+
 const casFileStoreWriteFailure = (path: string): CasFileStoreWriteFailure => ({
   _tag: "CasFileStoreWriteFailure",
   message: `State file could not be written durably: ${path}`
@@ -117,8 +133,21 @@ const readOptionalRaw = (path: string): Effect.Effect<string | undefined, CasFil
     catch: () => casFileStoreReadFailure(path)
   })
 
-/** Read the current raw contents of a state file, or `undefined` if it does not exist. */
-export const read = readOptionalRaw
+/**
+ * Read the current raw contents of a state file. A file that does not exist
+ * fails with `CasFileStoreAbsent`, which a caller that treats "no state yet" as
+ * normal handles with `Effect.catchTag`.
+ *
+ * The cycle itself does not go through here: `modify` hands absence to the
+ * transform as a value, because a transform that never runs cannot create the
+ * file.
+ */
+export const read = (path: string): Effect.Effect<string, CasFileStoreAbsent | CasFileStoreReadFailure> =>
+  readOptionalRaw(path).pipe(
+    Effect.flatMap((contents) =>
+      contents === undefined ? Effect.fail(casFileStoreAbsent(path)) : Effect.succeed(contents)
+    )
+  )
 
 // state files can carry secrets (cookies, tokens): owner-only from creation,
 // so the rename never publishes a world-readable window

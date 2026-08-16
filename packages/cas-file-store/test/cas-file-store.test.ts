@@ -6,6 +6,7 @@ import * as path from "node:path"
 import { describe, expect } from "vitest"
 
 import {
+  type CasFileStoreAbsent,
   type CasFileStoreReadFailure,
   type CasFileStoreWriteFailure,
   type ConflictExhausted,
@@ -28,6 +29,14 @@ const writeRaw = (file: string, contents: string) => Effect.promise(() => fs.wri
 const readRaw = (file: string) => Effect.promise(() => fs.readFile(file, "utf8"))
 
 const fileMode = (file: string) => Effect.promise(() => fs.stat(file).then((stats) => stats.mode & 0o777))
+
+const isMissing = (file: string) =>
+  Effect.promise(() =>
+    fs.access(file).then(
+      () => false,
+      () => true
+    )
+  )
 
 const tmpEntries = (dir: string) =>
   Effect.promise(() => fs.readdir(dir).then((entries) => entries.filter((entry) => entry.endsWith(".tmp"))))
@@ -66,12 +75,16 @@ describe("read", () => {
     })
   )
 
-  it.effect("returns undefined when the file does not exist", () =>
+  it.effect("fails with CasFileStoreAbsent when the file does not exist", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
+      const file = stateFile(dir)
 
-      // absence is a normal starting state, not a failure
-      expect(yield* read(stateFile(dir))).toBeUndefined()
+      const error: CasFileStoreAbsent | CasFileStoreReadFailure = yield* read(file).pipe(Effect.flip)
+
+      // absence has its own tag: "no state yet" is not "cannot read this file"
+      expect(error._tag).toBe("CasFileStoreAbsent")
+      expect(error.message).toContain(file)
     })
   )
 
@@ -79,7 +92,7 @@ describe("read", () => {
     Effect.gen(function* () {
       const dir = yield* makeTempDir
 
-      const error: CasFileStoreReadFailure = yield* read(dir).pipe(Effect.flip)
+      const error: CasFileStoreAbsent | CasFileStoreReadFailure = yield* read(dir).pipe(Effect.flip)
 
       expect(error._tag).toBe("CasFileStoreReadFailure")
       expect(error.message).toContain(dir)
@@ -238,7 +251,7 @@ describe("modify: keep", () => {
       const outcome = yield* modify(file, () => Effect.succeed(keep))
 
       expect(outcome).toEqual({ _tag: "unchanged" })
-      expect(yield* read(file)).toBeUndefined()
+      expect(yield* isMissing(file)).toBe(true)
     })
   )
 })
@@ -452,7 +465,7 @@ describe("modify: failures", () => {
       // removal is a state another process moved the file to: the update is
       // dropped rather than resurrecting a file its owner deleted
       expect(outcome).toEqual({ _tag: "dropped-conflict", value: undefined })
-      expect(yield* read(file)).toBeUndefined()
+      expect(yield* isMissing(file)).toBe(true)
       expect(yield* tmpEntries(dir)).toEqual([])
     })
   )

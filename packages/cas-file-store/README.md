@@ -14,7 +14,7 @@ A state file read by a long-running process and rewritten later is a blind write
 import { keep, modify, modifySchema, persist, read, retryPolicy } from "@firfi/cas-file-store"
 ```
 
-- `read(path)` — current raw contents, or `undefined` when the file does not exist.
+- `read(path)` — current raw contents; a file that does not exist fails with `CasFileStoreAbsent`, its own tag so that "no state yet" is distinguishable from a file that cannot be read.
 - `modify(path, f, policy?)` — fresh read, run `f` on the raw contents, compare the CAS token (the bytes as read), write back atomically only if the file is unchanged.
 - `modifySchema(path, schema, f, policy?)` — same cycle with `f` over a value decoded/encoded by an Effect Schema. The CAS comparison stays on raw bytes in the core, so non-canonical serialization cannot cause phantom conflicts.
 
@@ -38,7 +38,7 @@ There is no merge policy: snapshots are internally consistent only within one li
 - Writes go through a sibling temp file that is fsynced and then renamed, at owner-only permissions. A missing parent directory is created owner-only, so a first run does not have to `mkdir` its way to the guarded cycle.
 - Creating a file uses `link` rather than `rename`: it refuses to clobber, so a process that loses a creation race learns it lost instead of silently overwriting the winner.
 - Same-process `modify` calls on one path are serialized by a per-path semaphore; cross-process safety comes from the CAS check.
-- Expected failures stay in typed Effect error channels: `CasFileStoreReadFailure`, `CasFileStoreWriteFailure`, `CasFileStoreContentsInvalid`, `ConflictExhausted`.
+- Expected failures stay in typed Effect error channels: `CasFileStoreAbsent`, `CasFileStoreReadFailure`, `CasFileStoreWriteFailure`, `CasFileStoreContentsInvalid`, `ConflictExhausted`.
 
 ## Example
 
