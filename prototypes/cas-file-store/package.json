@@ -1,0 +1,6 @@
+{
+  "name": "cas-proto",
+  "private": true,
+  "type": "module",
+  "description": "PROTOTYPE - throwaway. CAS conflict policies for a session file store. Wipe me."
+}
