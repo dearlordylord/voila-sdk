@@ -170,3 +170,13 @@ Formatting is handled by `@effect/dprint` via ESLint.
 ## Worktree Safety
 
 Never revert user changes unless explicitly requested. Before deleting branches/worktrees, check for uncommitted changes and unmerged commits.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub issues, managed with `gh`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
