@@ -144,6 +144,18 @@ importers:
         specifier: ^6.0.0
         version: 6.0.1
 
+  packages/voila-session-store:
+    dependencies:
+      '@firfi/cas-file-store':
+        specifier: workspace:*
+        version: link:../cas-file-store
+      '@firfi/voila-sdk':
+        specifier: workspace:*
+        version: link:../voila-sdk
+      effect:
+        specifier: ^3.19.15
+        version: 3.21.4
+
 packages:
 
   '@babel/helper-string-parser@7.29.7':

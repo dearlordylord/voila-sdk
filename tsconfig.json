@@ -1,8 +1,20 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/voila-sdk" },
-    { "path": "./packages/voila-mcp" },
-    { "path": "./packages/voila-cli" }
+    {
+      "path": "./packages/cas-file-store"
+    },
+    {
+      "path": "./packages/voila-sdk"
+    },
+    {
+      "path": "./packages/voila-session-store"
+    },
+    {
+      "path": "./packages/voila-mcp"
+    },
+    {
+      "path": "./packages/voila-cli"
+    }
   ]
 }

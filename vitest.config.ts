@@ -12,7 +12,8 @@ export default defineConfig({
       "@firfi/cas-file-store": new URL("packages/cas-file-store/src/index.ts", import.meta.url).pathname,
       "@firfi/voila-cli": new URL("packages/voila-cli/src/index.ts", import.meta.url).pathname,
       "@firfi/voila-mcp": new URL("packages/voila-mcp/src/index.ts", import.meta.url).pathname,
-      "@firfi/voila-sdk": new URL("packages/voila-sdk/src/index.ts", import.meta.url).pathname
+      "@firfi/voila-sdk": new URL("packages/voila-sdk/src/index.ts", import.meta.url).pathname,
+      "@firfi/voila-session-store": new URL("packages/voila-session-store/src/index.ts", import.meta.url).pathname
     }
   },
   test: {

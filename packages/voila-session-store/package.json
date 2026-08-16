@@ -1,0 +1,42 @@
+{
+  "name": "@firfi/voila-session-store",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Session-domain wrapper over @firfi/cas-file-store: the only way a session snapshot reaches disk",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config ../../vitest.config.ts",
+    "test:coverage": "vitest run --coverage --config ../../vitest.config.ts",
+    "test:watch": "vitest --config ../../vitest.config.ts",
+    "lint": "find src test -name '*.ts' -print0 | xargs -0 oxlint --deny-warnings --tsconfig=../../tsconfig.lint.json && dprint check src test && jscpd --silent src",
+    "lint:fix": "find src test -name '*.ts' -print0 | xargs -0 oxlint --fix --deny-warnings --tsconfig=../../tsconfig.lint.json && dprint fmt src test",
+    "format": "dprint fmt src test",
+    "check-format": "dprint check src test",
+    "circular": "dpdm --no-warning --no-tree --no-progress --exit-code circular:1 --transform 'src/**/*.ts'"
+  },
+  "packageManager": "pnpm@10.29.3",
+  "author": "firfi",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@firfi/cas-file-store": "workspace:*",
+    "@firfi/voila-sdk": "workspace:*",
+    "effect": "^3.19.15"
+  }
+}

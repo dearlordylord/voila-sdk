@@ -9,7 +9,9 @@ import {
   type CasFileStoreContentsInvalid,
   type CasFileStoreError,
   type ConflictExhausted,
-  modifySchema
+  keep,
+  modifySchema,
+  persist
 } from "../src/index.js"
 
 const StateSchema = Schema.Struct({ lineage: Schema.String, rotations: Schema.Number })
@@ -35,6 +37,9 @@ const expectContentsInvalid = (error: CasFileStoreError | ConflictExhausted): Ca
   return error
 }
 
+const rotate = (state: State | undefined) =>
+  Effect.succeed(persist({ lineage: state?.lineage ?? "S0", rotations: (state?.rotations ?? 0) + 1 }))
+
 describe("modifySchema", () => {
   it.effect("decodes, transforms, encodes, and reports the decoded saved value", () =>
     Effect.gen(function* () {
@@ -42,12 +47,37 @@ describe("modifySchema", () => {
       const file = stateFile(dir)
       yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 0 } satisfies State))
 
-      const outcome = yield* modifySchema(file, StateSchema, (state) =>
-        Effect.succeed({ ...state, rotations: state.rotations + 1 })
-      )
+      const outcome = yield* modifySchema(file, StateSchema, rotate)
 
       expect(outcome).toEqual({ _tag: "saved", value: { lineage: "S0", rotations: 1 } })
       expect(yield* readState(file)).toEqual({ lineage: "S0", rotations: 1 })
+    })
+  )
+
+  it.effect("runs the transform against absence and creates the file", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+
+      const outcome = yield* modifySchema(file, StateSchema, (state) =>
+        Effect.succeed(persist({ lineage: state === undefined ? "fresh" : "existing", rotations: 0 }))
+      )
+
+      expect(outcome).toEqual({ _tag: "saved", value: { lineage: "fresh", rotations: 0 } })
+      expect(yield* readState(file)).toEqual({ lineage: "fresh", rotations: 0 })
+    })
+  )
+
+  it.effect("leaves the file untouched when the transform keeps it", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 0 } satisfies State))
+
+      const outcome = yield* modifySchema(file, StateSchema, () => Effect.succeed(keep))
+
+      expect(outcome).toEqual({ _tag: "unchanged" })
+      expect(yield* readState(file)).toEqual({ lineage: "S0", rotations: 0 })
     })
   )
 
@@ -60,11 +90,11 @@ describe("modifySchema", () => {
       // NaN does not round-trip through JSON: it encodes to null, which the
       // schema rejects on the way back in
       const outcome = yield* modifySchema(file, StateSchema, (state) =>
-        Effect.succeed({ ...state, rotations: Number.NaN })
+        Effect.succeed(persist({ lineage: state?.lineage ?? "S0", rotations: Number.NaN }))
       )
 
       expect(outcome._tag).toBe("saved")
-      expect(outcome.value.rotations).toBeNaN()
+      expect(outcome._tag === "saved" ? outcome.value.rotations : 0).toBeNaN()
     })
   )
 
@@ -79,7 +109,7 @@ describe("modifySchema", () => {
         modifySchema(file, StateSchema, (state) =>
           Deferred.succeed(entered, undefined).pipe(
             Effect.zipRight(Effect.sleep("1 second")),
-            Effect.as({ ...state, rotations: 99 })
+            Effect.as(persist({ lineage: state?.lineage ?? "S0", rotations: 99 }))
           )
         )
       )
@@ -96,13 +126,41 @@ describe("modifySchema", () => {
     })
   )
 
+  it.effect("reports a dropped conflict without a value when the winner removed the file", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 0 } satisfies State))
+
+      const entered = yield* Deferred.make<void>()
+      const fiber = yield* Effect.fork(
+        modifySchema(file, StateSchema, (state) =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.as(persist({ lineage: state?.lineage ?? "S0", rotations: 99 }))
+          )
+        )
+      )
+
+      yield* Deferred.await(entered)
+      yield* Effect.promise(() => fs.rm(file))
+      yield* TestClock.adjust("2 seconds")
+
+      const outcome = yield* Fiber.join(fiber)
+
+      expect(outcome).toEqual({ _tag: "dropped-conflict", value: undefined })
+    })
+  )
+
   it.effect("fails with CasFileStoreContentsInvalid when the file is not valid JSON", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
       yield* writeRaw(file, "{not json")
 
-      const error = expectContentsInvalid(yield* modifySchema(file, StateSchema, Effect.succeed).pipe(Effect.flip))
+      const error = expectContentsInvalid(
+        yield* modifySchema(file, StateSchema, () => Effect.succeed(keep)).pipe(Effect.flip)
+      )
 
       expect(error.message).toContain(file)
     })
@@ -114,7 +172,9 @@ describe("modifySchema", () => {
       const file = stateFile(dir)
       yield* writeRaw(file, JSON.stringify({ lineage: 42, rotations: 0 }))
 
-      const error = expectContentsInvalid(yield* modifySchema(file, StateSchema, Effect.succeed).pipe(Effect.flip))
+      const error = expectContentsInvalid(
+        yield* modifySchema(file, StateSchema, () => Effect.succeed(keep)).pipe(Effect.flip)
+      )
 
       expect(error.message).toContain(file)
     })
@@ -127,7 +187,9 @@ describe("modifySchema", () => {
       yield* writeRaw(file, JSON.stringify("abcdef"))
 
       const error = expectContentsInvalid(
-        yield* modifySchema(file, Schema.String.pipe(Schema.minLength(3)), () => Effect.succeed("ab")).pipe(Effect.flip)
+        yield* modifySchema(file, Schema.String.pipe(Schema.minLength(3)), () => Effect.succeed(persist("ab"))).pipe(
+          Effect.flip
+        )
       )
 
       expect(error.message).toContain(file)
@@ -145,7 +207,10 @@ describe("modifySchema", () => {
       const entered = yield* Deferred.make<void>()
       const fiber = yield* Effect.fork(
         modifySchema(file, StateSchema, (state) =>
-          Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.sleep("1 second")), Effect.as(state))
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.as(persist({ lineage: state?.lineage ?? "S0", rotations: 0 }))
+          )
         )
       )
 

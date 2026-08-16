@@ -1,0 +1,13 @@
+# Session file store: one guarded update operation, guest never overwrites authenticated
+
+`@firfi/voila-session-store` (draft package, `packages/voila-session-store`) is the only write path for the session snapshot. It exposes one operation, `updateSessionFile(path, update)`, layered over `@firfi/cas-file-store`: the caller's transform sees the snapshot as it exists on disk right now — or its absence — and returns either a snapshot to persist or a decision to keep the file unchanged. A snapshot the caller built earlier can never be handed over, so a value cached at boot cannot be written back over a fresh interactive login.
+
+Decisions:
+
+- **No `save` / `write` / `initialize` entry point beside it.** A separate creation call is a blind write by another name, so creating the file is part of the same guarded cycle: a missing file is a normal starting state, the transform runs against absence, and the file's directory is created with it on a first run. The store's exclusive create (`link`, which refuses to clobber) makes concurrent creation resolve as an ordinary conflict rather than as corruption or a spurious failure.
+- **A guest snapshot never replaces an authenticated one.** The asymmetry is in the cost of rebuilding: a guest session takes one request, an authenticated one takes an interactive browser login. The refusal is a typed failure, `SessionFileGuestOverwriteRefused` — it means a caller decided something the session domain forbids, unlike a conflict.
+- **Dropping is the conflict behaviour, and ordinary session writes do not choose a policy.** The operation takes no policy argument. A dropped update carries the snapshot that won, so a background refresh that loses to a fresh login adopts it instead of failing or restarting.
+- **The transform is an arbitrary effect.** Existing session writes fold `Set-Cookie` from a live response into the snapshot they persist, so the network call belongs inside the guarded window; running it before the cycle would leave the read-decide gap the store exists to close. The transform's own typed errors surface unchanged.
+- **Persisting a session in a failure state stays with the caller.** The wrapper offers the keep decision and takes no view on when to use it.
+
+Consequences: session-specific rules live in this package rather than in the generic store, which stays domain-free. Failure messages are fixed strings carrying neither file contents nor the path, because a session snapshot is cookies and a CSRF token. The persisted payload is owned by the SDK's `SdkSessionSnapshotSchema` in both directions; contents that do not match it surface as a typed `SessionFileContentsInvalid`.

@@ -23,3 +23,7 @@ _Avoid_: race, contention
 **Dropped**:
 The conflict-resolution outcome where the in-flight update is discarded and the on-disk value stands. Correct when the update is regenerable and lineage-bound.
 _Avoid_: rejected, failed, lost update
+
+**Guest downgrade**:
+An update that would replace an authenticated session snapshot on disk with a guest one. Refused: a guest session is rebuildable with one request, an authenticated one costs an interactive browser login.
+_Avoid_: logout, session reset, anonymous overwrite

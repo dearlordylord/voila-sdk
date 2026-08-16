@@ -11,7 +11,8 @@
       "@firfi/cas-file-store": ["./packages/cas-file-store/src/index.ts"],
       "@firfi/voila-cli": ["./packages/voila-cli/src/index.ts"],
       "@firfi/voila-mcp": ["./packages/voila-mcp/src/index.ts"],
-      "@firfi/voila-sdk": ["./packages/voila-sdk/src/index.ts"]
+      "@firfi/voila-sdk": ["./packages/voila-sdk/src/index.ts"],
+      "@firfi/voila-session-store": ["./packages/voila-session-store/src/index.ts"]
     },
     "verbatimModuleSyntax": true,
     "rewriteRelativeImportExtensions": true,

@@ -9,9 +9,12 @@ export {
   type ConflictExhausted,
   type ConflictPolicy,
   dropPolicy,
+  keep,
   modify,
   type ModifyOutcome,
+  persist,
   read,
-  retryPolicy
+  retryPolicy,
+  type WriteDecision
 } from "./cas-file-store.js"
 export { modifySchema } from "./schema.js"
