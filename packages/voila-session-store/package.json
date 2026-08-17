@@ -37,6 +37,6 @@
   "dependencies": {
     "@firfi/cas-file-store": "workspace:*",
     "@firfi/voila-sdk": "workspace:*",
-    "effect": "^3.19.15"
+    "effect": "^3.22.1"
   }
 }
