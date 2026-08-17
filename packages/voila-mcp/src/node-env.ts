@@ -165,32 +165,46 @@ const getMostPopularUserAgent = (): string => {
 
 export type NodeFetchPort = (input: URL, init: RequestInit) => Promise<Response>
 
+/**
+ * How long one Voila request may take before it is abandoned. A request runs
+ * inside the session file cycle and holds that file's lock while it does, so
+ * an unbounded request is not one slow tool call — it is every tool call in
+ * the process waiting behind it. Generous enough for the slowest observed
+ * endpoints (decorated order details, large category pages); Node's own
+ * defaults are roughly ten times this.
+ */
+export const defaultRequestTimeoutMs = 30_000
+
 export const makeFetchVoilaTransport = (
   configuredUserAgent?: string,
-  fetchPort: NodeFetchPort = fetch
+  fetchPort: NodeFetchPort = fetch,
+  requestTimeoutMs: number = defaultRequestTimeoutMs
 ): VoilaTransport => ({
   request: async (request: VoilaTransportRequest) => {
-    let response: Response
     const hasRequestUserAgent = Object.keys(request.headers).some((name) => name.toLowerCase() === "user-agent")
     const headers = hasRequestUserAgent
       ? request.headers
       : { ...request.headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent() }
 
     try {
-      response = await fetchPort(request.url, {
+      // the body is read under the same timeout and the same handling: a
+      // response whose headers arrive and whose body then stalls is the same
+      // held lock as one that never answers at all
+      const response = await fetchPort(request.url, {
         ...(request.body === undefined ? {} : { body: request.body }),
         headers,
-        method: request.method
+        method: request.method,
+        signal: AbortSignal.timeout(requestTimeoutMs)
+      })
+
+      return Either.right({
+        body: await response.text(),
+        headers: collectResponseHeaders(response.headers),
+        status: response.status
       })
     } catch (error) {
       return Either.left(error)
     }
-
-    return Either.right({
-      body: await response.text(),
-      headers: collectResponseHeaders(response.headers),
-      status: response.status
-    })
   }
 })
 

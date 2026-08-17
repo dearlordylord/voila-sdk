@@ -15,7 +15,7 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { describe, expect, it } from "vitest"
 
-import { makeNodeOperationEnvironment } from "../src/node-env.js"
+import { makeFetchVoilaTransport, makeNodeOperationEnvironment, type NodeFetchPort } from "../src/node-env.js"
 import type { OperationEnvironment, SessionOperation } from "../src/operations.js"
 
 const voilaUrl = "https://voila.ca/"
@@ -114,6 +114,29 @@ const observe =
       return { value: undefined }
     })
 
+const shortTimeoutMs = 5
+
+// a server that accepts the connection and then says nothing
+const hangingFetch: NodeFetchPort = async (_input, init) =>
+  new Promise((_resolve, reject) => {
+    init.signal?.addEventListener("abort", () => reject(new Error("aborted")))
+  })
+
+// an operation that makes a real request through the environment's transport
+// and fails the cycle when the request does, the way every Voila operation does
+const request =
+  (transport: VoilaTransport): SessionOperation<void> =>
+  () =>
+    Effect.promise(() =>
+      transport.request({ headers: {}, method: "GET", url: new URL("https://voila.ca/api/example") })
+    ).pipe(
+      Effect.flatMap((result) =>
+        Either.isLeft(result)
+          ? Effect.fail({ _tag: "VoilaNetworkFailure", message: "Voila network request failed" })
+          : Effect.succeed({ value: undefined })
+      )
+    )
+
 // an operation whose live response refreshed the session
 const refreshTo =
   (next: SdkSessionSnapshot): SessionOperation<void> =>
@@ -159,6 +182,25 @@ describe("MCP session port", () => {
     await Effect.runPromise(env.session.withSession(refreshTo(rotated)))
 
     expect(await fs.readFile(file, "utf8")).toBe(encode(rotated))
+  })
+
+  it("releases the session lock when an operation's request times out", async () => {
+    const file = await sessionFile()
+    await fs.writeFile(file, encode(authenticated("boot")), { mode: 0o600 })
+    // a transport that never answers, bounded by a timeout the test can wait for
+    const env = environmentFor(file, makeFetchVoilaTransport(undefined, hangingFetch, shortTimeoutMs))
+    const seen: Array<string> = []
+
+    const timedOut = await Effect.runPromise(Effect.either(env.session.withSession(request(env.transport))))
+
+    expect(Either.isLeft(timedOut)).toBe(true)
+    expect(Either.isLeft(timedOut) ? timedOut.left._tag : undefined).toBe("VoilaNetworkFailure")
+    // the failed cycle released the file's permit: a leaked one would hang here
+    await Effect.runPromise(env.session.withSession(observe(seen)))
+
+    expect(seen).toEqual(["boot"])
+    // the file the failed operation ran against is untouched
+    expect((await decodeFile(file)).session.metadata.regionId).toBe("boot")
   })
 
   it("keeps a refreshed guest session in memory instead of writing it", async () => {
