@@ -55,12 +55,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@effect/cli": "^0.72.0",
-    "@effect/platform": "^0.93.6",
-    "@effect/platform-node": "^0.99.0",
     "@firfi/voila-mcp": "workspace:*",
     "@firfi/voila-sdk": "workspace:*",
-    "effect": "^3.19.15",
+    "effect": "^3.22.1",
     "playwright": "^1.57.0"
   },
   "devDependencies": {

@@ -68,7 +68,7 @@
     "@firfi/voila-sdk": "workspace:*",
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
-    "effect": "^3.19.15",
+    "effect": "^3.22.1",
     "top-user-agents": "^2.1.125"
   },
   "devDependencies": {
