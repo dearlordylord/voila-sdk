@@ -55,16 +55,6 @@ const toolsFrom = (value: unknown): ReadonlyArray<ListedTool> => {
   throw new Error(`Expected a tools/list response, got ${JSON.stringify(value)}`)
 }
 
-const toolByName = (tools: ReadonlyArray<ListedTool>, name: string): ListedTool => {
-  const tool = tools.find((listed) => listed.name === name)
-
-  if (tool === undefined) {
-    throw new Error(`Expected tools/list to advertise ${name}`)
-  }
-
-  return tool
-}
-
 const initialize = {
   id: 1,
   jsonrpc: "2.0",
@@ -100,11 +90,15 @@ describe("Voila MCP stdio server", () => {
       const tools = toolsFrom(yield* client.exchange({ id: 2, jsonrpc: "2.0", method: "tools/list", params: {} }))
 
       expect(tools.map((tool) => tool.name).sort()).toEqual(expectedToolNames)
-      expect(toolByName(tools, "voila_search_products").annotations).toMatchObject(readOnlyAnnotations)
-      expect(toolByName(tools, "voila_get_cart").annotations).toMatchObject(readOnlyAnnotations)
-      expect(toolByName(tools, "voila_add_cart_items").annotations).toMatchObject(mutationAnnotations)
-      expect(toolByName(tools, "voila_remove_cart_items").annotations).toMatchObject(mutationAnnotations)
-      expect(toolByName(tools, "voila_reserve_slot").annotations).toMatchObject(mutationAnnotations)
+      const mutationToolNames: ReadonlySet<string> = new Set([
+        "voila_add_cart_items",
+        "voila_remove_cart_items",
+        "voila_reserve_slot"
+      ])
+      for (const tool of tools) {
+        const expected = mutationToolNames.has(tool.name) ? mutationAnnotations : readOnlyAnnotations
+        expect(tool.annotations).toMatchObject(expected)
+      }
     })
   )
 

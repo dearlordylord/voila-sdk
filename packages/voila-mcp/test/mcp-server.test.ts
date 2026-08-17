@@ -140,11 +140,15 @@ describe("Voila MCP HTTP server", () => {
       const tools = toolsFrom(yield* listTools(2))
 
       expect(tools.map((tool) => tool.name).sort()).toEqual([...expectedToolNames].sort())
-      expect(toolByName(tools, "voila_search_products").annotations).toMatchObject(readOnlyAnnotations)
-      expect(toolByName(tools, "voila_get_cart").annotations).toMatchObject(readOnlyAnnotations)
-      expect(toolByName(tools, "voila_add_cart_items").annotations).toMatchObject(mutationAnnotations)
-      expect(toolByName(tools, "voila_remove_cart_items").annotations).toMatchObject(mutationAnnotations)
-      expect(toolByName(tools, "voila_reserve_slot").annotations).toMatchObject(mutationAnnotations)
+      const mutationToolNames: ReadonlySet<string> = new Set([
+        "voila_add_cart_items",
+        "voila_remove_cart_items",
+        "voila_reserve_slot"
+      ])
+      for (const tool of tools) {
+        const expected = mutationToolNames.has(tool.name) ? mutationAnnotations : readOnlyAnnotations
+        expect(tool.annotations).toMatchObject(expected)
+      }
     }).pipe(Effect.provide(ServerLive))
   )
 

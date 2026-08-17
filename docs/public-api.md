@@ -51,14 +51,14 @@ searchProducts(
 - Session bootstrap and storage: `bootstrapGuestSession(cookieJarPort?)`, `makeGuestSdkSessionSnapshot`, `makeAuthenticatedSdkSessionSnapshot`, `loadSdkSessionSnapshot(storage)`. Storage is read-only; writes go through `@firfi/voila-session-store`.
 - Auth: `loginWithBrowser`, `createInteractiveBrowserLoginPort`, browser-login port types. Browser login needs no transport.
 - Session health: `checkSessionHealth(snapshot, cookieJarPort?)`.
-- Catalog: `searchProducts`, `getCategoryProducts`, `getDiscountedProducts`, `getInitialStateCategories`, `normalizeCategoryStore`.
+- Catalog: `searchProducts`, `getCategoryProducts`, `getDiscountedProducts`, `getInitialStateCategories`, `normalizeRawCategories`.
 - Cart: `getCart`, `applyCartDeltas`, `addCartItems`, `removeCartItems`.
 - Delivery context: `getDeliveryDestinations`, `getDeliveryDestination`, `getActiveShoppingContext`, `getDeliveryPropositionDetails`, `previewDeliveryContextChange`, `applyDeliveryContextChange`.
 - Slot review and guarded reservation: `getSlotListings`, `makeSlotReservationInputFromSlot`, `reserveSlot`.
 - Checkout review: `getCheckoutSummary`, `decideCheckoutReadiness`.
 - Order history: `getCompletedOrders`, `getOrderDetails`, `getCompletedOrderItems`.
 
-Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeCategoryStore`, `makeSlotReservationInputFromSlot`, `applyCartDeltas` — are ordinary functions with no Effect and no transport.
+Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeRawCategories`, `makeSlotReservationInputFromSlot` — are ordinary functions with no Effect and no transport.
 
 ## Errors
 
@@ -73,6 +73,8 @@ Transport, cookie-jar, browser, and storage ports are public so applications can
 ## Advanced Helpers
 
 Request builders, parsers, normalizers, and low-level HTTP helpers are exported for deterministic tests and diagnostics. They are advanced API: they do not perform live I/O by themselves, but they may track Voila web-app endpoint drift more closely than the high-level operations.
+
+Voila serves homepage categories in two shapes — a nested tree and a store keyed by category ID — and which one a session gets is not predictable from here. Both are decoded, and `normalizeRawCategories` resolves either into the same normalized tree; `normalizeCategoryTree` and `normalizeCategoryStore` are exported for a caller holding one specific shape.
 
 No exported API places an order. Checkout APIs stop at read/review decisions and manual-checkout readiness.
 
