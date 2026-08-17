@@ -1,6 +1,13 @@
-import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "@effect/platform"
+import {
+  FetchHttpClient,
+  HttpBody as Body,
+  HttpClient,
+  HttpClientRequest,
+  type HttpClientResponse
+} from "@effect/platform"
 import {
   connectionFailure,
+  getHeaderValues,
   requestDeadlineExceeded,
   responseReadFailure,
   VoilaTransport,
@@ -22,6 +29,8 @@ import topDesktopUserAgents from "top-user-agents/desktop"
  */
 export const defaultRequestTimeoutMs = 30_000
 
+const contentTypeHeader = "content-type"
+
 const getMostPopularUserAgent = (): string => {
   const [mostPopularUserAgent] = topDesktopUserAgents
 
@@ -40,12 +49,23 @@ const withUserAgent = (
     ? headers
     : { ...headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent() }
 
+/**
+ * The body carries the content type, because the client applies the body after
+ * the headers and a body built without one rewrites `content-type` to
+ * `text/plain` — which Voila answers with a 400 on every JSON write.
+ */
+const makeRequestBody = (request: VoilaTransportRequest, body: string): Body.HttpBody => {
+  const [contentType] = getHeaderValues(request.headers, contentTypeHeader)
+
+  return contentType === undefined ? Body.text(body) : Body.text(body, contentType)
+}
+
 const makeClientRequest = (
   request: VoilaTransportRequest,
   configuredUserAgent?: string
 ): HttpClientRequest.HttpClientRequest =>
   HttpClientRequest.make(request.method)(request.url, {
-    ...(request.body === undefined ? {} : { body: HttpClientRequest.bodyText(request.body) }),
+    ...(request.body === undefined ? {} : { body: makeRequestBody(request, request.body) }),
     headers: withUserAgent(request.headers, configuredUserAgent)
   })
 

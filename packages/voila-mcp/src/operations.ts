@@ -31,6 +31,7 @@ import {
   type OperationAuthGuidance,
   OperationAuthGuidanceSchema
 } from "./auth-guidance.js"
+import { withCsrfRefreshRetry } from "./csrf-retry.js"
 import { type VoilaOperationName } from "./operation-descriptors.js"
 import {
   ActiveShoppingContextOperationInputSchema,
@@ -257,12 +258,15 @@ const runSessionOperation = <A, I>(
 ): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
   Effect.flatMap(parseInput(schema, input), (parsed) =>
     runSessionResult(env, (current) =>
-      Effect.match(execute(current.session, parsed), {
-        onFailure: (error) => ({
-          value: failure(redactError(error), authGuidanceOnFailure ? env.authGuidance : undefined)
-        }),
-        onSuccess: (result) => refreshedOutcome(env, current, result)
-      })
+      Effect.match(
+        withCsrfRefreshRetry(current.session, (session) => execute(session, parsed)),
+        {
+          onFailure: (error) => ({
+            value: failure(redactError(error), authGuidanceOnFailure ? env.authGuidance : undefined)
+          }),
+          onSuccess: (result) => refreshedOutcome(env, current, result)
+        }
+      )
     )
   )
 

@@ -160,6 +160,31 @@ describe("Effect-native Voila transport", () => {
     })
   )
 
+  it.effect("sends a JSON write with the content type the request asked for", () =>
+    Effect.gen(function* () {
+      const client = recordingClient()
+
+      yield* runRequest(client.layer, {
+        body: '[{"productId":"product-id","quantity":1}]',
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        url: requestUrl
+      })
+
+      expect(client.requestHeaders[0]?.["content-type"]).toBe("application/json")
+    })
+  )
+
+  it.effect("falls back to a text body when a request states no content type", () =>
+    Effect.gen(function* () {
+      const client = recordingClient()
+
+      yield* runRequest(client.layer, { body: "plain body", headers: {}, method: "POST", url: requestUrl })
+
+      expect(client.requestHeaders[0]?.["content-type"]).toBe("text/plain")
+    })
+  )
+
   it.effect("abandons a response whose body stalls after its headers arrive", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()

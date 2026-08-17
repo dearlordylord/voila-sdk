@@ -31,3 +31,7 @@ _Avoid_: file name, location, config path
 **Guest downgrade**:
 An update that would replace an authenticated session snapshot on disk with a guest one. Refused: a guest session is rebuildable with one request, an authenticated one costs an interactive browser login.
 _Avoid_: logout, session reset, anonymous overwrite
+
+**CSRF refresh**:
+Re-reading the server-rendered homepage to adopt the current CSRF token and page metadata into an existing session snapshot, keeping its cookie jar. Voila rotates the token separately from the cookies and checks it on writes only, so a snapshot whose reads all succeed can still be rejected on every write.
+_Avoid_: re-login, re-auth, session renewal

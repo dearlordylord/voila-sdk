@@ -259,3 +259,13 @@ export const InitialStateSchema: Schema.Schema<InitialStateShape> = Schema.Struc
 })
 
 export type InitialState = Schema.Schema.Type<typeof InitialStateSchema>
+
+// What a CSRF refresh reads out of the server-rendered page: the session block
+// alone. The homepage also carries the basket, the categories and the adverts,
+// and a token rotation that depended on all of them parsing would fail for
+// reasons that have nothing to do with the token.
+export const InitialStateSessionSchema = Schema.Struct({
+  session: Schema.Struct({ csrf: CsrfStateSchema, metadata: SessionMetadataSchema })
+})
+
+export type InitialStateSession = Schema.Schema.Type<typeof InitialStateSessionSchema>
