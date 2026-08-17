@@ -2,7 +2,12 @@ import { Either } from "effect"
 import topDesktopUserAgents from "top-user-agents/desktop"
 import { describe, expect, it } from "vitest"
 
-import { makeFetchVoilaTransport, makeNodeOperationEnvironment, type NodeFetchPort } from "../src/node-env.js"
+import {
+  makeFetchVoilaTransport,
+  makeNodeOperationEnvironment,
+  type NodeFetchPort,
+  type RequestDeadlinePort
+} from "../src/node-env.js"
 
 const requestUrl = new URL("https://voila.ca/api/example")
 
@@ -30,12 +35,26 @@ const makeRecordingFetch = (): {
   }
 }
 
-const shortTimeoutMs = 5
+// A deadline the test decides, so no test waits on wall-clock time to observe
+// an abandoned request; production supplies `timeoutDeadline()`.
+const controlledDeadline = (): { readonly deadline: RequestDeadlinePort; readonly reached: () => void } => {
+  const controller = new AbortController()
+
+  return { deadline: () => controller.signal, reached: () => controller.abort(new Error("deadline reached")) }
+}
 
 // a server that accepts the connection and then says nothing: `fetch` rejects
 // when the abort signal fires, which is what the transport must survive
 const hangingFetch: NodeFetchPort = async (_input, init) =>
   new Promise((_resolve, reject) => {
+    // like `fetch`, a signal already aborted when the request starts rejects
+    // it at once rather than waiting for an abort that has been and gone
+    if (init.signal?.aborted === true) {
+      reject(new Error("aborted"))
+
+      return
+    }
+
     init.signal?.addEventListener("abort", () => reject(new Error("aborted")))
   })
 
@@ -93,10 +112,14 @@ describe("Node Voila transport", () => {
     expect(recording.requestHeaders()?.get("x-request-context")).toBe("preserved")
   })
 
-  it("abandons a request that outlasts its timeout", async () => {
-    const transport = makeFetchVoilaTransport(undefined, hangingFetch, shortTimeoutMs)
+  it("abandons a request that outlasts its deadline", async () => {
+    const { deadline, reached } = controlledDeadline()
+    const transport = makeFetchVoilaTransport(undefined, hangingFetch, deadline)
 
-    const result = await transport.request({ headers: {}, method: "GET", url: requestUrl })
+    const pending = transport.request({ headers: {}, method: "GET", url: requestUrl })
+    reached()
+
+    const result = await pending
 
     expect(Either.isLeft(result)).toBe(true)
     // nothing about the request survives into what the caller sees
@@ -104,11 +127,28 @@ describe("Node Voila transport", () => {
   })
 
   it("abandons a response whose body stalls after its headers arrive", async () => {
-    const transport = makeFetchVoilaTransport(undefined, stallingBodyFetch, shortTimeoutMs)
+    const { deadline, reached } = controlledDeadline()
+    const transport = makeFetchVoilaTransport(undefined, stallingBodyFetch, deadline)
 
-    const result = await transport.request({ headers: {}, method: "GET", url: requestUrl })
+    const pending = transport.request({ headers: {}, method: "GET", url: requestUrl })
+    reached()
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Either.isLeft(await pending)).toBe(true)
+  })
+
+  it("bounds a request by the default deadline when none is given", async () => {
+    const signals: Array<AbortSignal | null | undefined> = []
+    const transport = makeFetchVoilaTransport(undefined, async (_input, init) => {
+      signals.push(init.signal)
+
+      return new Response("{}", { status: 200 })
+    })
+
+    await transport.request({ headers: {}, method: "GET", url: requestUrl })
+
+    // the production path carries a deadline, rather than none at all
+    expect(signals[0]?.aborted).toBe(false)
+    expect(signals[0]).toBeInstanceOf(AbortSignal)
   })
 
   it("rejects an empty configured user-agent", () => {
