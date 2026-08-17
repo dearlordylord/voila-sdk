@@ -245,4 +245,27 @@ describe("session snapshots", () => {
       }
     }
   })
+
+  it("states no route id in a diagnostic for a session captured without one", () => {
+    const serialized = serializeCookieJar(makeCookieJarWithSecret())
+
+    if (Either.isLeft(serialized)) {
+      throw new Error("Expected cookie jar serialization to succeed")
+    }
+
+    const snapshot = makeSessionSnapshot(
+      { assetVersion: "asset-version", pageViewId: secretPageViewId, regionId: "region-id" },
+      sampleCsrf,
+      serialized.right
+    )
+
+    if (Either.isLeft(snapshot)) {
+      throw new Error("Expected session snapshot creation to succeed")
+    }
+
+    const diagnostic = formatSessionSnapshotDiagnostic(snapshot.right)
+
+    expect(diagnostic).not.toContain("clientRouteId")
+    expect(diagnostic).not.toContain(secretPageViewId)
+  })
 })

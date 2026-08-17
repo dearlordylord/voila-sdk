@@ -141,7 +141,7 @@ const readBrowserCapture = async (
 
   return Either.map(
     Either.mapLeft(
-      makeSessionSnapshot(initialState.right.session.metadata, initialState.right.csrf, cookieJar.right),
+      makeSessionSnapshot(initialState.right.session.metadata, initialState.right.session.csrf, cookieJar.right),
       adapterFailure
     ),
     (session) => ({

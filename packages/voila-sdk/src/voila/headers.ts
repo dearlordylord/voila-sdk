@@ -4,7 +4,7 @@ export type ResponseHeaders = Readonly<Record<string, ReadonlyArray<string> | st
 
 export const makeVoilaHeaders = (metadata: SessionMetadata, csrfToken: string): Readonly<Record<string, string>> => ({
   "X-CSRF-TOKEN": csrfToken,
-  "client-route-id": metadata.clientRouteId,
+  ...(metadata.clientRouteId === undefined ? {} : { "client-route-id": metadata.clientRouteId }),
   "content-type": "application/json",
   "ecom-request-source": "web",
   "ecom-request-source-version": metadata.assetVersion,

@@ -2,14 +2,18 @@ import { Schema } from "effect"
 
 import { CartUpdateResultSchema } from "./cart.js"
 import type { CartUpdateResult } from "./cart.js"
-import { RawCategoryTreeSchema } from "./category.js"
-import type { RawCategoryTree } from "./category.js"
+import { RawCategoryStoreSchema } from "./category.js"
+import type { RawCategoryStore } from "./category.js"
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
+// `clientRouteId` is optional because the server-rendered page publishes one
+// only when it has one to publish; Voila's own endpoints accept a request
+// without the header, and a snapshot captured when the page did carry one keeps
+// using it
 export const SessionMetadataSchema = Schema.Struct({
   assetVersion: Schema.String,
-  clientRouteId: Schema.String,
+  clientRouteId: Schema.optionalWith(Schema.String, { exact: true }),
   pageViewId: Schema.String,
   regionId: Schema.String
 })
@@ -18,7 +22,7 @@ export type SessionMetadata = Schema.Schema.Type<typeof SessionMetadataSchema>
 
 export const SessionMetadataDiagnosticSchema = Schema.Struct({
   assetVersion: Schema.String,
-  clientRouteId: Schema.Literal("[redacted]"),
+  clientRouteId: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
   pageViewId: Schema.Literal("[redacted]"),
   regionId: Schema.String
 })
@@ -239,19 +243,19 @@ interface InitialStateBasket extends CartUpdateResult {
   readonly regionId: string
 }
 
+// The CSRF token and the page metadata both live under `session`: they are what
+// the server-rendered page says about the session it just handed out.
 interface InitialStateShape {
-  readonly csrf: CsrfState
-  readonly data: { readonly basket: InitialStateBasket; readonly categories?: RawCategoryTree }
-  readonly session: { readonly metadata: SessionMetadata }
+  readonly data: { readonly basket: InitialStateBasket; readonly categories?: RawCategoryStore }
+  readonly session: { readonly csrf: CsrfState; readonly metadata: SessionMetadata }
 }
 
 export const InitialStateSchema: Schema.Schema<InitialStateShape> = Schema.Struct({
-  csrf: CsrfStateSchema,
   data: Schema.Struct({
     basket: Schema.extend(CartUpdateResultSchema, Schema.Struct({ basketId: Schema.String, regionId: Schema.String })),
-    categories: Schema.optionalWith(RawCategoryTreeSchema, { exact: true })
+    categories: Schema.optionalWith(RawCategoryStoreSchema, { exact: true })
   }),
-  session: Schema.Struct({ metadata: SessionMetadataSchema })
+  session: Schema.Struct({ csrf: CsrfStateSchema, metadata: SessionMetadataSchema })
 })
 
 export type InitialState = Schema.Schema.Type<typeof InitialStateSchema>

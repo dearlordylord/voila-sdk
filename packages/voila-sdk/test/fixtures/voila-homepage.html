@@ -13,9 +13,6 @@
     </script>
     <script>
       window.__INITIAL_STATE__ = {
-        "csrf": {
-          "token": "sanitized-csrf-token"
-        },
         "data": {
           "basket": {
             "basketId": "sanitized-basket-id",
@@ -37,33 +34,44 @@
               "taxation": "TAX_EXCLUDED"
             }
           },
-          "categories": [
-            {
-              "categoryId": "sanitized-category-produce",
-              "categories": [
-                {
-                  "categoryId": "sanitized-category-fresh-fruit",
-                  "name": "Fresh Fruit",
-                  "retailerCategoryId": "retailer-category-fruit",
-                  "urlPath": "fresh-fruit"
-                },
-                {
-                  "categoryId": "sanitized-category-fresh-vegetables",
-                  "name": "Fresh Vegetables",
-                  "retailerCategoryId": "retailer-category-vegetables",
-                  "urlPath": "fresh-vegetables"
-                }
-              ],
-              "name": "Fruits & Vegetables",
-              "retailerCategoryId": "retailer-category-produce",
-              "urlPath": "/aisles/fruits-vegetables"
-            }
-          ]
+          "categories": {
+            "categories": {
+              "sanitized-category-produce": {
+                "children": [
+                  "sanitized-category-fresh-fruit",
+                  "sanitized-category-fresh-vegetables"
+                ],
+                "fullURLPath": "aisles/fruits-vegetables",
+                "id": "sanitized-category-produce",
+                "name": "Fruits & Vegetables",
+                "retailerId": "retailer-category-produce"
+              },
+              "sanitized-category-fresh-fruit": {
+                "children": [],
+                "fullURLPath": "aisles/fruits-vegetables/fresh-fruit",
+                "id": "sanitized-category-fresh-fruit",
+                "name": "Fresh Fruit",
+                "retailerId": "retailer-category-fruit"
+              },
+              "sanitized-category-fresh-vegetables": {
+                "children": [],
+                "fullURLPath": "aisles/fruits-vegetables/fresh-vegetables",
+                "id": "sanitized-category-fresh-vegetables",
+                "name": "Fresh Vegetables",
+                "retailerId": "retailer-category-vegetables"
+              }
+            },
+            "root": [
+              "sanitized-category-produce"
+            ]
+          }
         },
         "session": {
+          "csrf": {
+            "token": "sanitized-csrf-token"
+          },
           "metadata": {
             "assetVersion": "sanitized-asset-version",
-            "clientRouteId": "sanitized-client-route-id",
             "pageViewId": "sanitized-page-view-id",
             "regionId": "sanitized-region-id"
           }

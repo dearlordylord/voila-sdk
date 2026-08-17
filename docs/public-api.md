@@ -51,14 +51,14 @@ searchProducts(
 - Session bootstrap and storage: `bootstrapGuestSession(cookieJarPort?)`, `makeGuestSdkSessionSnapshot`, `makeAuthenticatedSdkSessionSnapshot`, `loadSdkSessionSnapshot(storage)`. Storage is read-only; writes go through `@firfi/voila-session-store`.
 - Auth: `loginWithBrowser`, `createInteractiveBrowserLoginPort`, browser-login port types. Browser login needs no transport.
 - Session health: `checkSessionHealth(snapshot, cookieJarPort?)`.
-- Catalog: `searchProducts`, `getCategoryProducts`, `getDiscountedProducts`, `getInitialStateCategories`, `normalizeCategoryTree`.
+- Catalog: `searchProducts`, `getCategoryProducts`, `getDiscountedProducts`, `getInitialStateCategories`, `normalizeCategoryStore`.
 - Cart: `getCart`, `applyCartDeltas`, `addCartItems`, `removeCartItems`.
 - Delivery context: `getDeliveryDestinations`, `getDeliveryDestination`, `getActiveShoppingContext`, `getDeliveryPropositionDetails`, `previewDeliveryContextChange`, `applyDeliveryContextChange`.
 - Slot review and guarded reservation: `getSlotListings`, `makeSlotReservationInputFromSlot`, `reserveSlot`.
 - Checkout review: `getCheckoutSummary`, `decideCheckoutReadiness`.
 - Order history: `getCompletedOrders`, `getOrderDetails`, `getCompletedOrderItems`.
 
-Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeCategoryTree`, `makeSlotReservationInputFromSlot`, `applyCartDeltas` — are ordinary functions with no Effect and no transport.
+Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeCategoryStore`, `makeSlotReservationInputFromSlot`, `applyCartDeltas` — are ordinary functions with no Effect and no transport.
 
 ## Errors
 

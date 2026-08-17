@@ -11,31 +11,32 @@ const distinctCategoryIdentifiers = (category: {
   readonly retailerCategoryId: string
 }): boolean => category.categoryId !== category.retailerCategoryId
 
-interface RawCategoryShape {
-  readonly categories?: ReadonlyArray<RawCategory>
-  readonly categoryId: string
-  readonly name: string
-  readonly retailerCategoryId: string
-  readonly urlPath: string
-}
-
-export const RawCategorySchema: Schema.Schema<RawCategoryShape> = Schema.Struct({
-  categories: Schema.optionalWith(Schema.Array(Schema.suspend((): Schema.Schema<RawCategory> => RawCategorySchema)), {
-    exact: true
-  }),
-  categoryId: NonEmptyTrimmedStringSchema,
+/**
+ * The page publishes its categories as a normalized store: entries keyed by
+ * category ID, children named by ID, and the top level listed in `root`. Each
+ * entry already carries its full path, so the tree is a lookup rather than a
+ * concatenation.
+ */
+export const RawCategoryEntrySchema = Schema.Struct({
+  children: Schema.Array(NonEmptyTrimmedStringSchema),
+  fullURLPath: NonEmptyTrimmedStringSchema,
+  id: NonEmptyTrimmedStringSchema,
   name: NonEmptyTrimmedStringSchema,
-  retailerCategoryId: NonEmptyTrimmedStringSchema,
-  urlPath: NonEmptyTrimmedStringSchema
+  retailerId: NonEmptyTrimmedStringSchema
 }).pipe(
-  Schema.filter(distinctCategoryIdentifiers, { message: () => "Category ID and retailer category ID must be distinct" })
+  Schema.filter((entry) => entry.id !== entry.retailerId, {
+    message: () => "Category ID and retailer category ID must be distinct"
+  })
 )
 
-export const RawCategoryTreeSchema = Schema.Array(RawCategorySchema)
+export const RawCategoryStoreSchema = Schema.Struct({
+  categories: Schema.Record({ key: NonEmptyTrimmedStringSchema, value: RawCategoryEntrySchema }),
+  root: Schema.Array(NonEmptyTrimmedStringSchema)
+})
 
-export type RawCategory = Schema.Schema.Type<typeof RawCategorySchema>
+export type RawCategoryEntry = Schema.Schema.Type<typeof RawCategoryEntrySchema>
 
-export type RawCategoryTree = Schema.Schema.Type<typeof RawCategoryTreeSchema>
+export type RawCategoryStore = Schema.Schema.Type<typeof RawCategoryStoreSchema>
 
 interface NormalizedCategoryShape {
   readonly categoryId: string

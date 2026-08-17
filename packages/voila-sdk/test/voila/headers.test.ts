@@ -18,4 +18,14 @@ describe("makeVoilaHeaders", () => {
       "page-view-id": "page-view-id"
     })
   })
+
+  it("omits the route header when the page published no route id", () => {
+    const headers = makeVoilaHeaders(
+      { assetVersion: "2.0.0-test", pageViewId: "page-view-id", regionId: "region-id" },
+      "csrf-token"
+    )
+
+    expect("client-route-id" in headers).toBe(false)
+    expect(headers["X-CSRF-TOKEN"]).toBe("csrf-token")
+  })
 })

@@ -8,7 +8,6 @@ import { extractInitialState } from "../../src/voila/initial-state.js"
 const fixtureHtml = readFileSync(new URL("../fixtures/voila-homepage.html", import.meta.url), "utf8")
 
 const stateWithEscapedStringContent = {
-  csrf: { token: "sanitized-csrf-token" },
   data: {
     basket: {
       basketId: "sanitized-basket-id",
@@ -23,9 +22,9 @@ const stateWithEscapedStringContent = {
     }
   },
   session: {
+    csrf: { token: "sanitized-csrf-token" },
     metadata: {
       assetVersion: 'asset with "quote" and \\ path plus { nested } markers',
-      clientRouteId: "sanitized-client-route-id",
       pageViewId: "sanitized-page-view-id",
       regionId: "sanitized-region-id"
     }
@@ -56,7 +55,7 @@ describe("extractInitialState", () => {
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(result.right.csrf.token).toBe("sanitized-csrf-token")
+      expect(result.right.session.csrf.token).toBe("sanitized-csrf-token")
       expect(result.right.data.basket.basketId).toBe("sanitized-basket-id")
       expect(result.right.session.metadata.pageViewId).toBe("sanitized-page-view-id")
     }

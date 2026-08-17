@@ -31,6 +31,7 @@ const initialState = {
     }
   },
   session: {
+    csrf: { token: "fixture-csrf-token" },
     metadata: {
       assetVersion: "asset-version",
       clientRouteId: "client-route-id",

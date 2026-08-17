@@ -22,7 +22,6 @@ const sessionCookie = "guest-session=fixture; Path=/; Secure"
 const secretFailurePayload = "guest-session=secret"
 
 const minimalInitialState = {
-  csrf: { token: "fixture-csrf-token" },
   data: {
     basket: {
       basketId: "fixture-basket-id",
@@ -36,6 +35,7 @@ const minimalInitialState = {
     }
   },
   session: {
+    csrf: { token: "fixture-csrf-token" },
     metadata: {
       assetVersion: "fixture-asset-version",
       clientRouteId: "fixture-client-route-id",
@@ -44,6 +44,13 @@ const minimalInitialState = {
     }
   }
 }
+
+// the token lives with the rest of what the page says about the session, so a
+// test that removes it removes it from there
+const withCsrf = (csrf: unknown): unknown => ({
+  ...minimalInitialState,
+  session: { ...minimalInitialState.session, csrf }
+})
 
 const initialStateWithItems = {
   ...minimalInitialState,
@@ -181,7 +188,7 @@ describe("bootstrapGuestSession", () => {
   it("returns a typed error when CSRF is missing from initial state", async () => {
     const result = await runWith(
       bootstrapGuestSession(),
-      respondingTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: { token: " " } })))
+      respondingTransport(makeHomepageResponse(htmlFromInitialState(withCsrf({ token: " " }))))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -194,7 +201,7 @@ describe("bootstrapGuestSession", () => {
   it("returns a typed error when the CSRF object is absent from initial state", async () => {
     const result = await runWith(
       bootstrapGuestSession(),
-      respondingTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: undefined })))
+      respondingTransport(makeHomepageResponse(htmlFromInitialState(withCsrf(undefined))))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -207,7 +214,7 @@ describe("bootstrapGuestSession", () => {
   it("returns a typed error when the CSRF token is absent from initial state", async () => {
     const result = await runWith(
       bootstrapGuestSession(),
-      respondingTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: {} })))
+      respondingTransport(makeHomepageResponse(htmlFromInitialState(withCsrf({}))))
     )
 
     expect(Either.isLeft(result)).toBe(true)

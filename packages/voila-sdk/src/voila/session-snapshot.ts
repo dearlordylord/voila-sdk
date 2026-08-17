@@ -154,7 +154,7 @@ export const makeAuthenticatedSdkSessionSnapshot = (
 
 const redactSessionMetadata = (metadata: SessionMetadata): SessionMetadataDiagnostic => ({
   assetVersion: metadata.assetVersion,
-  clientRouteId: "[redacted]",
+  ...(metadata.clientRouteId === undefined ? {} : { clientRouteId: "[redacted]" as const }),
   pageViewId: "[redacted]",
   regionId: metadata.regionId
 })

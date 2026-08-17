@@ -78,11 +78,11 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null
 
 const hasCsrfToken = (payload: unknown): boolean => {
-  if (!isRecord(payload) || !isRecord(payload.csrf)) {
+  if (!isRecord(payload) || !isRecord(payload.session) || !isRecord(payload.session.csrf)) {
     return false
   }
 
-  return typeof payload.csrf.token === "string"
+  return typeof payload.session.csrf.token === "string"
 }
 
 const makeGuestCartSummary = (basket: SessionSnapshotBasket): GuestCartSummary => {
@@ -138,18 +138,18 @@ const makeGuestBootstrapResult = (
 
   return Either.flatMap(storeHomepageCookies(cookieJarPort, response), (cookieJar) =>
     Either.flatMap(decodeInitialState(response.body), (initialState) => {
-      if (initialState.csrf.token.trim().length === emptyStringLength) {
+      if (initialState.session.csrf.token.trim().length === emptyStringLength) {
         return Either.left(missingCsrf())
       }
 
       return Either.mapLeft(
-        makeSessionSnapshot(initialState.session.metadata, initialState.csrf, cookieJar),
+        makeSessionSnapshot(initialState.session.metadata, initialState.session.csrf, cookieJar),
         cookiePersistenceFailure
       ).pipe(
         Either.map((session) => ({
           categories: getInitialStateCategories(initialState),
           cart: makeGuestCartSummary(initialState.data.basket),
-          csrf: initialState.csrf,
+          csrf: initialState.session.csrf,
           metadata: initialState.session.metadata,
           regionId: initialState.data.basket.regionId,
           session
