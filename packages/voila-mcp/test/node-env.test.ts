@@ -30,6 +30,27 @@ const makeRecordingFetch = (): {
   }
 }
 
+const shortTimeoutMs = 5
+
+// a server that accepts the connection and then says nothing: `fetch` rejects
+// when the abort signal fires, which is what the transport must survive
+const hangingFetch: NodeFetchPort = async (_input, init) =>
+  new Promise((_resolve, reject) => {
+    init.signal?.addEventListener("abort", () => reject(new Error("aborted")))
+  })
+
+// headers arrive, the body never finishes: a real response over a stream that
+// only ever ends when the abort signal errors it
+const stallingBodyFetch: NodeFetchPort = async (_input, init) =>
+  new Response(
+    new ReadableStream({
+      start: (controller) => {
+        init.signal?.addEventListener("abort", () => controller.error(new Error("aborted")))
+      }
+    }),
+    { status: 200 }
+  )
+
 describe("Node Voila transport", () => {
   it("uses the first desktop user-agent by default and preserves unrelated headers", async () => {
     const recording = makeRecordingFetch()
@@ -70,6 +91,24 @@ describe("Node Voila transport", () => {
 
     expect(recording.requestHeaders()?.get("user-agent")).toBe("request-agent/2.0")
     expect(recording.requestHeaders()?.get("x-request-context")).toBe("preserved")
+  })
+
+  it("abandons a request that outlasts its timeout", async () => {
+    const transport = makeFetchVoilaTransport(undefined, hangingFetch, shortTimeoutMs)
+
+    const result = await transport.request({ headers: {}, method: "GET", url: requestUrl })
+
+    expect(Either.isLeft(result)).toBe(true)
+    // nothing about the request survives into what the caller sees
+    expect(JSON.stringify(result)).not.toContain(requestUrl.href)
+  })
+
+  it("abandons a response whose body stalls after its headers arrive", async () => {
+    const transport = makeFetchVoilaTransport(undefined, stallingBodyFetch, shortTimeoutMs)
+
+    const result = await transport.request({ headers: {}, method: "GET", url: requestUrl })
+
+    expect(Either.isLeft(result)).toBe(true)
   })
 
   it("rejects an empty configured user-agent", () => {
