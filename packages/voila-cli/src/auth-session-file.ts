@@ -5,7 +5,6 @@
  */
 import type { SdkSessionSnapshot } from "@firfi/voila-sdk"
 import {
-  parseStateFilePath,
   persistSession,
   type SessionFileError,
   type StateFileLocks,
@@ -14,25 +13,14 @@ import {
 } from "@firfi/voila-session-store"
 import { Effect } from "effect"
 
-export type LoginSessionPathInvalid = { readonly _tag: "VoilaAuthSessionPathInvalid"; readonly message: string }
-
 export type LoginSessionSuperseded = { readonly _tag: "VoilaAuthSessionSuperseded"; readonly message: string }
 
 export type LoginSessionWriteError = SessionFileError | LoginSessionSuperseded
-
-const loginSessionPathInvalid = (): LoginSessionPathInvalid => ({
-  _tag: "VoilaAuthSessionPathInvalid",
-  // the path itself stays out of the message: it can name a user or a profile
-  message: "Session path must be an absolute path to a session file"
-})
 
 const loginSessionSuperseded = (): LoginSessionSuperseded => ({
   _tag: "VoilaAuthSessionSuperseded",
   message: "Another process wrote a newer session while this login was being saved"
 })
-
-export const parseLoginSessionPath = (path: string): Effect.Effect<StateFilePath, LoginSessionPathInvalid> =>
-  Effect.mapError(parseStateFilePath(path), loginSessionPathInvalid)
 
 /**
  * A fresh interactive login is the newest lineage there is, so it persists over

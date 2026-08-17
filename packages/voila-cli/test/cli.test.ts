@@ -86,6 +86,25 @@ describe("Voila CLI", () => {
     ])
   })
 
+  it("refuses a relative session path before reaching any port", async () => {
+    const fake = makePorts(success({ products: [] }))
+    const result = await runCli(["search", "milk", "--session", "relative/session.json"], fake.ports)
+
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr).toContain("--session must be an absolute path")
+    // the path itself stays out of the message: it can name a user or a profile
+    expect(result.stderr).not.toContain("relative/session.json")
+    expect(fake.calls).toEqual([])
+  })
+
+  it("refuses a relative session path for login before launching a browser", async () => {
+    const fake = makePorts(success({ products: [] }))
+    const result = await runCli(["auth", "login", "--session", "relative/session.json"], fake.ports)
+
+    expect(result.exitCode).toBe(2)
+    expect(fake.loginCalls).toEqual([])
+  })
+
   it("maps JSON discount commands to discounted product operation input", async () => {
     const fake = makePorts(success({ products: [] }))
     const result = await runCli(

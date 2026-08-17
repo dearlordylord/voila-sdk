@@ -16,12 +16,8 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { describe, expect } from "vitest"
 
-import type {
-  LoginSessionPathInvalid,
-  LoginSessionSuperseded,
-  LoginSessionWriteError
-} from "../src/auth-session-file.js"
-import { parseLoginSessionPath, persistLoginSession } from "../src/auth-session-file.js"
+import type { LoginSessionSuperseded, LoginSessionWriteError } from "../src/auth-session-file.js"
+import { persistLoginSession } from "../src/auth-session-file.js"
 
 const voilaUrl = "https://voila.ca/"
 const secretCookieValue = "sanitized-cookie"
@@ -122,23 +118,6 @@ describe("persistLoginSession", () => {
       expect(error.message).not.toContain(secretCookieValue)
       expect(error.message).not.toContain(secretCsrfToken)
       expect(error.message).not.toContain(file)
-    })
-  )
-})
-
-describe("parseLoginSessionPath", () => {
-  it.effect("accepts an absolute session path", () =>
-    Effect.gen(function* () {
-      expect(yield* parseLoginSessionPath("/tmp/voila/session.json")).toBe("/tmp/voila/session.json")
-    })
-  )
-
-  it.effect("rejects a relative path without naming it", () =>
-    Effect.gen(function* () {
-      const error: LoginSessionPathInvalid = yield* parseLoginSessionPath("relative/session.json").pipe(Effect.flip)
-
-      expect(error._tag).toBe("VoilaAuthSessionPathInvalid")
-      expect(error.message).not.toContain("relative/session.json")
     })
   )
 })

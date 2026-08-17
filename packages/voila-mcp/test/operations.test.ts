@@ -7,6 +7,7 @@ import {
   toughCookieJarPort,
   type VoilaTransport
 } from "@firfi/voila-sdk"
+import { StateFilePathSchema } from "@firfi/voila-session-store"
 import { Effect, Either } from "effect"
 import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
@@ -26,7 +27,9 @@ import {
 const voilaUrl = "https://voila.ca/"
 const csrfToken = "csrf-token"
 const secretNetworkValue = "secret-network-value"
-const sessionPath = "/tmp/voila-session.json"
+// the test owns an absolute path, so the brand is applied directly; production
+// callers parse a configured path at the environment boundary
+const sessionPath = StateFilePathSchema.make("/tmp/voila-session.json")
 
 const sampleMetadata = {
   assetVersion: "asset-version",

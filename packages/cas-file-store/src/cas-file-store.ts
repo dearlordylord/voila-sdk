@@ -13,7 +13,7 @@
  * against `undefined` and the file is created inside the same cycle, so
  * creation cannot be a blind write by another name.
  */
-import { Data, Effect, Either, type Schedule } from "effect"
+import { Data, Effect, type Schedule } from "effect"
 import { randomUUID } from "node:crypto"
 import { link, mkdir, open, readFile, rename, rm } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path"
@@ -157,59 +157,66 @@ const temporaryPathFor = (path: string): string =>
 // mkdir before it can reach the guarded cycle
 const ownerOnlyDirectoryMode = 0o700
 
-const writeDurable = async (temporaryPath: string, contents: string): Promise<void> => {
-  await mkdir(dirname(temporaryPath), { recursive: true, mode: ownerOnlyDirectoryMode })
+/**
+ * One filesystem call of the write path as an Effect. Every call the write
+ * path makes goes through here, so a promise never crosses a seam as a
+ * promise: the failure is typed where the call is made, rather than at some
+ * later boundary that has to remember to catch it.
+ */
+const fileSystemCall = <A>(path: string, call: () => Promise<A>): Effect.Effect<A, CasFileStoreWriteFailure> =>
+  Effect.tryPromise({ try: call, catch: () => casFileStoreWriteFailure(path) })
 
-  const handle = await open(temporaryPath, "w", ownerOnlyMode)
+const writeDurable = (
+  path: string,
+  temporaryPath: string,
+  contents: string
+): Effect.Effect<void, CasFileStoreWriteFailure> =>
+  fileSystemCall(path, () => mkdir(dirname(temporaryPath), { recursive: true, mode: ownerOnlyDirectoryMode })).pipe(
+    Effect.zipRight(
+      Effect.acquireUseRelease(
+        fileSystemCall(path, () => open(temporaryPath, "w", ownerOnlyMode)),
+        (handle) =>
+          fileSystemCall(path, () => handle.writeFile(contents)).pipe(
+            // fsync before the landing so a power loss cannot silently resurrect an older file
+            Effect.zipRight(fileSystemCall(path, () => handle.sync()))
+          ),
+        (handle) => Effect.ignore(fileSystemCall(path, () => handle.close()))
+      )
+    )
+  )
 
-  try {
-    await handle.writeFile(contents)
-    // fsync before rename so a power loss cannot silently resurrect an older file
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-}
+/**
+ * How written contents reach the target path. It answers whether they got
+ * there; only the create-if-absent landing can answer `false`.
+ */
+type Landing = (temporaryPath: string) => Effect.Effect<boolean, CasFileStoreWriteFailure>
 
 /**
  * Durable write through a sibling tmp file: create owner-only, fsync, then let
  * `land` move it into place. Always on, never configurable — a crashed write
  * must never leave a torn state file that reads as corruption. Directory fsync
- * is skipped deliberately (ADR-0001). `land` reports whether the contents
- * reached the target path; only the create-if-absent landing can answer `false`.
+ * is skipped deliberately (ADR-0001).
  */
 const writeThroughTemporary = (
   path: string,
   contents: string,
-  land: (temporaryPath: string) => Promise<boolean>
-): Effect.Effect<boolean, CasFileStoreWriteFailure> =>
-  Effect.gen(function* () {
-    const temporaryPath = temporaryPathFor(path)
-    const landed = yield* Effect.either(
-      Effect.tryPromise({
-        try: () => writeDurable(temporaryPath, contents).then(() => land(temporaryPath)),
-        catch: () => casFileStoreWriteFailure(path)
-      })
-    )
+  land: Landing
+): Effect.Effect<boolean, CasFileStoreWriteFailure> => {
+  const temporaryPath = temporaryPathFor(path)
 
+  return writeDurable(path, temporaryPath, contents).pipe(
+    Effect.zipRight(land(temporaryPath)),
     // best-effort cleanup so no landing leaves tmp litter behind; a cleanup
     // that itself fails must not mask the write failure
-    yield* Effect.ignore(
-      Effect.tryPromise({ try: () => rm(temporaryPath, { force: true }), catch: () => casFileStoreWriteFailure(path) })
-    )
-
-    if (Either.isLeft(landed)) {
-      return yield* Effect.fail(landed.left)
-    }
-
-    return landed.right
-  })
+    Effect.ensuring(Effect.ignore(fileSystemCall(path, () => rm(temporaryPath, { force: true }))))
+  )
+}
 
 /** Replace an existing file atomically. */
 const replaceRawAtomic = (path: string, contents: string): Effect.Effect<void, CasFileStoreWriteFailure> =>
-  writeThroughTemporary(path, contents, (temporaryPath) => rename(temporaryPath, path).then(() => true)).pipe(
-    Effect.asVoid
-  )
+  writeThroughTemporary(path, contents, (temporaryPath) =>
+    fileSystemCall(path, () => rename(temporaryPath, path)).pipe(Effect.as(true))
+  ).pipe(Effect.asVoid)
 
 /**
  * Create a file only if it does not exist. `link` is what makes concurrent
@@ -219,15 +226,17 @@ const replaceRawAtomic = (path: string, contents: string): Effect.Effect<void, C
  */
 const createRawExclusive = (path: string, contents: string): Effect.Effect<boolean, CasFileStoreWriteFailure> =>
   writeThroughTemporary(path, contents, (temporaryPath) =>
-    link(temporaryPath, path)
-      .then(() => true)
-      .catch((error: unknown) => {
-        if (hasErrorCode(error, "EEXIST")) {
-          return false
-        }
+    fileSystemCall(path, () =>
+      link(temporaryPath, path)
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (hasErrorCode(error, "EEXIST")) {
+            return false
+          }
 
-        throw error
-      })
+          throw error
+        })
+    )
   )
 
 // One keyed semaphore per path serializes same-process `modify` calls, so

@@ -18,7 +18,7 @@ import { Effect, Either } from "effect"
 import { chromium } from "playwright"
 
 import { type CapturedBrowserSession, observeVoilaBrowserTraffic, waitForAuthenticatedCapture } from "./auth-capture.js"
-import { parseLoginSessionPath, persistLoginSession } from "./auth-session-file.js"
+import { persistLoginSession } from "./auth-session-file.js"
 import type { CliLoginOptions } from "./cli.js"
 
 const defaultTimeoutMs = 300_000
@@ -131,14 +131,6 @@ const validateSavedSession = async (
 
 export const loginWithPlaywright = async (options: CliLoginOptions): Promise<OperationExecutionResult> => {
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>>
-  // parsed before the browser is launched: a path the session file store cannot
-  // accept must not cost the user an interactive login first
-  const sessionPath = await Effect.runPromise(Effect.either(parseLoginSessionPath(options.sessionPath)))
-
-  if (Either.isLeft(sessionPath)) {
-    return failure(sessionPath.left._tag, sessionPath.left.message)
-  }
-
   // one lock table for both saves of this login flow
   const sessionLocks = Effect.runSync(makeStateFileLocks())
 
@@ -179,13 +171,13 @@ export const loginWithPlaywright = async (options: CliLoginOptions): Promise<Ope
       return session
     }
 
-    const saved = await saveSession(sessionLocks, sessionPath.right, session)
+    const saved = await saveSession(sessionLocks, options.sessionPath, session)
 
     if (saved !== undefined) {
       return saved
     }
 
-    return await validateSavedSession(sessionLocks, sessionPath.right, session)
+    return await validateSavedSession(sessionLocks, options.sessionPath, session)
   } finally {
     await context.close()
   }

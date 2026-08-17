@@ -1,15 +1,17 @@
 import { normalizeCliCartInput, type OperationExecutionResult, type VoilaOperationName } from "@firfi/voila-mcp"
+import { type StateFilePath, StateFilePathSchema } from "@firfi/voila-session-store"
+import { Either, Schema } from "effect"
 
 import { makeDiscountsOperationInput, renderDiscountsText } from "./cli-discounts.js"
 import { defaultBrowserProfilePath, defaultSessionPath } from "./defaults.js"
 
 export interface CliOperationOptions {
-  readonly sessionPath: string
+  readonly sessionPath: StateFilePath
 }
 
 export interface CliLoginOptions {
   readonly profilePath: string
-  readonly sessionPath: string
+  readonly sessionPath: StateFilePath
   readonly timeoutMs?: number
 }
 
@@ -118,7 +120,16 @@ const fail = (result: OperationExecutionResult, json: boolean): CliRunResult => 
   stdout: json ? `${JSON.stringify(result, undefined, 2)}\n` : ""
 })
 
-const getSessionPath = (parsed: ParsedOptions): string => parsed.options.get("session") ?? defaultSessionPath()
+// Parsed here, where the argument arrives, so one absolute path travels
+// onward: a relative `--session` would name different files depending on the
+// directory a command happened to run in.
+const getSessionPath = (parsed: ParsedOptions): CliRunResult | StateFilePath => {
+  const configured = Schema.decodeUnknownEither(StateFilePathSchema)(
+    parsed.options.get("session") ?? defaultSessionPath()
+  )
+
+  return Either.isLeft(configured) ? usage("--session must be an absolute path to a session file") : configured.right
+}
 
 const getJsonFlag = (parsed: ParsedOptions): boolean => parsed.flags.has("json")
 
@@ -226,7 +237,13 @@ const runOperation = async (
   input: unknown,
   parsed: ParsedOptions
 ): Promise<CliRunResult> => {
-  const result = await ports.runOperation(name, input, { sessionPath: getSessionPath(parsed) })
+  const sessionPath = getSessionPath(parsed)
+
+  if (typeof sessionPath !== "string") {
+    return sessionPath
+  }
+
+  const result = await ports.runOperation(name, input, { sessionPath })
 
   return render(name, result, getJsonFlag(parsed))
 }
@@ -251,9 +268,15 @@ const runAuth = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunRe
     return timeout
   }
 
+  const sessionPath = getSessionPath(parsed)
+
+  if (typeof sessionPath !== "string") {
+    return sessionPath
+  }
+
   const result = await ports.login({
     profilePath: parsed.options.get("profile") ?? defaultBrowserProfilePath(),
-    sessionPath: getSessionPath(parsed),
+    sessionPath,
     ...(timeout === undefined ? {} : { timeoutMs: timeout })
   })
 

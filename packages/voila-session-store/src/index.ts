@@ -5,7 +5,7 @@ export {
   type SessionFileReadFailure,
   type SessionFileWriteFailure
 } from "./session-file-errors.js"
-export { parseStateFilePath, type StateFilePath, StateFilePathSchema } from "@firfi/cas-file-store"
+export { type StateFilePath, StateFilePathSchema } from "@firfi/cas-file-store"
 export {
   makeStateFileLocks,
   StateFileLocks,
