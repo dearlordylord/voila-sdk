@@ -5,9 +5,19 @@
     "incremental": false,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ],
   "references": [
-    { "path": "../voila-sdk" },
-    { "path": "../voila-mcp" }
+    {
+      "path": "../voila-sdk"
+    },
+    {
+      "path": "../voila-mcp"
+    },
+    {
+      "path": "../voila-session-store"
+    }
   ]
 }

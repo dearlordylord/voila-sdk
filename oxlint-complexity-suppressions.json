@@ -7,7 +7,7 @@
   ],
   "packages/voila-cli/src/auth-login.ts": [
     {
-      "complexity": 11,
+      "complexity": 9,
       "signature": "async (options: CliLoginOptions): Promise<OperationExecutionResult> =>"
     }
   ],

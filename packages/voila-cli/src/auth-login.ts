@@ -4,18 +4,21 @@ import {
   checkSessionHealth,
   makeAuthenticatedSdkSessionSnapshot,
   makeSessionSnapshot,
-  saveSdkSessionSnapshot,
   type SdkSessionSnapshot,
-  type SessionStoragePort,
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "@firfi/voila-sdk"
-import { Either } from "effect"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { dirname } from "node:path"
+import {
+  makeStateFileLocks,
+  StateFileLocks,
+  type StateFileLocksService,
+  type StateFilePath
+} from "@firfi/voila-session-store"
+import { Effect, Either } from "effect"
 import { chromium } from "playwright"
 
 import { type CapturedBrowserSession, observeVoilaBrowserTraffic, waitForAuthenticatedCapture } from "./auth-capture.js"
+import { parseLoginSessionPath, persistLoginSession } from "./auth-session-file.js"
 import type { CliLoginOptions } from "./cli.js"
 
 const defaultTimeoutMs = 300_000
@@ -29,14 +32,6 @@ const failure = (tag: string, message: string): OperationExecutionResult => ({
 })
 
 const success = (value: unknown): OperationExecutionResult => ({ ok: true, value })
-
-const makeFileStorage = (path: string): SessionStoragePort => ({
-  read: () => readFile(path, "utf8"),
-  write: async (contents) => {
-    await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, contents, { mode: 0o600 })
-  }
-})
 
 const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
   const expires =
@@ -95,16 +90,57 @@ const makeSessionFromBrowserCapture = (
 }
 
 const saveSession = async (
-  path: string,
+  locks: StateFileLocksService,
+  path: StateFilePath,
   snapshot: SdkSessionSnapshot
 ): Promise<OperationExecutionResult | undefined> => {
-  const saved = await saveSdkSessionSnapshot(makeFileStorage(path), snapshot)
+  const saved = await Effect.runPromise(
+    Effect.either(persistLoginSession(path, snapshot).pipe(Effect.provideService(StateFileLocks, locks)))
+  )
 
   return Either.isLeft(saved) ? failure(saved.left._tag, saved.left.message) : undefined
 }
 
+/**
+ * The saved session is validated against Voila before the login reports
+ * success, and the validated snapshot is saved through the same cycle: the
+ * health check can rotate cookies, and a login that reports success while the
+ * file holds a session Voila rejects is worse than a login that failed.
+ */
+const validateSavedSession = async (
+  locks: StateFileLocksService,
+  path: StateFilePath,
+  session: SdkSessionSnapshot
+): Promise<OperationExecutionResult> => {
+  const health = await checkSessionHealth(session, fetchVoilaTransport)
+
+  if (Either.isLeft(health)) {
+    return failure(health.left._tag, health.left.message)
+  }
+
+  const validated = await saveSession(locks, path, health.right.session)
+
+  if (validated !== undefined) {
+    return validated
+  }
+
+  return health.right.status === "active"
+    ? success({ sessionPath: path, status: health.right.status })
+    : failure("VoilaAuthSessionInactive", "Saved browser session is not active")
+}
+
 export const loginWithPlaywright = async (options: CliLoginOptions): Promise<OperationExecutionResult> => {
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>>
+  // parsed before the browser is launched: a path the session file store cannot
+  // accept must not cost the user an interactive login first
+  const sessionPath = await Effect.runPromise(Effect.either(parseLoginSessionPath(options.sessionPath)))
+
+  if (Either.isLeft(sessionPath)) {
+    return failure(sessionPath.left._tag, sessionPath.left.message)
+  }
+
+  // one lock table for both saves of this login flow
+  const sessionLocks = Effect.runSync(makeStateFileLocks())
 
   try {
     context = await chromium.launchPersistentContext(options.profilePath, { headless: false })
@@ -143,29 +179,13 @@ export const loginWithPlaywright = async (options: CliLoginOptions): Promise<Ope
       return session
     }
 
-    const saved = await saveSession(options.sessionPath, session)
+    const saved = await saveSession(sessionLocks, sessionPath.right, session)
 
     if (saved !== undefined) {
       return saved
     }
 
-    const health = await checkSessionHealth(session, fetchVoilaTransport)
-
-    if (Either.isLeft(health)) {
-      return failure(health.left._tag, health.left.message)
-    }
-
-    const validated = await saveSession(options.sessionPath, health.right.session)
-
-    if (validated !== undefined) {
-      return validated
-    }
-
-    if (health.right.status !== "active") {
-      return failure("VoilaAuthSessionInactive", "Saved browser session is not active")
-    }
-
-    return success({ sessionPath: options.sessionPath, status: health.right.status })
+    return await validateSavedSession(sessionLocks, sessionPath.right, session)
   } finally {
     await context.close()
   }

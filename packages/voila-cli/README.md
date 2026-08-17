@@ -23,7 +23,7 @@ voila cart add <product-uuid> --quantity 1
 voila cart remove <product-uuid> --quantity 1
 ```
 
-`auth login` opens Chromium. Log in manually, then close the browser window to save. The CLI saves after Voila session material and cookies are captured, then validates the saved session.
+`auth login` opens Chromium. Log in manually, then close the browser window to save. The CLI saves after Voila session material and cookies are captured, then validates the saved session. If another process wrote a newer session while this login was being saved, the login reports `VoilaAuthSessionSuperseded` rather than writing over it.
 
 `orders list` reads completed orders with cursor pagination; pass `--page-token` from the previous response to fetch the next page.
 

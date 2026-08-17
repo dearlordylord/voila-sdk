@@ -30,9 +30,8 @@ The CLI reuses the MCP operation registry so command behavior and tool behavior 
 
 Environment:
 
-- `VOILA_AUTH_SESSION_PATH`: path to a session snapshot.
-- `VOILA_SESSION_WRITE_PATH`: optional write path; defaults to the auth path.
-- `VOILA_GUEST=1`: force guest behavior.
+- `VOILA_AUTH_SESSION_PATH`: absolute path to a session snapshot, read and written as one path.
+- `VOILA_GUEST=1`: force guest behavior. Guest sessions live in memory and are never written to the session file.
 
 Client config:
 

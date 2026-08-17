@@ -65,6 +65,8 @@ Run before considering work complete:
 pnpm check-all
 ```
 
+Workspace packages resolve each other through built `dist` output, not source. After changing a dependency package's public API, rebuild it (`pnpm -r build`, or that package's `pnpm build`) before typechecking or testing dependents — otherwise their `tsc` typechecks against the dependency's stale `dist` and reports phantom errors.
+
 For publish readiness, also run:
 
 ```bash

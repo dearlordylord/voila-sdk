@@ -27,8 +27,17 @@ import {
   type SessionFileUpdate,
   type SessionFileUpdateOutcome,
   type SessionFileWriteFailure,
-  updateSessionFile
+  type StateFileLocks,
+  StateFileLocksLive,
+  updateSessionFile,
+  updateSessionFileCarrying
 } from "../src/index.js"
+import type { TestServices } from "effect/TestServices"
+
+// one fresh lock table per test, shared by any forked fibers inside it
+const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks | TestServices>): void => {
+  it.effect(name, () => Effect.provide(self(), StateFileLocksLive))
+}
 
 const voilaUrl = "https://voila.ca/"
 const secretCookieValue = "secret-cookie-value"
@@ -116,7 +125,7 @@ const slowUpdate =
     )
 
 describe("updateSessionFile: creation", () => {
-  it.effect("runs the transform against absence and creates the file owner-only", () =>
+  itLocks("runs the transform against absence and creates the file owner-only", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -132,7 +141,7 @@ describe("updateSessionFile: creation", () => {
     })
   )
 
-  it.effect("creates the session file's directory on a first run", () =>
+  itLocks("creates the session file's directory on a first run", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(path.join(dir, "config", "voila"))
@@ -145,7 +154,7 @@ describe("updateSessionFile: creation", () => {
     })
   )
 
-  it.effect("drops the update when another caller created the file first", () =>
+  itLocks("drops the update when another caller created the file first", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -167,7 +176,7 @@ describe("updateSessionFile: creation", () => {
     })
   )
 
-  it.effect("leaves a missing file missing when the transform keeps it", () =>
+  itLocks("leaves a missing file missing when the transform keeps it", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -181,7 +190,7 @@ describe("updateSessionFile: creation", () => {
 })
 
 describe("updateSessionFile: update", () => {
-  it.effect("hands the transform the snapshot currently on disk", () =>
+  itLocks("hands the transform the snapshot currently on disk", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -197,7 +206,7 @@ describe("updateSessionFile: update", () => {
     })
   )
 
-  it.effect("leaves an existing file untouched when the transform keeps it", () =>
+  itLocks("leaves an existing file untouched when the transform keeps it", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -211,7 +220,7 @@ describe("updateSessionFile: update", () => {
     })
   )
 
-  it.effect("drops the update and reports the snapshot that won", () =>
+  itLocks("drops the update and reports the snapshot that won", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -235,7 +244,7 @@ describe("updateSessionFile: update", () => {
     })
   )
 
-  it.effect("reports a dropped update without a snapshot when the winner removed the file", () =>
+  itLocks("reports a dropped update without a snapshot when the winner removed the file", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -253,7 +262,7 @@ describe("updateSessionFile: update", () => {
     })
   )
 
-  it.effect("lets two independent callers over one file both land", () =>
+  itLocks("lets two independent callers over one file both land", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -276,7 +285,7 @@ describe("updateSessionFile: update", () => {
 })
 
 describe("updateSessionFile: transform effects", () => {
-  it.effect("surfaces the transform's own typed failure unchanged and leaves the file alone", () =>
+  itLocks("surfaces the transform's own typed failure unchanged and leaves the file alone", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -290,7 +299,7 @@ describe("updateSessionFile: transform effects", () => {
     })
   )
 
-  it.effect("covers I/O performed inside the transform with the conflict check", () =>
+  itLocks("covers I/O performed inside the transform with the conflict check", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -324,7 +333,7 @@ describe("updateSessionFile: transform effects", () => {
 })
 
 describe("updateSessionFile: guest downgrade", () => {
-  it.effect("refuses to replace an authenticated snapshot with a guest one", () =>
+  itLocks("refuses to replace an authenticated snapshot with a guest one", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -340,7 +349,7 @@ describe("updateSessionFile: guest downgrade", () => {
     })
   )
 
-  it.effect("allows a guest snapshot to replace a guest one", () =>
+  itLocks("allows a guest snapshot to replace a guest one", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -354,7 +363,7 @@ describe("updateSessionFile: guest downgrade", () => {
     })
   )
 
-  it.effect("allows an authenticated snapshot to replace a guest one", () =>
+  itLocks("allows an authenticated snapshot to replace a guest one", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -368,7 +377,7 @@ describe("updateSessionFile: guest downgrade", () => {
     })
   )
 
-  it.effect("allows a guest snapshot when the file does not exist yet", () =>
+  itLocks("allows a guest snapshot when the file does not exist yet", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -383,7 +392,7 @@ describe("updateSessionFile: guest downgrade", () => {
 })
 
 describe("updateSessionFile: failures", () => {
-  it.effect("fails with SessionFileContentsInvalid when the stored snapshot is corrupt", () =>
+  itLocks("fails with SessionFileContentsInvalid when the stored snapshot is corrupt", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -399,7 +408,7 @@ describe("updateSessionFile: failures", () => {
     })
   )
 
-  it.effect("fails with SessionFileContentsInvalid when the stored JSON is not a session snapshot", () =>
+  itLocks("fails with SessionFileContentsInvalid when the stored JSON is not a session snapshot", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -413,7 +422,7 @@ describe("updateSessionFile: failures", () => {
     })
   )
 
-  it.effect("fails with SessionFileReadFailure when the path cannot be read", () =>
+  itLocks("fails with SessionFileReadFailure when the path cannot be read", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
 
@@ -426,7 +435,7 @@ describe("updateSessionFile: failures", () => {
     })
   )
 
-  it.effect("fails with SessionFileWriteFailure when the durable write cannot complete", () =>
+  itLocks("fails with SessionFileWriteFailure when the durable write cannot complete", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       // a 255-byte basename: the sibling tmp name exceeds the filesystem's
@@ -443,6 +452,61 @@ describe("updateSessionFile: failures", () => {
       expect(error.message).not.toContain(secretCookieValue)
       expect(error.message).not.toContain(secretCsrfToken)
       expect(yield* readRaw(file)).toBe(encodeSnapshot(onDisk))
+    })
+  )
+})
+
+describe("updateSessionFileCarrying", () => {
+  itLocks("carries the update's value through every outcome variant", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = sessionFile(dir)
+
+      const kept = yield* updateSessionFileCarrying(file, (current) =>
+        Effect.succeed({ carried: current === undefined ? "saw absence" : "saw a file", update: keepSessionFile })
+      )
+
+      expect(kept).toEqual({ _tag: "unchanged", carried: "saw absence" })
+      expect(yield* fileExists(file)).toBe(false)
+
+      const saved = yield* updateSessionFileCarrying(file, () =>
+        Effect.succeed({ carried: "login finished", update: persistSession(authenticatedSnapshot("login")) })
+      )
+
+      expect(saved._tag).toBe("saved")
+      expect(saved._tag === "saved" ? [saved.carried, saved.session.kind] : []).toEqual([
+        "login finished",
+        "authenticated"
+      ])
+    })
+  )
+
+  itLocks("carries the update's value through a dropped conflict", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = sessionFile(dir)
+      yield* writeSnapshot(file, guestSnapshot("on-disk"))
+
+      const entered = yield* Deferred.make<void>()
+      const fiber = yield* Effect.fork(
+        updateSessionFileCarrying(file, () =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.as({ carried: "operation result", update: persistSession(guestSnapshot("stale")) })
+          )
+        )
+      )
+
+      yield* Deferred.await(entered)
+      const winner = authenticatedSnapshot("winner")
+      yield* writeSnapshot(file, winner)
+      yield* TestClock.adjust("2 seconds")
+
+      const outcome = yield* Fiber.join(fiber)
+
+      expect(outcome._tag).toBe("dropped-conflict")
+      expect(outcome.carried).toBe("operation result")
+      expect(outcome._tag === "dropped-conflict" ? outcome.session : undefined).toEqual(winner)
     })
   )
 })

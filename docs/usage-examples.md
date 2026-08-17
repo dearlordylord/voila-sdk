@@ -147,43 +147,19 @@ if (Either.isLeft(login)) {
 
 See [browser-login.md](./browser-login.md) for a Playwright-shaped adapter outline. The SDK never accepts a password.
 
-## Session Save/Load
+## Session Load
+
+Storage in the SDK is read-only. Capture a session with `npx -y @firfi/voila-cli auth login --session <absolute path>`.
 
 ```ts
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { Either } from "effect"
-import {
-  bootstrapGuestSession,
-  loadSdkSessionSnapshot,
-  makeGuestSdkSessionSnapshot,
-  saveSdkSessionSnapshot,
-  type SessionStoragePort
-} from "@firfi/voila-sdk"
-import { fetchTransport } from "./transport.js"
+import { loadSdkSessionSnapshot, type SessionStoragePort } from "@firfi/voila-sdk"
 
 const sessionFile = "/absolute/path/outside/repository/voila-sdk-session.json"
 
 const storage: SessionStoragePort = {
-  read: async () => readFile(sessionFile, "utf8"),
-  write: async (contents) => writeFile(sessionFile, contents, { mode: 0o600 })
-}
-
-const bootstrap = await bootstrapGuestSession(fetchTransport)
-
-if (Either.isLeft(bootstrap)) {
-  throw new Error(bootstrap.left._tag)
-}
-
-const guestSnapshot = makeGuestSdkSessionSnapshot(bootstrap.right.session)
-
-if (Either.isLeft(guestSnapshot)) {
-  throw new Error(guestSnapshot.left._tag)
-}
-
-const saved = await saveSdkSessionSnapshot(storage, guestSnapshot.right)
-
-if (Either.isLeft(saved)) {
-  throw new Error(saved.left._tag)
+  read: async () => readFile(sessionFile, "utf8")
 }
 
 const loaded = await loadSdkSessionSnapshot(storage)
@@ -193,7 +169,7 @@ if (Either.isLeft(loaded)) {
 }
 ```
 
-The session file is sensitive. Keep it outside the repository or under an ignored local-only directory.
+The stored snapshot is sensitive. Keep it outside the repository or under an ignored local-only directory.
 
 ## Authenticated Cart Read
 

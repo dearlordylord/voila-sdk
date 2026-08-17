@@ -18,7 +18,7 @@ import { runVoilaOperation } from "@firfi/voila-mcp"
 
 ## Stable Library Operations
 
-- Session bootstrap and storage: `bootstrapGuestSession`, `makeGuestSdkSessionSnapshot`, `makeAuthenticatedSdkSessionSnapshot`, `saveSdkSessionSnapshot`, `loadSdkSessionSnapshot`.
+- Session bootstrap and storage: `bootstrapGuestSession`, `makeGuestSdkSessionSnapshot`, `makeAuthenticatedSdkSessionSnapshot`, `loadSdkSessionSnapshot`. Storage is read-only; writes go through `@firfi/voila-session-store`.
 - Auth: `loginWithBrowser`, `createInteractiveBrowserLoginPort`, browser-login port types.
 - Session health: `checkSessionHealth`.
 - Catalog: `searchProducts`, `getCategoryProducts`, `getInitialStateCategories`, `normalizeCategoryTree`.

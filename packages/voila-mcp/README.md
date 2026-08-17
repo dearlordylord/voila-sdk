@@ -10,8 +10,7 @@ Voila MCP server for safe personal grocery search, cart, slots, and order-histor
 
 The server reads configuration from environment variables:
 
-- `VOILA_AUTH_SESSION_PATH`: path to an SDK session snapshot JSON file.
-- `VOILA_SESSION_WRITE_PATH`: optional path for updated session snapshots. Defaults to `VOILA_AUTH_SESSION_PATH`.
+- `VOILA_AUTH_SESSION_PATH`: absolute path to an SDK session snapshot JSON file, read and written as one path.
 - `VOILA_GUEST=1`: force guest-session behavior.
 - `VOILA_USER_AGENT`: optional browser identity override. The built-in default works for most users.
 - `MCP_TRANSPORT`: `stdio` by default, or `http`.
@@ -19,7 +18,9 @@ The server reads configuration from environment variables:
 - `MCP_HTTP_PORT` / `PORT`: HTTP port. Defaults to `3000`.
 - `MCP_HTTP_PATH`: HTTP MCP path. Defaults to `/mcp`.
 
-If a tool runs with a guest, expired, missing, or unreadable account session, the tool result includes `authGuidance` with the CLI command to run. The MCP server does not launch a browser; run the command, log in in Chromium, close the browser window to save, then retry the MCP request.
+If a tool runs with a guest, expired, missing, or unreadable account session, the tool result includes `authGuidance` with the CLI command to run. The MCP server does not launch a browser; run the command, log in in Chromium, close the browser window to save, then retry the MCP request. A login that lands while the server is running takes effect on the next tool call, without a restart.
+
+Guest sessions are held in memory and never written to the session file.
 
 ## Client Example
 

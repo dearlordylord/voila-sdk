@@ -18,7 +18,14 @@ export {
   retryPolicy,
   type WriteDecision
 } from "./cas-file-store.js"
-export { modifySchema } from "./schema.js"
+export { modifySchema, modifySchemaCarrying, type CarriedModifyOutcome, type SchemaCycleStep } from "./schema.js"
+export {
+  makeStateFileLocks,
+  StateFileLocks,
+  type StateFileLocksService,
+  StateFileLocksLive,
+  stateFileLocksLayer
+} from "./state-file-locks.js"
 export {
   type CasFileStorePathInvalid,
   parseStateFilePath,

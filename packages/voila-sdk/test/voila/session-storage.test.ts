@@ -6,7 +6,6 @@ import {
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   makeSessionSnapshot,
-  saveSdkSessionSnapshot,
   serializeCookieJar,
   type SessionStoragePort,
   toughCookieJarPort
@@ -66,47 +65,20 @@ const makeAuthenticatedSnapshot = () => {
   return snapshot.right
 }
 
-const makeMemoryStorage = (
-  initialContents: unknown = ""
-): { readonly readContents: () => unknown; readonly storage: SessionStoragePort } => {
-  let contents = initialContents
+const makeMemoryStorage = (contents: unknown = ""): SessionStoragePort => ({ read: async () => contents })
 
-  return {
-    readContents: () => contents,
-    storage: {
-      read: async () => contents,
-      write: async (nextContents) => {
-        contents = nextContents
-      }
-    }
-  }
-}
+const storedSnapshot = (snapshot: unknown): SessionStoragePort => makeMemoryStorage(JSON.stringify(snapshot))
 
 const throwingReadStorage: SessionStoragePort = {
   read: async () => {
-    throw new Error(secretStorageFailure)
-  },
-  write: async () => undefined
-}
-
-const throwingWriteStorage: SessionStoragePort = {
-  read: async () => "",
-  write: async () => {
     throw new Error(secretStorageFailure)
   }
 }
 
 describe("session storage", () => {
-  it("round-trips guest SDK session snapshots through caller-provided storage", async () => {
-    const memory = makeMemoryStorage()
+  it("reads back a stored guest SDK session snapshot", async () => {
     const snapshot = makeGuestSnapshot()
-
-    const saved = await saveSdkSessionSnapshot(memory.storage, snapshot)
-
-    expect(Either.isRight(saved)).toBe(true)
-    expect(typeof memory.readContents()).toBe("string")
-
-    const loaded = await loadSdkSessionSnapshot(memory.storage)
+    const loaded = await loadSdkSessionSnapshot(storedSnapshot(snapshot))
 
     expect(Either.isRight(loaded)).toBe(true)
 
@@ -115,47 +87,14 @@ describe("session storage", () => {
     }
   })
 
-  it("round-trips authenticated SDK session snapshots through caller-provided storage", async () => {
-    const memory = makeMemoryStorage()
+  it("reads back a stored authenticated SDK session snapshot", async () => {
     const snapshot = makeAuthenticatedSnapshot()
+    const loaded = await loadSdkSessionSnapshot(storedSnapshot(snapshot))
 
-    const saved = await saveSdkSessionSnapshot(memory.storage, snapshot)
-    const loaded = await loadSdkSessionSnapshot(memory.storage)
-
-    expect(Either.isRight(saved)).toBe(true)
     expect(Either.isRight(loaded)).toBe(true)
 
     if (Either.isRight(loaded)) {
       expect(loaded.right).toEqual(snapshot)
-    }
-  })
-
-  it("rejects invalid snapshots before writing", async () => {
-    const memory = makeMemoryStorage("unchanged")
-    const result = await saveSdkSessionSnapshot(memory.storage, {
-      kind: "authenticated",
-      session: { csrf: { token: secretCsrfToken } }
-    })
-
-    expect(Either.isLeft(result)).toBe(true)
-    expect(memory.readContents()).toBe("unchanged")
-
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SessionStorageSnapshotInvalid")
-      expect(JSON.stringify(result.left)).not.toContain(secretCsrfToken)
-    }
-  })
-
-  it("returns redacted typed write failures", async () => {
-    const result = await saveSdkSessionSnapshot(throwingWriteStorage, makeGuestSnapshot())
-
-    expect(Either.isLeft(result)).toBe(true)
-
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SessionStorageWriteFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretStorageFailure)
-      expect(JSON.stringify(result.left)).not.toContain(secretCookieValue)
-      expect(JSON.stringify(result.left)).not.toContain(secretCsrfToken)
     }
   })
 
@@ -182,8 +121,7 @@ describe("session storage", () => {
       name: "stale session JSON"
     }
   ])("returns redacted typed failures for $name", async ({ contents }) => {
-    const memory = makeMemoryStorage(contents)
-    const result = await loadSdkSessionSnapshot(memory.storage)
+    const result = await loadSdkSessionSnapshot(makeMemoryStorage(contents))
 
     expect(Either.isLeft(result)).toBe(true)
 

@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import type { Server } from "node:http"
 import { afterEach, describe, expect, it } from "vitest"
 
@@ -9,9 +9,8 @@ const mcpProtocolVersion = "2025-11-25"
 
 const inertEnvironment: OperationEnvironment = {
   session: {
-    load: async () =>
-      Either.left({ _tag: "VoilaTestSessionUnavailable", message: "Session is unavailable in this protocol test" }),
-    save: async () => Either.right(undefined)
+    withSession: () =>
+      Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: "Session is unavailable in this protocol test" })
   },
   transport: { request: async () => Either.left("Network is unavailable in this protocol test") }
 }
