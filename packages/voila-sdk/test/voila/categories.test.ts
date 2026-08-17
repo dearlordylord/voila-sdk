@@ -3,8 +3,12 @@ import { readFileSync } from "node:fs"
 import { Either, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
-import { NormalizedCategoryTreeSchema, RawCategoryStoreSchema } from "../../src/domain/schemas/index.js"
-import { getInitialStateCategories, normalizeCategoryStore } from "../../src/voila/categories.js"
+import {
+  NormalizedCategoryTreeSchema,
+  RawCategoryStoreSchema,
+  RawCategoryTreeSchema
+} from "../../src/domain/schemas/index.js"
+import { getInitialStateCategories, normalizeCategoryStore, normalizeCategoryTree } from "../../src/voila/categories.js"
 import { extractInitialState, extractInitialStatePayload } from "../../src/voila/initial-state.js"
 import { assertDecodeFailure, assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
@@ -30,6 +34,13 @@ const storeOf = (entries: ReadonlyArray<TestCategoryEntry>, root: ReadonlyArray<
   categories: Object.fromEntries(entries.map((entry) => [entry.id, entry])),
   root
 })
+
+const validNestedCategory = {
+  categoryId: "category-id",
+  name: "Pantry",
+  retailerCategoryId: "retailer-category-id",
+  urlPath: "pantry"
+}
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null
@@ -200,6 +211,117 @@ describe("category tree normalization", () => {
 
     if (Either.isLeft(normalizedResult)) {
       expect(String(normalizedResult.left)).toContain("Category ID and retailer category ID must be distinct")
+    }
+  })
+
+  it("resolves the nested shape a page may serve instead of a store", () => {
+    const payload = extractInitialStatePayload(fixtureHtml)
+
+    if (Either.isLeft(payload) || !isRecord(payload.right) || !isRecord(payload.right.data)) {
+      throw new Error("Expected the fixture to carry an initial state")
+    }
+
+    const nested = {
+      ...payload.right,
+      data: { ...payload.right.data, categories: [{ ...validNestedCategory, categories: [] }] }
+    }
+    const initialState = extractInitialState(`<script>window.__INITIAL_STATE__ = ${JSON.stringify(nested)};</script>`)
+
+    expect(Either.isRight(initialState)).toBe(true)
+
+    if (Either.isRight(initialState)) {
+      expect(getInitialStateCategories(initialState.right)).toEqual([
+        {
+          categoryId: "category-id",
+          children: [],
+          fullUrlPath: "/pantry",
+          name: "Pantry",
+          retailerCategoryId: "retailer-category-id"
+        }
+      ])
+    }
+  })
+
+  it("normalizes nested root URL paths without duplicate slashes", () => {
+    expect(normalizeCategoryTree([{ ...validNestedCategory, urlPath: "pantry/" }])[0]?.fullUrlPath).toBe("/pantry")
+  })
+
+  it("preserves already-rooted nested child URL paths", () => {
+    const categories = normalizeCategoryTree([
+      {
+        ...validNestedCategory,
+        categories: [
+          {
+            categoryId: "child-category-id",
+            name: "Canned Goods",
+            retailerCategoryId: "child-retailer-category-id",
+            urlPath: "/pantry/canned-goods"
+          }
+        ]
+      }
+    ])
+
+    expect(categories[0]?.children[0]?.fullUrlPath).toBe("/pantry/canned-goods")
+  })
+
+  it("extends a nested root path onto its children exactly once", () => {
+    const categories = normalizeCategoryTree([
+      {
+        ...validNestedCategory,
+        categories: [
+          {
+            categoryId: "child-category-id",
+            name: "Fresh Fruit",
+            retailerCategoryId: "child-retailer-category-id",
+            urlPath: "fresh-fruit"
+          }
+        ],
+        urlPath: "/"
+      }
+    ])
+
+    expect(categories[0]?.fullUrlPath).toBe("/")
+    expect(categories[0]?.children[0]?.fullUrlPath).toBe("/fresh-fruit")
+  })
+
+  it("decodes a nested category with its children and explains a collision", () => {
+    const nested = [
+      {
+        ...validNestedCategory,
+        categories: [
+          {
+            categoryId: "child-category-id",
+            name: "Canned Goods",
+            retailerCategoryId: "child-retailer-category-id",
+            urlPath: "canned-goods"
+          }
+        ]
+      }
+    ]
+
+    expect(assertDecodeSuccess(RawCategoryTreeSchema, nested)).toEqual(nested)
+
+    const collision = Schema.decodeUnknownEither(RawCategoryTreeSchema)([
+      { ...validNestedCategory, retailerCategoryId: validNestedCategory.categoryId }
+    ])
+
+    expect(Either.isLeft(collision)).toBe(true)
+
+    if (Either.isLeft(collision)) {
+      expect(String(collision.left)).toContain("Category ID and retailer category ID must be distinct")
+    }
+  })
+
+  it("rejects malformed nested categories at the schema boundary", () => {
+    for (const category of [
+      { ...validNestedCategory, categoryId: "" },
+      { ...validNestedCategory, categoryId: " category-id" },
+      { ...validNestedCategory, name: "" },
+      { ...validNestedCategory, retailerCategoryId: "" },
+      { ...validNestedCategory, urlPath: "" },
+      { ...validNestedCategory, retailerCategoryId: validNestedCategory.categoryId }
+    ]) {
+      assertDecodeFailure(RawCategoryTreeSchema, [category])
     }
   })
 })

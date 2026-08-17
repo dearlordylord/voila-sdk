@@ -2,6 +2,8 @@ import type {
   InitialState,
   NormalizedCategory,
   NormalizedCategoryTree,
+  RawCategories,
+  RawCategory,
   RawCategoryEntry,
   RawCategoryStore
 } from "../domain/schemas/index.js"
@@ -10,12 +12,37 @@ const slash = "/"
 
 const trimSlashes = (path: string): string => path.replace(/^\/+|\/+$/g, "")
 
-const makeFullUrlPath = (fullUrlPath: string): string => `${slash}${trimSlashes(fullUrlPath)}`
+const makeNestedFullUrlPath = (parentPath: string | undefined, urlPath: string): string => {
+  const normalizedPath = trimSlashes(urlPath)
+
+  if (parentPath === undefined || urlPath.startsWith(slash)) {
+    return `${slash}${normalizedPath}`
+  }
+
+  return `${slash}${[trimSlashes(parentPath), normalizedPath].filter(Boolean).join(slash)}`
+}
+
+const normalizeCategory = (category: RawCategory, parentPath: string | undefined): NormalizedCategory => {
+  const fullUrlPath = makeNestedFullUrlPath(parentPath, category.urlPath)
+
+  return {
+    categoryId: category.categoryId,
+    children: (category.categories ?? []).map((child) => normalizeCategory(child, fullUrlPath)),
+    fullUrlPath,
+    name: category.name,
+    retailerCategoryId: category.retailerCategoryId
+  }
+}
+
+/** Resolves the nested shape, where a child's path extends its parent's. */
+export const normalizeCategoryTree = (categories: ReadonlyArray<RawCategory>): NormalizedCategoryTree =>
+  categories.map((category) => normalizeCategory(category, undefined))
 
 /**
- * Resolves one entry and its children. `visited` stops a store whose children
- * point back up the tree from recursing forever: the page is not a source the
- * SDK controls, and a cycle there must cost one skipped branch, not the process.
+ * Resolves one store entry and its children. `visited` stops a store whose
+ * children point back up the tree from recursing forever: the page is not a
+ * source the SDK controls, and a cycle there must cost one skipped branch, not
+ * the process.
  */
 const normalizeEntry = (
   store: RawCategoryStore,
@@ -27,7 +54,7 @@ const normalizeEntry = (
   return {
     categoryId: entry.id,
     children: normalizeIds(store, entry.children, seen),
-    fullUrlPath: makeFullUrlPath(entry.fullURLPath),
+    fullUrlPath: `${slash}${trimSlashes(entry.fullURLPath)}`,
     name: entry.name,
     retailerCategoryId: entry.retailerId
   }
@@ -45,8 +72,16 @@ const normalizeIds = (
     return entry === undefined || visited.has(id) ? [] : [normalizeEntry(store, entry, visited)]
   })
 
+/** Resolves the store shape, where entries are keyed by ID and children name IDs. */
 export const normalizeCategoryStore = (store: RawCategoryStore): NormalizedCategoryTree =>
   normalizeIds(store, store.root, new Set())
 
+/**
+ * Resolves whichever shape the page served. A caller wants the category tree,
+ * not the news that Voila serves two of them.
+ */
+export const normalizeRawCategories = (categories: RawCategories): NormalizedCategoryTree =>
+  "root" in categories ? normalizeCategoryStore(categories) : normalizeCategoryTree(categories)
+
 export const getInitialStateCategories = (initialState: InitialState): NormalizedCategoryTree =>
-  initialState.data.categories === undefined ? [] : normalizeCategoryStore(initialState.data.categories)
+  initialState.data.categories === undefined ? [] : normalizeRawCategories(initialState.data.categories)

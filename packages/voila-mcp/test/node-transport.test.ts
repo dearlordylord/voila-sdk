@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientError, HttpClientResponse } from "@effect/platform"
 import { VoilaTransport, type VoilaTransportRequest, type VoilaTransportResponse } from "@firfi/voila-sdk"
 import { it } from "@effect/vitest"
-import { Effect, Fiber, Layer, TestClock } from "effect"
+import { Deferred, Effect, Fiber, Layer, TestClock } from "effect"
 import topDesktopUserAgents from "top-user-agents/desktop"
 import { describe, expect } from "vitest"
 
@@ -52,10 +52,9 @@ const failingClient = (): Layer.Layer<HttpClient.HttpClient> =>
  * canceler is the point of the test: a deadline that only abandons the waiting
  * fiber leaves the socket open, and the held session-file lock with it.
  */
-const hangingClient = (): {
-  readonly cancellations: ReadonlyArray<boolean>
-  readonly layer: Layer.Layer<HttpClient.HttpClient>
-} => {
+const hangingClient = (
+  started: Deferred.Deferred<void>
+): { readonly cancellations: ReadonlyArray<boolean>; readonly layer: Layer.Layer<HttpClient.HttpClient> } => {
   const cancellations: Array<boolean> = []
 
   return {
@@ -63,11 +62,15 @@ const hangingClient = (): {
     layer: Layer.succeed(
       HttpClient.HttpClient,
       HttpClient.make(() =>
-        Effect.async(() =>
-          Effect.sync(() => {
+        Effect.async(() => {
+          // the deadline starts when the request does, so a test waits for this
+          // rather than for the clock to be advanced at a hopeful moment
+          Deferred.unsafeDone(started, Effect.void)
+
+          return Effect.sync(() => {
             cancellations.push(true)
           })
-        )
+        })
       )
     )
   }
@@ -78,12 +81,22 @@ const hangingClient = (): {
  * read too: a response that stalls after its headers holds the session-file
  * lock exactly as long as one that never answers.
  */
-const stallingBodyClient = (): Layer.Layer<HttpClient.HttpClient> =>
+const stallingBodyClient = (started: Deferred.Deferred<void>): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
       Effect.succeed(
-        HttpClientResponse.fromWeb(request, new Response(new ReadableStream({ start: () => {} }), { status: 200 }))
+        HttpClientResponse.fromWeb(
+          request,
+          new Response(
+            new ReadableStream({
+              start: () => {
+                Deferred.unsafeDone(started, Effect.void)
+              }
+            }),
+            { status: 200 }
+          )
+        )
       )
     )
   )
@@ -149,8 +162,10 @@ describe("Effect-native Voila transport", () => {
 
   it.effect("abandons a response whose body stalls after its headers arrive", () =>
     Effect.gen(function* () {
-      const pending = yield* Effect.fork(Effect.flip(runTransport(stallingBodyClient(), undefined, 500)))
+      const started = yield* Deferred.make<void>()
+      const pending = yield* Effect.fork(Effect.flip(runTransport(stallingBodyClient(started), undefined, 500)))
 
+      yield* Deferred.await(started)
       yield* TestClock.adjust("1 second")
 
       expect((yield* Fiber.join(pending))._tag).toBe("VoilaRequestDeadlineExceeded")
@@ -178,9 +193,11 @@ describe("Effect-native Voila transport", () => {
 
   it.effect("abandons a request at its deadline and cancels the underlying request", () =>
     Effect.gen(function* () {
-      const client = hangingClient()
+      const started = yield* Deferred.make<void>()
+      const client = hangingClient(started)
       const pending = yield* Effect.fork(Effect.flip(runTransport(client.layer, undefined, 500)))
 
+      yield* Deferred.await(started)
       yield* TestClock.adjust("1 second")
 
       const failure = yield* Fiber.join(pending)
@@ -193,9 +210,11 @@ describe("Effect-native Voila transport", () => {
 
   it.effect("does not abandon a request before its deadline", () =>
     Effect.gen(function* () {
-      const client = hangingClient()
+      const started = yield* Deferred.make<void>()
+      const client = hangingClient(started)
       const pending = yield* Effect.fork(runTransport(client.layer, undefined, defaultRequestTimeoutMs))
 
+      yield* Deferred.await(started)
       yield* TestClock.adjust(`${defaultRequestTimeoutMs - 1} millis`)
 
       expect(client.cancellations).toEqual([])

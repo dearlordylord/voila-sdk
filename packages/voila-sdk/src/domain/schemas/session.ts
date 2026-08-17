@@ -2,8 +2,8 @@ import { Schema } from "effect"
 
 import { CartUpdateResultSchema } from "./cart.js"
 import type { CartUpdateResult } from "./cart.js"
-import { RawCategoryStoreSchema } from "./category.js"
-import type { RawCategoryStore } from "./category.js"
+import { RawCategoriesSchema } from "./category.js"
+import type { RawCategories } from "./category.js"
 
 const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
 
@@ -246,14 +246,14 @@ interface InitialStateBasket extends CartUpdateResult {
 // The CSRF token and the page metadata both live under `session`: they are what
 // the server-rendered page says about the session it just handed out.
 interface InitialStateShape {
-  readonly data: { readonly basket: InitialStateBasket; readonly categories?: RawCategoryStore }
+  readonly data: { readonly basket: InitialStateBasket; readonly categories?: RawCategories }
   readonly session: { readonly csrf: CsrfState; readonly metadata: SessionMetadata }
 }
 
 export const InitialStateSchema: Schema.Schema<InitialStateShape> = Schema.Struct({
   data: Schema.Struct({
     basket: Schema.extend(CartUpdateResultSchema, Schema.Struct({ basketId: Schema.String, regionId: Schema.String })),
-    categories: Schema.optionalWith(RawCategoryStoreSchema, { exact: true })
+    categories: Schema.optionalWith(RawCategoriesSchema, { exact: true })
   }),
   session: Schema.Struct({ csrf: CsrfStateSchema, metadata: SessionMetadataSchema })
 })

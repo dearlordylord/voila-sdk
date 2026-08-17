@@ -11,7 +11,7 @@ import {
 } from "@firfi/voila-sdk"
 import { HttpClient } from "@effect/platform"
 import { it as effectIt } from "@effect/vitest"
-import { Effect, Fiber, Layer, Schema, TestClock, Either } from "effect"
+import { Deferred, Effect, Either, Fiber, Layer, Schema, TestClock } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -123,17 +123,26 @@ const observe =
  * the real transport's Effect deadline, this is what tells the abandonment
  * test apart from a test that only proves a fiber stopped waiting.
  */
-const hangingRequestLayer = (cancellations: Array<boolean>, timeoutMs: number): Layer.Layer<VoilaTransport> =>
+const hangingRequestLayer = (
+  cancellations: Array<boolean>,
+  started: Deferred.Deferred<void>,
+  timeoutMs: number
+): Layer.Layer<VoilaTransport> =>
   Layer.provide(
     voilaTransportLayer(undefined, timeoutMs),
     Layer.succeed(
       HttpClient.HttpClient,
       HttpClient.make(() =>
-        Effect.async(() =>
-          Effect.sync(() => {
+        Effect.async(() => {
+          // the deadline is only running once the request is in flight, so the
+          // test waits for this rather than for a number of milliseconds it
+          // hopes are enough to get through the session file read
+          Deferred.unsafeDone(started, Effect.void)
+
+          return Effect.sync(() => {
             cancellations.push(true)
           })
-        )
+        })
       )
     )
   )
@@ -202,10 +211,12 @@ describe("MCP session port", () => {
 
       const cancellations: Array<boolean> = []
       const timeoutMs = 5_000
-      const env = environmentFor(file, hangingRequestLayer(cancellations, timeoutMs))
+      const started = yield* Deferred.make<void>()
+      const env = environmentFor(file, hangingRequestLayer(cancellations, started, timeoutMs))
       const seen: Array<string> = []
       const pending = yield* Effect.fork(Effect.either(Effect.provide(env.session.withSession(request), env.transport)))
 
+      yield* Deferred.await(started)
       yield* TestClock.adjust(`${timeoutMs + 1} millis`)
 
       const timedOut = yield* Fiber.join(pending)

@@ -12,10 +12,45 @@ const distinctCategoryIdentifiers = (category: {
 }): boolean => category.categoryId !== category.retailerCategoryId
 
 /**
- * The page publishes its categories as a normalized store: entries keyed by
- * category ID, children named by ID, and the top level listed in `root`. Each
- * entry already carries its full path, so the tree is a lookup rather than a
- * concatenation.
+ * Voila publishes its homepage categories in two shapes, and which one a
+ * session is served is not something the SDK can predict: the older nested
+ * shape may still reach an A/B bucket or a region, or may already be
+ * deprecated mid-rollout — from here those look the same. Both are decoded,
+ * and both resolve to the same normalized tree.
+ *
+ * The nested shape spells the tree out inline, each category carrying a path
+ * segment its children extend.
+ */
+interface RawCategoryShape {
+  readonly categories?: ReadonlyArray<RawCategory>
+  readonly categoryId: string
+  readonly name: string
+  readonly retailerCategoryId: string
+  readonly urlPath: string
+}
+
+export const RawCategorySchema: Schema.Schema<RawCategoryShape> = Schema.Struct({
+  categories: Schema.optionalWith(Schema.Array(Schema.suspend((): Schema.Schema<RawCategory> => RawCategorySchema)), {
+    exact: true
+  }),
+  categoryId: NonEmptyTrimmedStringSchema,
+  name: NonEmptyTrimmedStringSchema,
+  retailerCategoryId: NonEmptyTrimmedStringSchema,
+  urlPath: NonEmptyTrimmedStringSchema
+}).pipe(
+  Schema.filter(distinctCategoryIdentifiers, { message: () => "Category ID and retailer category ID must be distinct" })
+)
+
+export const RawCategoryTreeSchema = Schema.Array(RawCategorySchema)
+
+export type RawCategory = Schema.Schema.Type<typeof RawCategorySchema>
+
+export type RawCategoryTree = Schema.Schema.Type<typeof RawCategoryTreeSchema>
+
+/**
+ * The store shape keys entries by category ID, names children by ID, and lists
+ * the top level in `root`. Each entry already carries its full path, so the
+ * tree is a lookup rather than a concatenation.
  */
 export const RawCategoryEntrySchema = Schema.Struct({
   children: Schema.Array(NonEmptyTrimmedStringSchema),
@@ -37,6 +72,10 @@ export const RawCategoryStoreSchema = Schema.Struct({
 export type RawCategoryEntry = Schema.Schema.Type<typeof RawCategoryEntrySchema>
 
 export type RawCategoryStore = Schema.Schema.Type<typeof RawCategoryStoreSchema>
+
+export const RawCategoriesSchema = Schema.Union(RawCategoryStoreSchema, RawCategoryTreeSchema)
+
+export type RawCategories = Schema.Schema.Type<typeof RawCategoriesSchema>
 
 interface NormalizedCategoryShape {
   readonly categoryId: string
