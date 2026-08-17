@@ -175,10 +175,23 @@ export type NodeFetchPort = (input: URL, init: RequestInit) => Promise<Response>
  */
 export const defaultRequestTimeoutMs = 30_000
 
+/**
+ * What decides that a request has gone on long enough. A port rather than a
+ * bare duration: the deadline is a platform timer that no clock service can
+ * drive, so a test that wants to observe the abandonment says when to abandon
+ * instead of waiting for wall-clock time to pass.
+ */
+export type RequestDeadlinePort = () => AbortSignal
+
+export const timeoutDeadline =
+  (timeoutMs: number = defaultRequestTimeoutMs): RequestDeadlinePort =>
+  () =>
+    AbortSignal.timeout(timeoutMs)
+
 export const makeFetchVoilaTransport = (
   configuredUserAgent?: string,
   fetchPort: NodeFetchPort = fetch,
-  requestTimeoutMs: number = defaultRequestTimeoutMs
+  deadline: RequestDeadlinePort = timeoutDeadline()
 ): VoilaTransport => ({
   request: async (request: VoilaTransportRequest) => {
     const hasRequestUserAgent = Object.keys(request.headers).some((name) => name.toLowerCase() === "user-agent")
@@ -187,14 +200,14 @@ export const makeFetchVoilaTransport = (
       : { ...request.headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent() }
 
     try {
-      // the body is read under the same timeout and the same handling: a
+      // the body is read under the same deadline and the same handling: a
       // response whose headers arrive and whose body then stalls is the same
       // held lock as one that never answers at all
       const response = await fetchPort(request.url, {
         ...(request.body === undefined ? {} : { body: request.body }),
         headers,
         method: request.method,
-        signal: AbortSignal.timeout(requestTimeoutMs)
+        signal: deadline()
       })
 
       return Either.right({

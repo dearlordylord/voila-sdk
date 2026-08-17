@@ -15,7 +15,12 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { describe, expect, it } from "vitest"
 
-import { makeFetchVoilaTransport, makeNodeOperationEnvironment, type NodeFetchPort } from "../src/node-env.js"
+import {
+  makeFetchVoilaTransport,
+  makeNodeOperationEnvironment,
+  type NodeFetchPort,
+  type RequestDeadlinePort
+} from "../src/node-env.js"
 import type { OperationEnvironment, SessionOperation } from "../src/operations.js"
 
 const voilaUrl = "https://voila.ca/"
@@ -114,13 +119,26 @@ const observe =
       return { value: undefined }
     })
 
-const shortTimeoutMs = 5
-
-// a server that accepts the connection and then says nothing
+// a server that accepts the connection and then says nothing, abandoned when
+// the test says the deadline is reached rather than after wall-clock time
 const hangingFetch: NodeFetchPort = async (_input, init) =>
   new Promise((_resolve, reject) => {
+    // like `fetch`, a signal already aborted when the request starts rejects
+    // it at once rather than waiting for an abort that has been and gone
+    if (init.signal?.aborted === true) {
+      reject(new Error("aborted"))
+
+      return
+    }
+
     init.signal?.addEventListener("abort", () => reject(new Error("aborted")))
   })
+
+const controlledDeadline = (): { readonly deadline: RequestDeadlinePort; readonly reached: () => void } => {
+  const controller = new AbortController()
+
+  return { deadline: () => controller.signal, reached: () => controller.abort(new Error("deadline reached")) }
+}
 
 // an operation that makes a real request through the environment's transport
 // and fails the cycle when the request does, the way every Voila operation does
@@ -184,14 +202,18 @@ describe("MCP session port", () => {
     expect(await fs.readFile(file, "utf8")).toBe(encode(rotated))
   })
 
-  it("releases the session lock when an operation's request times out", async () => {
+  it("releases the session lock when an operation's request is abandoned", async () => {
     const file = await sessionFile()
     await fs.writeFile(file, encode(authenticated("boot")), { mode: 0o600 })
-    // a transport that never answers, bounded by a timeout the test can wait for
-    const env = environmentFor(file, makeFetchVoilaTransport(undefined, hangingFetch, shortTimeoutMs))
+    // a transport that never answers, abandoned on this test's say-so
+    const { deadline, reached } = controlledDeadline()
+    const env = environmentFor(file, makeFetchVoilaTransport(undefined, hangingFetch, deadline))
     const seen: Array<string> = []
 
-    const timedOut = await Effect.runPromise(Effect.either(env.session.withSession(request(env.transport))))
+    const pending = Effect.runPromise(Effect.either(env.session.withSession(request(env.transport))))
+    reached()
+
+    const timedOut = await pending
 
     expect(Either.isLeft(timedOut)).toBe(true)
     expect(Either.isLeft(timedOut) ? timedOut.left._tag : undefined).toBe("VoilaNetworkFailure")
