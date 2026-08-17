@@ -13,9 +13,6 @@
   ],
   "references": [
     {
-      "path": "../cas-file-store"
-    },
-    {
       "path": "../voila-sdk"
     }
   ]

@@ -2,7 +2,7 @@
   "name": "@firfi/voila-session-store",
   "version": "0.0.0",
   "private": true,
-  "description": "Session-domain wrapper over @firfi/cas-file-store: the only way a session snapshot reaches disk",
+  "description": "Session-domain wrapper over atomic-file-store: the only way a session snapshot reaches disk",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -35,8 +35,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@firfi/cas-file-store": "workspace:*",
     "@firfi/voila-sdk": "workspace:*",
+    "atomic-file-store": "^0.2.0",
     "effect": "^3.22.1"
   }
 }

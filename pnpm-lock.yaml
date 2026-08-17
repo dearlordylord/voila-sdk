@@ -87,12 +87,6 @@ importers:
         specifier: latest
         version: 4.1.9(@types/node@25.9.4)(@vitest/coverage-v8@4.1.9)(vite@8.1.0(@types/node@25.9.4)(esbuild@0.27.7)(tsx@4.22.4)(yaml@2.9.0))
 
-  packages/cas-file-store:
-    dependencies:
-      effect:
-        specifier: ^3.22.1
-        version: 3.22.1
-
   packages/voila-cli:
     dependencies:
       '@firfi/voila-mcp':
@@ -154,12 +148,12 @@ importers:
 
   packages/voila-session-store:
     dependencies:
-      '@firfi/cas-file-store':
-        specifier: workspace:*
-        version: link:../cas-file-store
       '@firfi/voila-sdk':
         specifier: workspace:*
         version: link:../voila-sdk
+      atomic-file-store:
+        specifier: ^0.2.0
+        version: 0.2.0(effect@3.22.1)
       effect:
         specifier: ^3.22.1
         version: 3.22.1
@@ -1618,6 +1612,15 @@ packages:
 
   ast-v8-to-istanbul@1.0.4:
     resolution: {integrity: sha512-0bC0/4bTSrnwdhU3IsZDwEdojvuPrSg59OYZfKsLRtJZ0u8VBx9DebfqqG8bRdCC0I7vjgxmPi41P0lpkhJHtA==}
+
+  atomic-file-store@0.2.0:
+    resolution: {integrity: sha512-2Sh9Sq1SfM2bKwE2cTXW3AIdgxclXDXkcsNbyY6Ci3mXIE+MokNlKPTVp4NnEBRNC3VgbblHj+eFcqKyA7ZjZA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      effect: '>=3.0.0'
+    peerDependenciesMeta:
+      effect:
+        optional: true
 
   babel-walk@3.0.0-canary-5:
     resolution: {integrity: sha512-GAwkz0AihzY5bkwIY5QDR+LvsRQgB/B+1foMPvi0FZPMl5fjD7ICiznUiBdLYMH1QYe6vqu4gWYytZOccLouFw==}
@@ -3975,6 +3978,10 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.31
       estree-walker: 3.0.3
       js-tokens: 10.0.0
+
+  atomic-file-store@0.2.0(effect@3.22.1):
+    optionalDependencies:
+      effect: 3.22.1
 
   babel-walk@3.0.0-canary-5:
     dependencies:

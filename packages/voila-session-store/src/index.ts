@@ -5,13 +5,13 @@ export {
   type SessionFileReadFailure,
   type SessionFileWriteFailure
 } from "./session-file-errors.js"
-export { type StateFilePath, StateFilePathSchema } from "@firfi/cas-file-store"
+export { type StateFilePath, StateFilePathSchema } from "atomic-file-store/effect"
 export {
   makeStateFileLocks,
   StateFileLocks,
   type StateFileLocksService,
   StateFileLocksLive
-} from "@firfi/cas-file-store"
+} from "atomic-file-store/effect"
 export {
   keepSessionFile,
   persistSession,

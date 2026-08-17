@@ -1,6 +1,6 @@
 # Session file store: one guarded update operation, guest never overwrites authenticated
 
-`@firfi/voila-session-store` (draft package, `packages/voila-session-store`) is the only write path for the session snapshot. It exposes one operation, `updateSessionFile(path, update)`, layered over `@firfi/cas-file-store`: the caller's transform sees the snapshot as it exists on disk right now — or its absence — and returns either a snapshot to persist or a decision to keep the file unchanged. A snapshot the caller built earlier can never be handed over, so a value cached at boot cannot be written back over a fresh interactive login.
+`@firfi/voila-session-store` (draft package, `packages/voila-session-store`) is the only write path for the session snapshot. It exposes one operation, `updateSessionFile(path, update)`, layered over [`atomic-file-store`](https://www.npmjs.com/package/atomic-file-store): the caller's transform sees the snapshot as it exists on disk right now — or its absence — and returns either a snapshot to persist or a decision to keep the file unchanged. A snapshot the caller built earlier can never be handed over, so a value cached at boot cannot be written back over a fresh interactive login.
 
 Decisions:
 

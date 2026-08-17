@@ -8,7 +8,6 @@ import {
   serializeCookieJar,
   toughCookieJarPort
 } from "@firfi/voila-sdk"
-import { type StateFilePath, StateFilePathSchema } from "@firfi/cas-file-store"
 import { Deferred, Effect, Either, Fiber, Schema, TestClock } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
@@ -29,6 +28,8 @@ import {
   type SessionFileWriteFailure,
   type StateFileLocks,
   StateFileLocksLive,
+  type StateFilePath,
+  StateFilePathSchema,
   updateSessionFile,
   updateSessionFileCarrying
 } from "../src/index.js"
@@ -89,7 +90,7 @@ const authenticatedSnapshot = (regionId = "authenticated-region"): SdkSessionSna
 const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "voila-session-store-")))
 
 // tests own absolute temp paths, so the brand is applied directly; production
-// callers parse a configured path through `parseStateFilePath`
+// callers decode a configured path through `StateFilePathSchema`
 const sessionFile = (dir: string): StateFilePath => StateFilePathSchema.make(path.join(dir, "session.json"))
 
 const encodeSnapshot = (snapshot: SdkSessionSnapshot) =>

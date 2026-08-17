@@ -20,7 +20,6 @@ The root package is private. Publishable packages live under `packages/`:
 
 Private draft packages, unpublished and bundled by their consumers:
 
-- `packages/cas-file-store`: `@firfi/cas-file-store`, CAS read-modify-write store for local state files.
 - `packages/voila-session-store`: `@firfi/voila-session-store`, the only write path for the session snapshot.
 
 The MCP package owns the shared operation registry used by both MCP tools and CLI commands.

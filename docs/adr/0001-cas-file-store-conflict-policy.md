@@ -1,5 +1,7 @@
 # CAS file store: drop-on-conflict beats lockfiles and retry-by-default
 
+Superseded by [`atomic-file-store`](https://www.npmjs.com/package/atomic-file-store) (npm).
+
 `@firfi/cas-file-store` (draft package, `packages/cas-file-store`) guards read-modify-write cycles of small local JSON state files shared by multiple processes (the session snapshot is the motivating case — a background keepalive once reverted fresh logins by blindly overwriting them). The store owns the whole cycle inside one `modify(path, f)` call: fresh read, transform, compare the CAS token (raw bytes), atomic tmp+rename write only if unchanged. On conflict the default policy is **drop**: the in-flight update is discarded and the on-disk value stands.
 
 Considered and rejected:

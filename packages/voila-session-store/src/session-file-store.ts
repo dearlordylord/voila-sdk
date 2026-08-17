@@ -22,7 +22,7 @@ import {
   type StateFileLocks,
   type StateFilePath,
   type WriteDecision
-} from "@firfi/cas-file-store"
+} from "atomic-file-store/effect"
 import { type SdkSessionSnapshot, SdkSessionSnapshotSchema } from "@firfi/voila-sdk"
 import { Effect } from "effect"
 

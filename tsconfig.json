@@ -2,9 +2,6 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/cas-file-store"
-    },
-    {
       "path": "./packages/voila-sdk"
     },
     {

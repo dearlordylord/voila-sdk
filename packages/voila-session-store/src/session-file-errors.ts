@@ -7,7 +7,7 @@
  * names neither the contents nor the path, and callers depend on session
  * vocabulary rather than on the store this package happens to be built on.
  */
-import type { CasFileStoreError, ConflictExhausted } from "@firfi/cas-file-store"
+import type { ConflictExhausted, ContentsInvalidError, ReadError, WriteError } from "atomic-file-store/effect"
 import { Effect } from "effect"
 
 export type SessionFileReadFailure = { readonly _tag: "SessionFileReadFailure"; readonly message: string }
@@ -27,28 +27,35 @@ export type SessionFileError =
   | SessionFileContentsInvalid
   | SessionFileGuestOverwriteRefused
 
+/**
+ * Everything the cycle can fail with: the store's own failures — the error
+ * channel of `modifySchemaCarrying`, restated here because the package exports
+ * no union of its own — plus this package's one session rule.
+ */
+type StoreFailure = ReadError | WriteError | ContentsInvalidError | ConflictExhausted | SessionFileGuestOverwriteRefused
+
+// keyed by every tag in `StoreFailure`, so a tag this package stops handling
+// fails at this declaration rather than at the lookup below
 const sessionFileErrorByTag = {
-  // covers both directions: contents on disk that are not a session snapshot,
-  // and a snapshot the caller produced that cannot be encoded as one
-  CasFileStoreContentsInvalid: {
-    _tag: "SessionFileContentsInvalid",
-    message: "Session snapshot does not match the SDK session schema"
-  },
-  CasFileStoreReadFailure: { _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" },
-  CasFileStoreWriteFailure: { _tag: "SessionFileWriteFailure", message: "Session snapshot could not be written" },
   // unreachable while every session write drops on conflict; mapped so adding
   // a retrying caller cannot turn contention into an unhandled error shape
   ConflictExhausted: { _tag: "SessionFileWriteFailure", message: "Session snapshot could not be written" },
+  // covers both directions: contents on disk that are not a session snapshot,
+  // and a snapshot the caller produced that cannot be encoded as one
+  ContentsInvalidError: {
+    _tag: "SessionFileContentsInvalid",
+    message: "Session snapshot does not match the SDK session schema"
+  },
+  ReadError: { _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" },
   SessionFileGuestOverwriteRefused: {
     _tag: "SessionFileGuestOverwriteRefused",
     message: "A guest session snapshot must not replace an authenticated one"
-  }
-} as const satisfies Record<string, SessionFileError>
+  },
+  WriteError: { _tag: "SessionFileWriteFailure", message: "Session snapshot could not be written" }
+} as const satisfies Record<StoreFailure["_tag"], SessionFileError>
 
 export const guestOverwriteRefused: SessionFileGuestOverwriteRefused =
   sessionFileErrorByTag.SessionFileGuestOverwriteRefused
-
-type StoreFailure = CasFileStoreError | ConflictExhausted | SessionFileGuestOverwriteRefused
 
 // The caller's own failures are wrapped for the trip through the store so they
 // cannot be confused with a store failure, and are unwrapped unchanged at the
