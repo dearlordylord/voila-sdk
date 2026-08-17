@@ -1,28 +1,24 @@
-import { Either, Schema } from "effect"
+/**
+ * Reading a session snapshot from storage.
+ *
+ * There is no write half: a snapshot reaches disk only through the session file
+ * store's guarded read-modify-write cycle, which owns the read and the write
+ * together. A write primitive here would be a blind write by another name — the
+ * one that lets a snapshot loaded at boot land on top of a fresh interactive
+ * login.
+ */
+import { Either } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import { type SdkSessionSnapshot, SdkSessionSnapshotSchema } from "../domain/schemas/index.js"
 
 export interface SessionStoragePort {
   readonly read: () => Promise<unknown>
-  readonly write: (contents: string) => Promise<unknown>
 }
 
 export type SessionStorageError =
-  | { readonly _tag: "SessionStorageSnapshotInvalid"; readonly message: string }
-  | { readonly _tag: "SessionStorageWriteFailure"; readonly message: string }
   | { readonly _tag: "SessionStorageReadFailure"; readonly message: string }
   | { readonly _tag: "SessionStorageContentsInvalid"; readonly message: string }
-
-const sessionStorageSnapshotInvalid = (): SessionStorageError => ({
-  _tag: "SessionStorageSnapshotInvalid",
-  message: "Session snapshot does not match the SDK schema"
-})
-
-const sessionStorageWriteFailure = (): SessionStorageError => ({
-  _tag: "SessionStorageWriteFailure",
-  message: "Session snapshot could not be written"
-})
 
 const sessionStorageReadFailure = (): SessionStorageError => ({
   _tag: "SessionStorageReadFailure",
@@ -33,34 +29,6 @@ const sessionStorageContentsInvalid = (): SessionStorageError => ({
   _tag: "SessionStorageContentsInvalid",
   message: "Stored session snapshot is corrupt or stale"
 })
-
-export const saveSdkSessionSnapshot = async (
-  storage: SessionStoragePort,
-  snapshot: unknown
-): Promise<Either.Either<undefined, SessionStorageError>> => {
-  const decoded = Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, snapshot), sessionStorageSnapshotInvalid)
-
-  if (Either.isLeft(decoded)) {
-    return Either.left(decoded.left)
-  }
-
-  const encoded = Either.mapLeft(
-    Schema.encodeEither(SdkSessionSnapshotSchema)(decoded.right),
-    sessionStorageSnapshotInvalid
-  )
-
-  if (Either.isLeft(encoded)) {
-    return Either.left(encoded.left)
-  }
-
-  try {
-    await storage.write(JSON.stringify(encoded.right))
-
-    return Either.right(undefined)
-  } catch {
-    return Either.left(sessionStorageWriteFailure())
-  }
-}
 
 export const loadSdkSessionSnapshot = async (
   storage: SessionStoragePort

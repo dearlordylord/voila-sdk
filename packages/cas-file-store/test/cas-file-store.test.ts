@@ -1,5 +1,6 @@
 import { it } from "@effect/vitest"
 import { Deferred, type Duration, Effect, Fiber, Option, Ref, Schedule, Schema, TestClock } from "effect"
+import type { TestServices } from "effect/TestServices"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -21,8 +22,16 @@ import {
   type StateFilePath,
   StateFilePathSchema,
   read,
-  retryPolicy
+  retryPolicy,
+  type StateFileLocks,
+  StateFileLocksLive
 } from "../src/index.js"
+
+// every modify test runs against one fresh lock table per test, so forked
+// fibers inside a test share it exactly like fibers inside one process
+const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks | TestServices>): void => {
+  it.effect(name, () => Effect.provide(self(), StateFileLocksLive))
+}
 
 const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "cas-file-store-")))
 
@@ -71,7 +80,7 @@ const joinAdvancingClock = <A, E>(fiber: Fiber.RuntimeFiber<A, E>, step: Duratio
 const transformBoom = { _tag: "TransformBoom" } as const
 
 describe("read", () => {
-  it.effect("returns the current file contents", () =>
+  itLocks("returns the current file contents", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -83,7 +92,7 @@ describe("read", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreAbsent when the file does not exist", () =>
+  itLocks("fails with CasFileStoreAbsent when the file does not exist", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -96,7 +105,7 @@ describe("read", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreReadFailure when the path cannot be read", () =>
+  itLocks("fails with CasFileStoreReadFailure when the path cannot be read", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
 
@@ -109,7 +118,7 @@ describe("read", () => {
 })
 
 describe("modify: saved", () => {
-  it.effect("writes the transformed contents back and reports them as saved", () =>
+  itLocks("writes the transformed contents back and reports them as saved", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -124,7 +133,7 @@ describe("modify: saved", () => {
     })
   )
 
-  it.effect("writes atomically via a durable tmp file that leaves no litter behind", () =>
+  itLocks("writes atomically via a durable tmp file that leaves no litter behind", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -139,7 +148,7 @@ describe("modify: saved", () => {
 })
 
 describe("modify: creation", () => {
-  it.effect("runs the transform against absence and creates the file owner-only", () =>
+  itLocks("runs the transform against absence and creates the file owner-only", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -153,7 +162,7 @@ describe("modify: creation", () => {
     })
   )
 
-  it.effect("creates the state file's directory when it does not exist yet", () =>
+  itLocks("creates the state file's directory when it does not exist yet", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const nested = path.join(dir, "config", "voila")
@@ -168,7 +177,7 @@ describe("modify: creation", () => {
     })
   )
 
-  it.effect("drops the update when another process created the file first", () =>
+  itLocks("drops the update when another process created the file first", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -198,7 +207,7 @@ describe("modify: creation", () => {
     })
   )
 
-  it.effect("retries creation against the fresh file after losing the race", () =>
+  itLocks("retries creation against the fresh file after losing the race", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -220,7 +229,7 @@ describe("modify: creation", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreWriteFailure when creation cannot land", () =>
+  itLocks("fails with CasFileStoreWriteFailure when creation cannot land", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       // a trailing slash names a directory that does not exist: the tmp file is
@@ -237,7 +246,7 @@ describe("modify: creation", () => {
 })
 
 describe("modify: keep", () => {
-  it.effect("leaves an existing file untouched", () =>
+  itLocks("leaves an existing file untouched", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -251,7 +260,7 @@ describe("modify: keep", () => {
     })
   )
 
-  it.effect("leaves a missing file missing", () =>
+  itLocks("leaves a missing file missing", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -283,7 +292,7 @@ describe("modify: conflict with drop policy", () => {
       return yield* Fiber.join(fiber)
     })
 
-  it.effect("drops the in-flight update and surfaces the fresh contents (default policy)", () =>
+  itLocks("drops the in-flight update and surfaces the fresh contents (default policy)", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -296,7 +305,7 @@ describe("modify: conflict with drop policy", () => {
     })
   )
 
-  it.effect("drops the in-flight update when the drop policy is passed explicitly", () =>
+  itLocks("drops the in-flight update when the drop policy is passed explicitly", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -311,7 +320,7 @@ describe("modify: conflict with drop policy", () => {
 })
 
 describe("modify: conflict with retry policy", () => {
-  it.effect("re-runs the transform against the fresh base until the write lands", () =>
+  itLocks("re-runs the transform against the fresh base until the write lands", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -336,7 +345,7 @@ describe("modify: conflict with retry policy", () => {
     })
   )
 
-  it.effect("waits out the schedule's delay before re-running the transform", () =>
+  itLocks("waits out the schedule's delay before re-running the transform", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -366,7 +375,7 @@ describe("modify: conflict with retry policy", () => {
     })
   )
 
-  it.effect("surfaces ConflictExhausted when contention outlasts the retry schedule", () =>
+  itLocks("surfaces ConflictExhausted when contention outlasts the retry schedule", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -393,7 +402,7 @@ describe("modify: conflict with retry policy", () => {
     })
   )
 
-  it.effect("does not retry transform failures, only conflicts", () =>
+  itLocks("does not retry transform failures, only conflicts", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -412,7 +421,7 @@ describe("modify: conflict with retry policy", () => {
 })
 
 describe("modify: failures", () => {
-  it.effect("propagates a transform failure and leaves the file unchanged", () =>
+  itLocks("propagates a transform failure and leaves the file unchanged", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -425,7 +434,7 @@ describe("modify: failures", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreWriteFailure when the durable write cannot complete", () =>
+  itLocks("fails with CasFileStoreWriteFailure when the durable write cannot complete", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       // A 255-byte basename: the sibling tmp name (`.<basename>.<pid>.<uuid>.tmp`)
@@ -448,7 +457,7 @@ describe("modify: failures", () => {
     })
   )
 
-  it.effect("drops the update when the file disappears mid-cycle", () =>
+  itLocks("drops the update when the file disappears mid-cycle", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -478,7 +487,7 @@ describe("modify: failures", () => {
     })
   )
 
-  it.effect("keeps file contents out of error messages", () =>
+  itLocks("keeps file contents out of error messages", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -499,7 +508,7 @@ describe("modify: failures", () => {
 })
 
 describe("modify: in-process serialization", () => {
-  it.effect("serializes same-process modify calls per path so both updates land", () =>
+  itLocks("serializes same-process modify calls per path so both updates land", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -520,7 +529,7 @@ describe("modify: in-process serialization", () => {
     })
   )
 
-  it.effect("serializes calls that spell the same path differently", () =>
+  itLocks("serializes calls that spell the same path differently", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -542,7 +551,7 @@ describe("modify: in-process serialization", () => {
     })
   )
 
-  it.effect("does not hold the permit across a retry schedule's delay", () =>
+  itLocks("does not hold the permit across a retry schedule's delay", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -573,7 +582,7 @@ describe("modify: in-process serialization", () => {
     })
   )
 
-  it.effect("releases the per-path semaphore when a modify fiber is interrupted", () =>
+  itLocks("releases the per-path semaphore when a modify fiber is interrupted", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -594,7 +603,7 @@ describe("modify: in-process serialization", () => {
 })
 
 describe("parseStateFilePath", () => {
-  it.effect("accepts an absolute path", () =>
+  itLocks("accepts an absolute path", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
 
@@ -602,7 +611,7 @@ describe("parseStateFilePath", () => {
     })
   )
 
-  it.effect("rejects a relative path, which would name different files in different processes", () =>
+  itLocks("rejects a relative path, which would name different files in different processes", () =>
     Effect.gen(function* () {
       const error: CasFileStorePathInvalid = yield* parseStateFilePath("state.json").pipe(Effect.flip)
 
@@ -612,7 +621,7 @@ describe("parseStateFilePath", () => {
     })
   )
 
-  it.effect("explains the rule when the schema is decoded directly", () =>
+  itLocks("explains the rule when the schema is decoded directly", () =>
     Effect.gen(function* () {
       const error = yield* Schema.decodeUnknown(StateFilePathSchema)("state.json").pipe(Effect.flip)
 
@@ -620,7 +629,7 @@ describe("parseStateFilePath", () => {
     })
   )
 
-  it.effect("rejects a blank path and a non-string", () =>
+  itLocks("rejects a blank path and a non-string", () =>
     Effect.gen(function* () {
       expect((yield* parseStateFilePath("   ").pipe(Effect.flip))._tag).toBe("CasFileStorePathInvalid")
       expect((yield* parseStateFilePath(42).pipe(Effect.flip))._tag).toBe("CasFileStorePathInvalid")

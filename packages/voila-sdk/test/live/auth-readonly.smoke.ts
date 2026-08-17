@@ -62,12 +62,7 @@ const fetchTransport: VoilaTransport = {
 
 const toCauseTag = (error: { readonly _tag: string }): string => error._tag
 
-const makeFileSessionStorage = (path: string): SessionStoragePort => ({
-  read: async () => readFile(path, "utf8"),
-  write: async () => {
-    throw new Error("Auth readonly smoke never writes session snapshots")
-  }
-})
+const makeFileSessionStorage = (path: string): SessionStoragePort => ({ read: async () => readFile(path, "utf8") })
 
 const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthReadOnlySmokeFailure>> => {
   if (process.env[authSmokeFlag] !== enabledValue) {

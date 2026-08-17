@@ -13,12 +13,13 @@
  * against `undefined` and the file is created inside the same cycle, so
  * creation cannot be a blind write by another name.
  */
-import { Data, Effect, Either, type Schedule } from "effect"
+import { Data, Effect, type Schedule } from "effect"
 import { randomUUID } from "node:crypto"
 import { link, mkdir, open, readFile, rename, rm } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path"
 
 import type { StateFilePath } from "./state-file-path.js"
+import { StateFileLocks } from "./state-file-locks.js"
 
 /** The file could not be read (unreadable, or gone mid-cycle). */
 export type CasFileStoreReadFailure = { readonly _tag: "CasFileStoreReadFailure"; readonly message: string }
@@ -112,13 +113,6 @@ const conflictExhausted = (path: string): ConflictExhausted => ({
   message: `Conflicts on state file outlasted the retry schedule: ${path}`
 })
 
-// Internal signal: the CAS token no longer matched at write time. Deliberately
-// not an `Error` subclass — it carries the file's raw bytes, which can be
-// secrets, and Effect pretty-prints the fields of a failed `Error` in causes.
-class ConflictSignal extends Data.TaggedClass("ConflictSignal")<{ readonly current: string | undefined }> {}
-
-const isConflictSignal = (error: unknown): error is ConflictSignal => error instanceof ConflictSignal
-
 const hasErrorCode = (error: unknown, code: string): boolean =>
   error instanceof Error && "code" in error && error.code === code
 
@@ -163,59 +157,66 @@ const temporaryPathFor = (path: string): string =>
 // mkdir before it can reach the guarded cycle
 const ownerOnlyDirectoryMode = 0o700
 
-const writeDurable = async (temporaryPath: string, contents: string): Promise<void> => {
-  await mkdir(dirname(temporaryPath), { recursive: true, mode: ownerOnlyDirectoryMode })
+/**
+ * One filesystem call of the write path as an Effect. Every call the write
+ * path makes goes through here, so a promise never crosses a seam as a
+ * promise: the failure is typed where the call is made, rather than at some
+ * later boundary that has to remember to catch it.
+ */
+const fileSystemCall = <A>(path: string, call: () => Promise<A>): Effect.Effect<A, CasFileStoreWriteFailure> =>
+  Effect.tryPromise({ try: call, catch: () => casFileStoreWriteFailure(path) })
 
-  const handle = await open(temporaryPath, "w", ownerOnlyMode)
+const writeDurable = (
+  path: string,
+  temporaryPath: string,
+  contents: string
+): Effect.Effect<void, CasFileStoreWriteFailure> =>
+  fileSystemCall(path, () => mkdir(dirname(temporaryPath), { recursive: true, mode: ownerOnlyDirectoryMode })).pipe(
+    Effect.zipRight(
+      Effect.acquireUseRelease(
+        fileSystemCall(path, () => open(temporaryPath, "w", ownerOnlyMode)),
+        (handle) =>
+          fileSystemCall(path, () => handle.writeFile(contents)).pipe(
+            // fsync before the landing so a power loss cannot silently resurrect an older file
+            Effect.zipRight(fileSystemCall(path, () => handle.sync()))
+          ),
+        (handle) => Effect.ignore(fileSystemCall(path, () => handle.close()))
+      )
+    )
+  )
 
-  try {
-    await handle.writeFile(contents)
-    // fsync before rename so a power loss cannot silently resurrect an older file
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-}
+/**
+ * How written contents reach the target path. It answers whether they got
+ * there; only the create-if-absent landing can answer `false`.
+ */
+type Landing = (temporaryPath: string) => Effect.Effect<boolean, CasFileStoreWriteFailure>
 
 /**
  * Durable write through a sibling tmp file: create owner-only, fsync, then let
  * `land` move it into place. Always on, never configurable — a crashed write
  * must never leave a torn state file that reads as corruption. Directory fsync
- * is skipped deliberately (ADR-0001). `land` reports whether the contents
- * reached the target path; only the create-if-absent landing can answer `false`.
+ * is skipped deliberately (ADR-0001).
  */
 const writeThroughTemporary = (
   path: string,
   contents: string,
-  land: (temporaryPath: string) => Promise<boolean>
-): Effect.Effect<boolean, CasFileStoreWriteFailure> =>
-  Effect.gen(function* () {
-    const temporaryPath = temporaryPathFor(path)
-    const landed = yield* Effect.either(
-      Effect.tryPromise({
-        try: () => writeDurable(temporaryPath, contents).then(() => land(temporaryPath)),
-        catch: () => casFileStoreWriteFailure(path)
-      })
-    )
+  land: Landing
+): Effect.Effect<boolean, CasFileStoreWriteFailure> => {
+  const temporaryPath = temporaryPathFor(path)
 
+  return writeDurable(path, temporaryPath, contents).pipe(
+    Effect.zipRight(land(temporaryPath)),
     // best-effort cleanup so no landing leaves tmp litter behind; a cleanup
     // that itself fails must not mask the write failure
-    yield* Effect.ignore(
-      Effect.tryPromise({ try: () => rm(temporaryPath, { force: true }), catch: () => casFileStoreWriteFailure(path) })
-    )
-
-    if (Either.isLeft(landed)) {
-      return yield* Effect.fail(landed.left)
-    }
-
-    return landed.right
-  })
+    Effect.ensuring(Effect.ignore(fileSystemCall(path, () => rm(temporaryPath, { force: true }))))
+  )
+}
 
 /** Replace an existing file atomically. */
 const replaceRawAtomic = (path: string, contents: string): Effect.Effect<void, CasFileStoreWriteFailure> =>
-  writeThroughTemporary(path, contents, (temporaryPath) => rename(temporaryPath, path).then(() => true)).pipe(
-    Effect.asVoid
-  )
+  writeThroughTemporary(path, contents, (temporaryPath) =>
+    fileSystemCall(path, () => rename(temporaryPath, path)).pipe(Effect.as(true))
+  ).pipe(Effect.asVoid)
 
 /**
  * Create a file only if it does not exist. `link` is what makes concurrent
@@ -225,81 +226,88 @@ const replaceRawAtomic = (path: string, contents: string): Effect.Effect<void, C
  */
 const createRawExclusive = (path: string, contents: string): Effect.Effect<boolean, CasFileStoreWriteFailure> =>
   writeThroughTemporary(path, contents, (temporaryPath) =>
-    link(temporaryPath, path)
-      .then(() => true)
-      .catch((error: unknown) => {
-        if (hasErrorCode(error, "EEXIST")) {
-          return false
-        }
+    fileSystemCall(path, () =>
+      link(temporaryPath, path)
+        .then(() => true)
+        .catch((error: unknown) => {
+          if (hasErrorCode(error, "EEXIST")) {
+            return false
+          }
 
-        throw error
-      })
+          throw error
+        })
+    )
   )
 
 // One keyed semaphore per path serializes same-process `modify` calls, so
 // fibers inside one process (the single-process MCP server — the dominant
 // consumer — running a keepalive tick next to tool calls) cannot race by
-// construction. Cross-process safety comes from the CAS check alone; a
-// lockfile was considered and rejected (ADR-0001). Entries are never evicted:
-// a local tool touches a handful of paths over its lifetime.
-const semaphores = new Map<string, ReturnType<typeof Effect.unsafeMakeSemaphore>>()
-
-const semaphoreFor = (path: string): ReturnType<typeof Effect.unsafeMakeSemaphore> => {
-  // keyed on the resolved path so `dir//state.json`, `dir/state.json` and a
-  // relative spelling of the same file share one semaphore
-  const key = resolve(path)
-  const existing = semaphores.get(key)
-
-  if (existing !== undefined) {
-    return existing
-  }
-
-  const created = Effect.unsafeMakeSemaphore(1)
-  semaphores.set(key, created)
-
-  return created
-}
+// construction. The `StateFileLocks` service owns the table: no module-global
+// mutable state, and idle locks are evicted so the table cannot grow forever.
+// Cross-process safety comes from the CAS check alone; a lockfile was
+// considered and rejected (ADR-0001).
 
 /**
- * What a transform hands back to the engine: the bytes to write alongside
- * whatever value the caller wants reported, so a layer on top (the Schema
- * wrapper) never has to re-decode the bytes it just wrote.
+ * What a transform hands back to the engine on a write: the bytes to persist
+ * alongside whatever value the caller wants reported, so a layer on top (the
+ * Schema wrapper) never has to re-decode the bytes it just wrote.
  */
-type WritePayload<A> = { readonly carried: A; readonly contents: string }
+type WritePayload<W> = { readonly carried: W; readonly contents: string }
 
 /**
- * The engine's outcome. On `saved` it carries whatever the transform produced
- * alongside the bytes; on `dropped-conflict` it carries the raw bytes that won,
- * or `undefined` when the winner removed the file.
+ * What a transform hands back to the engine. A `keep` also reports a value:
+ * the caller computed something while deciding not to write (an operation's
+ * result), and it must travel back through the outcome channel rather than a
+ * captured closure.
  */
-export type CarryOutcome<A> =
-  | { readonly _tag: "saved"; readonly carried: A }
-  | { readonly _tag: "unchanged" }
-  | { readonly _tag: "dropped-conflict"; readonly current: string | undefined }
+type CycleStep<W, K> =
+  | { readonly _tag: "write"; readonly payload: WritePayload<W> }
+  | { readonly _tag: "keep"; readonly carried: K }
 
-const carried = <A>(value: A): CarryOutcome<A> => ({ _tag: "saved", carried: value })
+/**
+ * The engine's outcome. `saved` and `dropped-conflict` carry the value the
+ * transform produced alongside the bytes; `unchanged` carries the value it
+ * produced while keeping the file. `dropped-conflict` additionally reports
+ * the raw bytes that won, or `undefined` when the winner removed the file.
+ */
+export type CarryOutcome<W, K> =
+  | { readonly _tag: "saved"; readonly carried: W }
+  | { readonly _tag: "unchanged"; readonly carried: K }
+  | { readonly _tag: "dropped-conflict"; readonly carried: W; readonly current: string | undefined }
 
-const unchanged: CarryOutcome<never> = { _tag: "unchanged" }
+/**
+ * A single attempt's signal that the CAS token no longer matched at write
+ * time. Deliberately not an `Error` subclass — it carries the file's raw
+ * bytes, which can be secrets, and Effect pretty-prints the fields of a
+ * failed `Error` in causes. It also carries the value the transform produced,
+ * so a `dropped-conflict` outcome can still report it.
+ */
+class ConflictSignal<W> extends Data.TaggedClass("ConflictSignal")<{
+  readonly carried: W
+  readonly current: string | undefined
+}> {}
+
+const isConflictSignal = <W>(error: unknown): error is ConflictSignal<W> => error instanceof ConflictSignal
 
 /**
  * The file existed when the cycle started: re-read it, and replace it only if
  * the CAS token still matches.
  */
-const replaceIfUnchanged = <A>(
+const replaceIfUnchanged = <W, K>(
   path: string,
   base: string,
-  payload: WritePayload<A>
-): Effect.Effect<CarryOutcome<A>, CasFileStoreWriteFailure | CasFileStoreReadFailure | ConflictSignal> =>
+  payload: WritePayload<W>
+): Effect.Effect<CarryOutcome<W, K>, CasFileStoreWriteFailure | CasFileStoreReadFailure | ConflictSignal<W>> =>
   Effect.gen(function* () {
     const current = yield* readOptionalRaw(path)
 
     if (current !== base) {
-      return yield* Effect.fail(new ConflictSignal({ current }))
+      return yield* Effect.fail(new ConflictSignal({ carried: payload.carried, current }))
     }
 
     yield* replaceRawAtomic(path, payload.contents)
 
-    return carried(payload.carried)
+    return { _tag: "saved", carried: payload.carried }
   })
 
 /**
@@ -307,34 +315,34 @@ const replaceIfUnchanged = <A>(
  * check. A re-read before it would only widen the window — `link` refuses to
  * clobber, so a process that lost a creation race finds out at the write itself.
  */
-const createIfAbsent = <A>(
+const createIfAbsent = <W, K>(
   path: string,
-  payload: WritePayload<A>
-): Effect.Effect<CarryOutcome<A>, CasFileStoreWriteFailure | CasFileStoreReadFailure | ConflictSignal> =>
+  payload: WritePayload<W>
+): Effect.Effect<CarryOutcome<W, K>, CasFileStoreWriteFailure | CasFileStoreReadFailure | ConflictSignal<W>> =>
   Effect.gen(function* () {
     const created = yield* createRawExclusive(path, payload.contents)
 
     if (created) {
-      return carried(payload.carried)
+      return { _tag: "saved", carried: payload.carried }
     }
 
-    return yield* Effect.fail(new ConflictSignal({ current: yield* readOptionalRaw(path) }))
+    return yield* Effect.fail(new ConflictSignal({ carried: payload.carried, current: yield* readOptionalRaw(path) }))
   })
 
-const readModifyWrite = <A, E, R>(
+const readModifyWrite = <W, K, E, R>(
   path: string,
-  f: (contents: string | undefined) => Effect.Effect<WriteDecision<WritePayload<A>>, E, R>
-): Effect.Effect<CarryOutcome<A>, CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictSignal | E, R> =>
+  f: (contents: string | undefined) => Effect.Effect<CycleStep<W, K>, E, R>
+): Effect.Effect<CarryOutcome<W, K>, CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictSignal<W> | E, R> =>
   Effect.gen(function* () {
     // The CAS token is the raw file bytes as read — or the file's absence, which
     // is just as much a state another process can move on from. Comparison never
     // goes through a decoded/re-encoded value, so non-canonical serialization
     // cannot cause phantom conflicts.
     const base = yield* readOptionalRaw(path)
-    const decision = yield* f(base)
+    const step = yield* f(base)
 
-    if (decision._tag === "keep") {
-      return unchanged
+    if (step._tag === "keep") {
+      return { _tag: "unchanged", carried: step.carried }
     }
 
     // The CAS check through the write is uninterruptible: the underlying write
@@ -342,7 +350,7 @@ const readModifyWrite = <A, E, R>(
     // rename is still in flight, release the permit, and let that zombie rename
     // land on top of a later writer.
     return yield* Effect.uninterruptible(
-      base === undefined ? createIfAbsent(path, decision.value) : replaceIfUnchanged(path, base, decision.value)
+      base === undefined ? createIfAbsent<W, K>(path, step.payload) : replaceIfUnchanged<W, K>(path, base, step.payload)
     )
   })
 
@@ -350,19 +358,29 @@ const readModifyWrite = <A, E, R>(
  * The read-modify-write engine, shared by the byte-level `modify` and the
  * Schema wrapper. Not part of the package's public surface.
  */
-export const modifyCarrying = <A, E, R>(
+export const modifyCarrying = <W, K, E, R>(
   path: StateFilePath,
-  f: (contents: string | undefined) => Effect.Effect<WriteDecision<WritePayload<A>>, E, R>,
+  f: (contents: string | undefined) => Effect.Effect<CycleStep<W, K>, E, R>,
   policy: ConflictPolicy
-): Effect.Effect<CarryOutcome<A>, CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictExhausted | E, R> => {
+): Effect.Effect<
+  CarryOutcome<W, K>,
+  CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictExhausted | E,
+  R | StateFileLocks
+> => {
   // The permit is held per attempt, not across the whole policy: a retry
-  // schedule's delay must not block every other in-process caller on this path.
-  const attempt = semaphoreFor(path).withPermits(1)(readModifyWrite(path, f))
+  // schedule's delay must not block every other in-process caller on this
+  // path. The key is the resolved path, so `dir//state.json`,
+  // `dir/state.json` and a relative spelling of one file share one lock.
+  const attempt = Effect.flatMap(StateFileLocks, (locks) => locks.withPermit(resolve(path), readModifyWrite(path, f)))
 
   if (policy._tag === "drop") {
     return attempt.pipe(
-      Effect.catchIf(isConflictSignal, (signal) =>
-        Effect.succeed<CarryOutcome<A>>({ _tag: "dropped-conflict", current: signal.current })
+      Effect.catchIf(isConflictSignal, (signal: ConflictSignal<W>) =>
+        Effect.succeed<CarryOutcome<W, K>>({
+          _tag: "dropped-conflict",
+          carried: signal.carried,
+          current: signal.current
+        })
       )
     )
   }
@@ -387,14 +405,17 @@ export const modify = <E = never, R = never>(
 ): Effect.Effect<
   ModifyOutcome<string>,
   CasFileStoreReadFailure | CasFileStoreWriteFailure | ConflictExhausted | E,
-  R
+  R | StateFileLocks
 > =>
-  modifyCarrying(
+  modifyCarrying<string, undefined, E, R>(
     path,
     (contents) =>
       f(contents).pipe(
-        Effect.map((decision) =>
-          decision._tag === "keep" ? keep : persist({ carried: decision.value, contents: decision.value })
+        Effect.map(
+          (decision): CycleStep<string, undefined> =>
+            decision._tag === "keep"
+              ? { _tag: "keep", carried: undefined }
+              : { _tag: "write", payload: { carried: decision.value, contents: decision.value } }
         )
       ),
     policy

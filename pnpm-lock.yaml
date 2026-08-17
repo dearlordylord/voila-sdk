@@ -116,6 +116,10 @@ importers:
       playwright:
         specifier: ^1.57.0
         version: 1.61.1
+    devDependencies:
+      '@firfi/voila-session-store':
+        specifier: workspace:*
+        version: link:../voila-session-store
 
   packages/voila-mcp:
     dependencies:
@@ -134,6 +138,10 @@ importers:
       top-user-agents:
         specifier: ^2.1.125
         version: 2.1.125
+    devDependencies:
+      '@firfi/voila-session-store':
+        specifier: workspace:*
+        version: link:../voila-session-store
 
   packages/voila-sdk:
     dependencies:

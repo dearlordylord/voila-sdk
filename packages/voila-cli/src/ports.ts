@@ -14,10 +14,9 @@ const runNodeOperation = async (
   input: unknown,
   options: CliOperationOptions
 ): Promise<OperationExecutionResult> => {
-  const env = makeNodeOperationEnvironment({
-    VOILA_AUTH_SESSION_PATH: options.sessionPath,
-    VOILA_SESSION_WRITE_PATH: options.sessionPath
-  })
+  // the environment boundary is an environment-variable map, so the parsed
+  // path travels through it as the string it already is
+  const env = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: options.sessionPath })
 
   if (Either.isLeft(env)) {
     return envFailure(env.left._tag, env.left.message)

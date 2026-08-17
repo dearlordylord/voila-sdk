@@ -7,7 +7,7 @@ import {
   toughCookieJarPort,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { type OperationEnvironment, runVoilaOperation } from "../src/operations.js"
@@ -93,7 +93,7 @@ const makeEnvironment = (transport: VoilaTransport): OperationEnvironment => {
   const initialSession = makeSdkSessionForTest()
 
   return {
-    session: { load: async () => Either.right(initialSession), save: async () => Either.right(undefined) },
+    session: { withSession: (operation) => Effect.map(operation(initialSession), (outcome) => outcome.value) },
     transport
   }
 }

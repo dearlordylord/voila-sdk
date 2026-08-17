@@ -7,7 +7,8 @@ import {
   toughCookieJarPort,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import { Either } from "effect"
+import { StateFilePathSchema } from "@firfi/voila-session-store"
+import { Effect, Either } from "effect"
 import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
 
@@ -16,7 +17,9 @@ import { makeNodeOperationEnvironment } from "../src/node-env.js"
 import {
   mcpName,
   type OperationEnvironment,
+  type OperationFailure,
   runVoilaOperation,
+  type SessionOperation,
   voilaOperationDescriptors,
   type VoilaOperationName
 } from "../src/operations.js"
@@ -24,7 +27,9 @@ import {
 const voilaUrl = "https://voila.ca/"
 const csrfToken = "csrf-token"
 const secretNetworkValue = "secret-network-value"
-const sessionPath = "/tmp/voila-session.json"
+// the test owns an absolute path, so the brand is applied directly; production
+// callers parse a configured path at the environment boundary
+const sessionPath = StateFilePathSchema.make("/tmp/voila-session.json")
 
 const sampleMetadata = {
   assetVersion: "asset-version",
@@ -169,18 +174,31 @@ const makeEnvironment = (
   return {
     env: {
       session: {
-        load: async () => Either.right(savedSession ?? initialSession),
-        save: async (snapshot) => {
-          savedSession = snapshot
+        withSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure> =>
+          Effect.gen(function* () {
+            const outcome = yield* operation(savedSession ?? initialSession)
 
-          return Either.right(undefined)
-        }
+            if (outcome.refreshed !== undefined) {
+              savedSession = outcome.refreshed
+            }
+
+            return outcome.value
+          })
       },
       transport
     },
     saved: () => savedSession
   }
 }
+
+// a session port that records whether any operation ran against a session
+const trackingSessionPort = (initialSession: SdkSessionSnapshot, ran: { current: boolean }) => ({
+  withSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure> => {
+    ran.current = true
+
+    return Effect.map(operation(initialSession), (outcome) => outcome.value)
+  }
+})
 
 describe("Voila MCP operations", () => {
   it("exposes the expected MCP server name and tool registry", () => {
@@ -216,23 +234,16 @@ describe("Voila MCP operations", () => {
   })
 
   it("validates input before loading a session", async () => {
-    let loaded = false
+    const ran = { current: false }
     const env: OperationEnvironment = {
-      session: {
-        load: async () => {
-          loaded = true
-
-          return Either.right(makeSdkSessionForTest())
-        },
-        save: async () => Either.right(undefined)
-      },
+      session: trackingSessionPort(makeSdkSessionForTest(), ran),
       transport: { request: async () => Either.left("unused") }
     }
 
     const result = await runVoilaOperation("voila_search_products", {}, env)
 
     expect(result.ok).toBe(false)
-    expect(loaded).toBe(false)
+    expect(ran.current).toBe(false)
 
     if (!result.ok) {
       expect(result.error._tag).toBe("VoilaOperationInputInvalid")
@@ -246,23 +257,16 @@ describe("Voila MCP operations", () => {
       { pageSize: 25 },
       { sort: "unsupported" }
     ]) {
-      let loaded = false
+      const ran = { current: false }
       const env: OperationEnvironment = {
-        session: {
-          load: async () => {
-            loaded = true
-
-            return Either.right(makeSdkSessionForTest())
-          },
-          save: async () => Either.right(undefined)
-        },
+        session: trackingSessionPort(makeSdkSessionForTest(), ran),
         transport: { request: async () => Either.left("unused") }
       }
 
       const result = await runVoilaOperation("voila_get_discounted_products", input, env)
 
       expect(result.ok).toBe(false)
-      expect(loaded).toBe(false)
+      expect(ran.current).toBe(false)
 
       if (!result.ok) {
         expect(result.error._tag).toBe("VoilaOperationInputInvalid")
@@ -272,23 +276,16 @@ describe("Voila MCP operations", () => {
 
   it("rejects invalid slot operation inputs before loading a session", async () => {
     for (const [name, input] of invalidSlotOperationInputs) {
-      let loaded = false
+      const ran = { current: false }
       const env: OperationEnvironment = {
-        session: {
-          load: async () => {
-            loaded = true
-
-            return Either.right(makeSdkSessionForTest())
-          },
-          save: async () => Either.right(undefined)
-        },
+        session: trackingSessionPort(makeSdkSessionForTest(), ran),
         transport: { request: async () => Either.left("unused") }
       }
 
       const result = await runVoilaOperation(name, input, env)
 
       expect(result.ok).toBe(false)
-      expect(loaded).toBe(false)
+      expect(ran.current).toBe(false)
 
       if (!result.ok) {
         expect(result.error._tag).toBe("VoilaOperationInputInvalid")
@@ -298,28 +295,33 @@ describe("Voila MCP operations", () => {
 
   it("bootstraps a guest session when no session file is configured", async () => {
     const homepage = await fixture("voila-homepage.html")
+    const paths: Array<string> = []
     const env = makeNodeOperationEnvironment(
       {},
       {
-        request: async () =>
-          Either.right({
-            body: homepage,
-            headers: { "set-cookie": "voila-session=sanitized-cookie; Path=/; Secure; HttpOnly" },
+        request: async (request) => {
+          paths.push(request.url.pathname)
+
+          return Either.right({
+            body: request.url.pathname === "/" ? homepage : JSON.stringify({ authenticated: false }),
+            headers:
+              request.url.pathname === "/"
+                ? { "set-cookie": "voila-session=sanitized-cookie; Path=/; Secure; HttpOnly" }
+                : {},
             status: 200
           })
+        }
       }
     )
 
     expect(Either.isRight(env)).toBe(true)
 
     if (Either.isRight(env)) {
-      const session = await env.right.session.load()
+      const result = await runVoilaOperation("voila_check_session_health", {}, env.right)
 
-      expect(Either.isRight(session)).toBe(true)
-
-      if (Either.isRight(session)) {
-        expect(session.right.kind).toBe("guest")
-      }
+      expect(result.ok).toBe(true)
+      // the first request is the homepage bootstrap of the in-memory guest session
+      expect(paths[0]).toBe("/")
     }
   })
 
@@ -339,12 +341,12 @@ describe("Voila MCP operations", () => {
     }
   })
 
-  it("returns CLI login guidance when configured session loading fails", async () => {
+  it("returns CLI login guidance when the session cycle fails", async () => {
     const env: OperationEnvironment = {
       authGuidance: makeAuthGuidance(sessionPath),
       session: {
-        load: async () => Either.left({ _tag: "SdkSessionStorageReadFailed", message: "Session could not be read" }),
-        save: async () => Either.right(undefined)
+        withSession: () =>
+          Effect.fail({ _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" })
       },
       transport: { request: async () => Either.left("unused") }
     }

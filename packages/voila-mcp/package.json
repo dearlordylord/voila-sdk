@@ -70,5 +70,8 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "effect": "^3.19.15",
     "top-user-agents": "^2.1.125"
+  },
+  "devDependencies": {
+    "@firfi/voila-session-store": "workspace:*"
   }
 }

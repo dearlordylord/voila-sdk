@@ -33,7 +33,11 @@ for (const diagnostic of parsed.diagnostics) {
     continue
 
   const filename = relative(process.cwd(), resolve(diagnostic.filename))
-  const source = readFileSync(filename, "utf8").slice(span.offset, span.offset + span.length)
+  // oxlint spans are byte offsets: a non-ASCII character earlier in the file
+  // (an em dash in a comment) shifts a character-indexed slice
+  const source = readFileSync(filename)
+    .subarray(span.offset, span.offset + span.length)
+    .toString("utf8")
   const signature = source
     .slice(0, source.indexOf("{") === -1 ? 120 : source.indexOf("{"))
     .replaceAll(/\s+/gu, " ")

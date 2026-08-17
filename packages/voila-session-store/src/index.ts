@@ -1,6 +1,3 @@
-// One update operation is the whole surface: no `save`, `write`, or
-// `initialize` entry point exists beside it, so a blind write of a snapshot
-// loaded earlier is not expressible through this API.
 export {
   type SessionFileContentsInvalid,
   type SessionFileError,
@@ -8,10 +5,20 @@ export {
   type SessionFileReadFailure,
   type SessionFileWriteFailure
 } from "./session-file-errors.js"
+export { type StateFilePath, StateFilePathSchema } from "@firfi/cas-file-store"
+export {
+  makeStateFileLocks,
+  StateFileLocks,
+  type StateFileLocksService,
+  StateFileLocksLive
+} from "@firfi/cas-file-store"
 export {
   keepSessionFile,
   persistSession,
+  type SessionFileCarriedOutcome,
+  type SessionFileCycleStep,
   type SessionFileUpdate,
   type SessionFileUpdateOutcome,
-  updateSessionFile
+  updateSessionFile,
+  updateSessionFileCarrying
 } from "./session-file-store.js"

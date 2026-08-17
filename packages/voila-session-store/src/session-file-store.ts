@@ -14,10 +14,12 @@
  * interactive browser login).
  */
 import {
+  type CarriedModifyOutcome,
   keep,
-  modifySchema,
-  type ModifyOutcome,
+  modifySchemaCarrying,
   persist,
+  type SchemaCycleStep,
+  type StateFileLocks,
   type StateFilePath,
   type WriteDecision
 } from "@firfi/cas-file-store"
@@ -61,6 +63,28 @@ export type SessionFileUpdateOutcome =
   | { readonly _tag: "dropped-conflict"; readonly session: SdkSessionSnapshot | undefined }
 
 /**
+ * What the update of `updateSessionFileCarrying` reports: the session decision
+ * alongside whatever value the caller wants back — an operation's result,
+ * computed while deciding. The value travels through the outcome channel on
+ * every outcome, so callers never smuggle results out through a captured
+ * mutable variable.
+ */
+export interface SessionFileCycleStep<C> {
+  readonly carried: C
+  readonly update: SessionFileUpdate
+}
+
+/**
+ * Like `SessionFileUpdateOutcome`, but every variant also reports the update's
+ * carried value — including `dropped-conflict`, whose in-flight work still
+ * ran even though its write lost.
+ */
+export type SessionFileCarriedOutcome<C> =
+  | { readonly _tag: "saved"; readonly carried: C; readonly session: SdkSessionSnapshot }
+  | { readonly _tag: "unchanged"; readonly carried: C }
+  | { readonly _tag: "dropped-conflict"; readonly carried: C; readonly session: SdkSessionSnapshot | undefined }
+
+/**
  * An authenticated session on disk is never replaced by a guest one. The check
  * runs against the snapshot read in this cycle, and the CAS comparison covers
  * an authenticated snapshot that arrives later in the same cycle.
@@ -81,19 +105,31 @@ const decide = (
     : Effect.succeed(persist(update.session))
 }
 
-const toOutcome = (outcome: ModifyOutcome<SdkSessionSnapshot>): SessionFileUpdateOutcome => {
+// the store's own step shape, named here so this module's session vocabulary
+// stays separate from the store's byte/schema vocabulary
+const toCycleStep = <C>(
+  carried: C,
+  decision: WriteDecision<SdkSessionSnapshot>
+): SchemaCycleStep<SdkSessionSnapshot, C> => ({ carried, decision })
+
+const toCarriedOutcome = <C>(outcome: CarriedModifyOutcome<SdkSessionSnapshot, C>): SessionFileCarriedOutcome<C> => {
   if (outcome._tag === "saved") {
-    return { _tag: "saved", session: outcome.value }
+    return { _tag: "saved", carried: outcome.carried, session: outcome.value }
   }
 
-  return outcome._tag === "unchanged" ? { _tag: "unchanged" } : { _tag: "dropped-conflict", session: outcome.value }
+  if (outcome._tag === "unchanged") {
+    return { _tag: "unchanged", carried: outcome.carried }
+  }
+
+  return { _tag: "dropped-conflict", carried: outcome.carried, session: outcome.value }
 }
 
 /**
  * Update the session file at `path` by running `update` against the snapshot as
  * it exists on disk right now — `undefined` when the file does not exist yet,
  * in which case the file and its directory are created inside the same guarded
- * cycle, owner-only.
+ * cycle, owner-only. The update also reports a carried value, which the outcome
+ * returns on every variant.
  *
  * The path is a `StateFilePath`, parsed once where it is configured: a bare
  * string would let a relative path name different files in two processes.
@@ -103,13 +139,38 @@ const toOutcome = (outcome: ModifyOutcome<SdkSessionSnapshot>): SessionFileUpdat
  * its own typed errors, which surface unchanged. The whole read-decide-write
  * window is covered by the conflict check, not just the final write.
  */
+export const updateSessionFileCarrying = <C, E = never, R = never>(
+  path: StateFilePath,
+  update: (current: SdkSessionSnapshot | undefined) => Effect.Effect<SessionFileCycleStep<C>, E, R>
+): Effect.Effect<SessionFileCarriedOutcome<C>, SessionFileError | E, R | StateFileLocks> =>
+  modifySchemaCarrying(path, SdkSessionSnapshotSchema, (current) =>
+    Effect.gen(function* () {
+      const step = yield* update(current).pipe(Effect.mapError(callerFailure))
+
+      return toCycleStep(step.carried, yield* decide(current, step.update))
+    })
+  ).pipe(Effect.map(toCarriedOutcome), Effect.catchAll(unwrapFailure))
+
+const toUpdateOutcome = <C>(outcome: SessionFileCarriedOutcome<C>): SessionFileUpdateOutcome => {
+  if (outcome._tag === "unchanged") {
+    return { _tag: "unchanged" }
+  }
+
+  return outcome._tag === "saved"
+    ? { _tag: "saved", session: outcome.session }
+    : { _tag: "dropped-conflict", session: outcome.session }
+}
+
+/**
+ * Like `updateSessionFileCarrying`, for updates with nothing to report back.
+ */
 export const updateSessionFile = <E = never, R = never>(
   path: StateFilePath,
   update: (current: SdkSessionSnapshot | undefined) => Effect.Effect<SessionFileUpdate, E, R>
-): Effect.Effect<SessionFileUpdateOutcome, SessionFileError | E, R> =>
-  modifySchema(path, SdkSessionSnapshotSchema, (current) =>
-    update(current).pipe(
-      Effect.mapError(callerFailure),
-      Effect.flatMap((decision) => decide(current, decision))
+): Effect.Effect<SessionFileUpdateOutcome, SessionFileError | E, R | StateFileLocks> =>
+  updateSessionFileCarrying(path, (current) =>
+    Effect.map(
+      update(current),
+      (decision): SessionFileCycleStep<undefined> => ({ carried: undefined, update: decision })
     )
-  ).pipe(Effect.map(toOutcome), Effect.catchAll(unwrapFailure))
+  ).pipe(Effect.map(toUpdateOutcome))

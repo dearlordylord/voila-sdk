@@ -1,5 +1,6 @@
 import { it } from "@effect/vitest"
 import { Deferred, Effect, Fiber, Schema, TestClock } from "effect"
+import type { TestServices } from "effect/TestServices"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -11,10 +12,18 @@ import {
   type ConflictExhausted,
   keep,
   modifySchema,
+  modifySchemaCarrying,
   persist,
   type StateFilePath,
-  StateFilePathSchema
+  StateFilePathSchema,
+  type StateFileLocks,
+  StateFileLocksLive
 } from "../src/index.js"
+
+// one fresh lock table per test, shared by any forked fibers inside it
+const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks | TestServices>): void => {
+  it.effect(name, () => Effect.provide(self(), StateFileLocksLive))
+}
 
 const StateSchema = Schema.Struct({ lineage: Schema.String, rotations: Schema.Number })
 
@@ -45,7 +54,7 @@ const rotate = (state: State | undefined) =>
   Effect.succeed(persist({ lineage: state?.lineage ?? "S0", rotations: (state?.rotations ?? 0) + 1 }))
 
 describe("modifySchema", () => {
-  it.effect("decodes, transforms, encodes, and reports the decoded saved value", () =>
+  itLocks("decodes, transforms, encodes, and reports the decoded saved value", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -58,7 +67,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("runs the transform against absence and creates the file", () =>
+  itLocks("runs the transform against absence and creates the file", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -72,7 +81,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("leaves the file untouched when the transform keeps it", () =>
+  itLocks("leaves the file untouched when the transform keeps it", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -85,7 +94,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("reports the value the transform produced, not a re-decode of the written bytes", () =>
+  itLocks("reports the value the transform produced, not a re-decode of the written bytes", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -102,7 +111,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("adopts the fresh decoded value after a dropped conflict", () =>
+  itLocks("adopts the fresh decoded value after a dropped conflict", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -130,7 +139,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("reports a dropped conflict without a value when the winner removed the file", () =>
+  itLocks("reports a dropped conflict without a value when the winner removed the file", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -156,7 +165,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreContentsInvalid when the file is not valid JSON", () =>
+  itLocks("fails with CasFileStoreContentsInvalid when the file is not valid JSON", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -170,7 +179,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreContentsInvalid when the JSON does not match the schema", () =>
+  itLocks("fails with CasFileStoreContentsInvalid when the JSON does not match the schema", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -184,7 +193,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreContentsInvalid when the transformed value cannot be encoded", () =>
+  itLocks("fails with CasFileStoreContentsInvalid when the transformed value cannot be encoded", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -202,7 +211,7 @@ describe("modifySchema", () => {
     })
   )
 
-  it.effect("fails with CasFileStoreContentsInvalid when the adopted contents do not match the schema", () =>
+  itLocks("fails with CasFileStoreContentsInvalid when the adopted contents do not match the schema", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = stateFile(dir)
@@ -225,6 +234,100 @@ describe("modifySchema", () => {
       const error = expectContentsInvalid(yield* Fiber.join(fiber).pipe(Effect.flip))
 
       expect(error.message).toContain(file)
+    })
+  )
+})
+
+describe("modifySchemaCarrying", () => {
+  itLocks("carries the transform's own value through a saved outcome", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 0 } satisfies State))
+
+      const outcome = yield* modifySchemaCarrying(file, StateSchema, (state) =>
+        Effect.succeed({
+          carried: `rotations were ${state?.rotations ?? 0}`,
+          decision: persist({ lineage: state?.lineage ?? "S0", rotations: 1 })
+        })
+      )
+
+      expect(outcome).toEqual({ _tag: "saved", carried: "rotations were 0", value: { lineage: "S0", rotations: 1 } })
+    })
+  )
+
+  itLocks("carries the transform's value through an unchanged outcome", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 3 } satisfies State))
+
+      const outcome = yield* modifySchemaCarrying(file, StateSchema, (state) =>
+        Effect.succeed({ carried: state?.rotations ?? -1, decision: keep })
+      )
+
+      expect(outcome).toEqual({ _tag: "unchanged", carried: 3 })
+      expect(yield* readState(file)).toEqual({ lineage: "S0", rotations: 3 })
+    })
+  )
+
+  itLocks("carries the transform's value and the winner's state through a dropped conflict", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 0 } satisfies State))
+
+      const entered = yield* Deferred.make<void>()
+      const fiber = yield* Effect.fork(
+        modifySchemaCarrying(file, StateSchema, (state) =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.as({
+              carried: `result computed from ${state?.lineage ?? "none"}`,
+              decision: persist({ lineage: "S0", rotations: 99 })
+            })
+          )
+        )
+      )
+
+      yield* Deferred.await(entered)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S1", rotations: 7 } satisfies State))
+      yield* TestClock.adjust("2 seconds")
+
+      const outcome = yield* Fiber.join(fiber)
+
+      expect(outcome).toEqual({
+        _tag: "dropped-conflict",
+        carried: "result computed from S0",
+        value: { lineage: "S1", rotations: 7 }
+      })
+      expect(yield* readState(file)).toEqual({ lineage: "S1", rotations: 7 })
+    })
+  )
+
+  itLocks("carries the transform's value through a dropped conflict when the winner removed the file", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = stateFile(dir)
+      yield* writeRaw(file, JSON.stringify({ lineage: "S0", rotations: 0 } satisfies State))
+
+      const entered = yield* Deferred.make<void>()
+      const fiber = yield* Effect.fork(
+        modifySchemaCarrying(file, StateSchema, () =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.as({ carried: "still reported", decision: persist({ lineage: "S0", rotations: 99 }) })
+          )
+        )
+      )
+
+      yield* Deferred.await(entered)
+      yield* Effect.promise(() => fs.rm(file))
+      yield* TestClock.adjust("2 seconds")
+
+      const outcome = yield* Fiber.join(fiber)
+
+      expect(outcome).toEqual({ _tag: "dropped-conflict", carried: "still reported", value: undefined })
     })
   )
 })

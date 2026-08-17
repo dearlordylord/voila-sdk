@@ -5,12 +5,6 @@
       "signature": "async ( page: Page, timeoutMs: number, observer: BrowserCaptureObserver ): Promise<CapturedBrowserSession | OperationExecutionResult> =>"
     }
   ],
-  "packages/voila-cli/src/auth-login.ts": [
-    {
-      "complexity": 11,
-      "signature": "async (options: CliLoginOptions): Promise<OperationExecutionResult> =>"
-    }
-  ],
   "packages/voila-cli/src/cli-discounts.ts": [
     {
       "complexity": 14,
@@ -21,6 +15,10 @@
     {
       "complexity": 9,
       "signature": "async (args: ReadonlyArray<string>, ports: CliPorts): Promise<CliRunResult> =>"
+    },
+    {
+      "complexity": 9,
+      "signature": "async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> =>"
     }
   ],
   "packages/voila-mcp/src/operations.ts": [

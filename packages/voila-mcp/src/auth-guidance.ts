@@ -1,5 +1,8 @@
 import type { SdkSessionSnapshot } from "@firfi/voila-sdk"
+import type { StateFilePath } from "@firfi/voila-session-store"
 
+// what to suggest when no path is configured: shell-expanded rather than
+// absolute, so it is guidance text and not a `StateFilePath`
 const defaultSessionPath = "~/.config/voila/session.json"
 
 export interface OperationAuthGuidance {
@@ -9,7 +12,7 @@ export interface OperationAuthGuidance {
   readonly message: string
 }
 
-export const makeAuthGuidance = (sessionPath?: string): OperationAuthGuidance => {
+export const makeAuthGuidance = (sessionPath?: StateFilePath): OperationAuthGuidance => {
   const path = sessionPath ?? defaultSessionPath
 
   return {

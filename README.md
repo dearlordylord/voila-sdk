@@ -37,7 +37,7 @@ Voila does not publish a documented third-party customer API. This server uses t
 }
 ```
 
-If the session is missing, expired, or guest-only, tool results include `authGuidance` with the exact CLI login command to run. The MCP server itself does not launch a browser.
+If the session is missing, expired, or guest-only, tool results include `authGuidance` with the exact CLI login command to run. The MCP server itself does not launch a browser. A login performed while the server is running takes effect on its next tool call, without a restart.
 
 ## Tools
 

@@ -5,6 +5,16 @@
     "incremental": false,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
-  "references": [{ "path": "../voila-sdk" }]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../voila-sdk"
+    },
+    {
+      "path": "../voila-session-store"
+    }
+  ]
 }

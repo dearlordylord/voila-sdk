@@ -57,7 +57,6 @@ import {
   previewDeliveryContextChange,
   removeCartItems,
   reserveSlot,
-  saveSdkSessionSnapshot,
   searchProducts,
   SessionSnapshotSchema
 } from "../../src/index.js"
@@ -128,7 +127,6 @@ describe("public package entrypoint", () => {
       previewDeliveryContextChange,
       removeCartItems,
       reserveSlot,
-      saveSdkSessionSnapshot,
       searchProducts
     ]
 

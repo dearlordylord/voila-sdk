@@ -23,7 +23,7 @@ import {
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import type { Schema } from "effect"
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { authGuidanceForHealth, authGuidanceForSnapshot, type OperationAuthGuidance } from "./auth-guidance.js"
 import { type VoilaOperationName } from "./operation-descriptors.js"
@@ -71,9 +71,30 @@ export type OperationExecutionResult =
   | { readonly authGuidance?: OperationAuthGuidance; readonly ok: true; readonly value: unknown }
   | { readonly error: OperationFailure; readonly ok: false }
 
+/**
+ * What one operation produced against the session it ran with: the tool result,
+ * and the snapshot the live response refreshed — absent when nothing about the
+ * session moved and the file must stay as it is.
+ */
+export interface SessionOperationOutcome<A> {
+  readonly refreshed?: SdkSessionSnapshot
+  readonly value: A
+}
+
+export type SessionOperation<A> = (
+  current: SdkSessionSnapshot
+) => Effect.Effect<SessionOperationOutcome<A>, OperationFailure>
+
+/**
+ * The session an operation runs with is never handed out to be persisted later.
+ * `withSession` runs the operation inside the port's own read-modify-write
+ * cycle: the operation sees the session as it exists right now, and the refresh
+ * it reports is a transform over that same value, so a re-login landing while
+ * the request is in flight cannot be overwritten by the session this operation
+ * started from.
+ */
 export interface OperationSessionPort {
-  readonly load: () => Promise<Either.Either<SdkSessionSnapshot, OperationFailure>>
-  readonly save: (snapshot: SdkSessionSnapshot) => Promise<Either.Either<undefined, OperationFailure>>
+  readonly withSession: <A>(operation: SessionOperation<A>) => Effect.Effect<A, OperationFailure>
 }
 
 export interface OperationEnvironment {
@@ -142,26 +163,6 @@ const updateSdkSession = (
         sessionUpdateInvalid
       )
 
-const saveUpdatedSession = async (
-  env: OperationEnvironment,
-  previous: SdkSessionSnapshot,
-  session: SessionSnapshot
-): Promise<Either.Either<SdkSessionSnapshot, OperationFailure>> => {
-  const updated = updateSdkSession(previous, session)
-
-  if (Either.isLeft(updated)) {
-    return Either.left(updated.left)
-  }
-
-  const saved = await env.session.save(updated.right)
-
-  if (Either.isLeft(saved)) {
-    return Either.left(saved.left)
-  }
-
-  return Either.right(updated.right)
-}
-
 export const makeGuestSessionSnapshot = async (
   transport: VoilaTransport
 ): Promise<Either.Either<SdkSessionSnapshot, OperationFailure>> => {
@@ -174,17 +175,29 @@ export const makeGuestSessionSnapshot = async (
   return Either.mapLeft(makeGuestSdkSessionSnapshot(bootstrapped.right.session), sessionUpdateInvalid)
 }
 
-const loadSession = async (env: OperationEnvironment): Promise<Either.Either<SdkSessionSnapshot, OperationFailure>> =>
-  env.session.load()
-
-const persistResultSession = async (
+// The one place Effect crosses into this promise-based layer: the MCP SDK
+// handlers and the CLI are promise-shaped, so every operation run crosses
+// here and nowhere else. Callers never see the Effect inside.
+const runSessionEffect = (
   env: OperationEnvironment,
-  previous: SdkSessionSnapshot,
-  session: SessionSnapshot
-): Promise<OperationExecutionResult | undefined> => {
-  const saved = await saveUpdatedSession(env, previous, session)
+  operation: SessionOperation<OperationExecutionResult>
+): Promise<OperationExecutionResult> =>
+  Effect.runPromise(
+    Effect.either(env.session.withSession(operation)).pipe(
+      Effect.map((executed) => (Either.isLeft(executed) ? failure(executed.left, env.authGuidance) : executed.right))
+    )
+  )
 
-  return Either.isLeft(saved) ? failure(saved.left) : undefined
+const refreshedOutcome = (
+  env: OperationEnvironment,
+  current: SdkSessionSnapshot,
+  result: VoilaJsonResult<unknown>
+): SessionOperationOutcome<OperationExecutionResult> => {
+  const refreshed = updateSdkSession(current, result.session)
+
+  return Either.isLeft(refreshed)
+    ? { value: failure(refreshed.left) }
+    : { refreshed: refreshed.right, value: success(result.value, authGuidanceForSnapshot(env.authGuidance, current)) }
 }
 
 type SessionOperationExecutor<A> = (
@@ -205,21 +218,15 @@ const runSessionOperation = async <A, I>(
     return failure(parsed.left)
   }
 
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const result = await execute(snapshot.right.session, parsed.right)
-
-  if (Either.isLeft(result)) {
-    return failure(redactError(result.left), authGuidanceOnFailure ? env.authGuidance : undefined)
-  }
-
-  const persisted = await persistResultSession(env, snapshot.right, result.right.session)
-
-  return persisted ?? success(result.right.value, authGuidanceForSnapshot(env.authGuidance, snapshot.right))
+  return runSessionEffect(env, (current) =>
+    Effect.map(
+      Effect.tryPromise({ catch: redactError, try: () => execute(current.session, parsed.right) }),
+      (result) =>
+        Either.isLeft(result)
+          ? { value: failure(redactError(result.left), authGuidanceOnFailure ? env.authGuidance : undefined) }
+          : refreshedOutcome(env, current, result.right)
+    )
+  )
 }
 
 const runHealth = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> => {
@@ -229,31 +236,24 @@ const runHealth = async (input: unknown, env: OperationEnvironment): Promise<Ope
     return failure(parsed.left)
   }
 
-  const snapshot = await loadSession(env)
-
-  if (Either.isLeft(snapshot)) {
-    return failure(snapshot.left, env.authGuidance)
-  }
-
-  const health = await checkSessionHealth(snapshot.right, env.transport)
-
-  if (Either.isLeft(health)) {
-    return failure(redactError(health.left))
-  }
-
-  const saved = await env.session.save(health.right.session)
-
-  if (Either.isLeft(saved)) {
-    return failure(saved.left)
-  }
-
-  return success(
-    {
-      diagnostic: redactSdkSessionSnapshot(health.right.session),
-      ...(health.right.status === "retry" ? { reason: health.right.reason } : {}),
-      status: health.right.status
-    },
-    authGuidanceForHealth(env.authGuidance, health.right)
+  return runSessionEffect(env, (current) =>
+    Effect.map(
+      Effect.tryPromise({ catch: redactError, try: () => checkSessionHealth(current, env.transport) }),
+      (health) =>
+        Either.isLeft(health)
+          ? { value: failure(redactError(health.left)) }
+          : {
+              refreshed: health.right.session,
+              value: success(
+                {
+                  diagnostic: redactSdkSessionSnapshot(health.right.session),
+                  ...(health.right.status === "retry" ? { reason: health.right.reason } : {}),
+                  status: health.right.status
+                },
+                authGuidanceForHealth(env.authGuidance, health.right)
+              )
+            }
+    )
   )
 }
 
