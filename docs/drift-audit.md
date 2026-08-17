@@ -36,6 +36,6 @@ Use `causeTag` to decide the likely next action:
 - `VoilaMalformedJson`: Voila returned non-JSON or changed an endpoint response type.
 - `VoilaNon2xxResponse` or `GuestBootstrapNon2xxResponse`: endpoint path, headers, region, or request assumptions may have changed.
 - `VoilaUnauthorizedSession`: session/cookie handling or guest access assumptions may have changed.
-- `VoilaNetworkFailure` or `GuestBootstrapNetworkFailure`: retry later before changing schemas.
+- `VoilaConnectionFailure`, `VoilaResponseReadFailure`, or `VoilaRequestDeadlineExceeded`: retry later before changing schemas.
 
 `EndpointDriftAuditNoProducts` means the harmless query returned zero products. Retry with another stable grocery query before treating it as schema drift.

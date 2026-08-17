@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   makeSessionSnapshot,
   searchProducts,
@@ -11,6 +11,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { respondingTransport, runWith } from "../helpers/transport.js"
 
 const fixtureText = readFileSync(new URL("../fixtures/search-response-milk.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
@@ -40,22 +41,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
-}
-
 const makeSearchResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
   headers: { "set-cookie": "fresh-search-cookie=after; Path=/; Secure" },
@@ -74,22 +59,21 @@ const getSessionCookies = (session: SessionSnapshot): string => {
 
 describe("searchProducts", () => {
   it("searches through the active session and returns normalized products", async () => {
-    const fake = makeResponseTransport(makeSearchResponse())
-    const result = await searchProducts(
-      makeSession(),
-      {
+    const fake = respondingTransport(makeSearchResponse())
+    const result = await runWith(
+      searchProducts(makeSession(), {
         categoryContext: { retailerCategoryId: "retailer-category-id" },
         pageSize: 24,
         pageToken: "next-page-token",
         query: "milk"
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/webproductpagews/v6/product-pages/search")
@@ -107,11 +91,11 @@ describe("searchProducts", () => {
   })
 
   it("propagates invalid search input as a typed recoverable error", async () => {
-    const fake = makeResponseTransport(makeSearchResponse())
-    const result = await searchProducts(makeSession(), { pageSize: 0, query: "" }, fake.transport)
+    const fake = respondingTransport(makeSearchResponse())
+    const result = await runWith(searchProducts(makeSession(), { pageSize: 0, query: "" }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("SearchInputInvalid")
@@ -119,10 +103,9 @@ describe("searchProducts", () => {
   })
 
   it("propagates HTTP client errors as typed recoverable errors", async () => {
-    const result = await searchProducts(
-      makeSession(" "),
-      { pageSize: 24, query: "milk" },
-      makeResponseTransport(makeSearchResponse()).transport
+    const result = await runWith(
+      searchProducts(makeSession(" "), { pageSize: 24, query: "milk" }),
+      respondingTransport(makeSearchResponse())
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -133,13 +116,13 @@ describe("searchProducts", () => {
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
-    const fake = makeResponseTransport(
+    const fake = respondingTransport(
       makeSearchResponse(
         JSON.stringify({ productGroups: [{ decoratedProducts: [{ available: true }], type: "featured" }] })
       )
     )
 
-    const result = await searchProducts(makeSession(), { pageSize: 24, query: "milk" }, fake.transport)
+    const result = await runWith(searchProducts(makeSession(), { pageSize: 24, query: "milk" }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -149,10 +132,9 @@ describe("searchProducts", () => {
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
-    const result = await searchProducts(
-      makeSession(),
-      { pageSize: 24, query: "milk" },
-      makeResponseTransport(makeSearchResponse("{}", 500)).transport
+    const result = await runWith(
+      searchProducts(makeSession(), { pageSize: 24, query: "milk" }),
+      respondingTransport(makeSearchResponse("{}", 500))
     )
 
     expect(Either.isLeft(result)).toBe(true)

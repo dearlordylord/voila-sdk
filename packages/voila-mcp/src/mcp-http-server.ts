@@ -1,170 +1,90 @@
-import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node"
-import { randomUUID } from "node:crypto"
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
+import { McpServer } from "@effect/ai"
+import { HttpMiddleware, HttpRouter, type HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import type { ServeError } from "@effect/platform/HttpServerError"
+import { NodeHttpServer } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
+import { createServer } from "node:http"
 
-import { createVoilaMcpServer } from "./mcp-server.js"
-import { mcpName, type OperationEnvironment } from "./operations.js"
+import { voilaToolsLayer, type VoilaOperations } from "./mcp-server.js"
+import { mcpName } from "./operation-descriptors.js"
+import { packageVersion } from "./package-version.js"
 
-const defaultHttpPath = "/mcp"
+export const defaultHttpPath = "/mcp"
+const forbiddenStatus = 403
 
 export interface VoilaMcpHttpServerOptions {
   readonly host: string
-  readonly path?: string
+  readonly path?: HttpRouter.PathInput
   readonly port: number
 }
 
-const responseJsonHeaders = { "content-type": "application/json" }
+const healthBody = { name: mcpName, status: "ok" }
 
-const writeJsonResponse = (response: ServerResponse, status: number, value: unknown): void => {
-  response.writeHead(status, responseJsonHeaders)
-  response.end(JSON.stringify(value))
+/**
+ * The two routes that are ours rather than MCP's. Deployment guidance points
+ * at `/health`, and a bare `GET /` is what a human types first, so both answer
+ * the same liveness JSON.
+ */
+const healthRoutes = HttpRouter.Default.use((router) =>
+  Effect.all([
+    router.get("/", HttpServerResponse.json(healthBody)),
+    router.get("/health", HttpServerResponse.json(healthBody))
+  ])
+)
+
+const localOriginHosts = new Set(["127.0.0.1", "[::1]", "localhost"])
+
+const forbiddenOriginBody = {
+  error: "forbidden_origin",
+  message: "Voila MCP over HTTP accepts browser requests from local origins only"
 }
 
-const requestPathname = (request: IncomingMessage): string => {
-  const host = request.headers.host ?? "localhost"
-  const url = new URL(request.url ?? "/", `http://${host}`)
-
-  return url.pathname
-}
-
-const firstHeaderValue = (value: string | Array<string> | undefined): string | undefined =>
-  Array.isArray(value) ? value[0] : value
-
-const isInitializeMessage = (value: unknown): boolean =>
-  typeof value === "object" && value !== null && "method" in value && value.method === "initialize"
-
-const isInitializePayload = (value: unknown): boolean =>
-  Array.isArray(value) ? value.some(isInitializeMessage) : isInitializeMessage(value)
-
-const readJsonBody = async (request: IncomingMessage): Promise<unknown> => {
-  const chunks: Array<string> = []
-
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk))
+const isLocalOrigin = (origin: string | undefined): boolean => {
+  // a non-browser client (an MCP stdio bridge, curl, a gateway) sends no
+  // Origin at all; only a browser-issued request has one to check
+  if (origin === undefined) {
+    return true
   }
 
-  return JSON.parse(chunks.join(""))
+  try {
+    return localOriginHosts.has(new URL(origin).hostname)
+  } catch {
+    return false
+  }
 }
 
-const makeConnectedHttpTransport = async (
-  env: OperationEnvironment,
-  transports: Map<string, NodeStreamableHTTPServerTransport>,
-  version?: string
-): Promise<NodeStreamableHTTPServerTransport> => {
-  const server = createVoilaMcpServer(env, version)
-  const transport = new NodeStreamableHTTPServerTransport({
-    enableJsonResponse: true,
-    onsessionclosed: (sessionId) => {
-      transports.delete(sessionId)
-    },
-    onsessioninitialized: (sessionId) => {
-      transports.set(sessionId, transport)
-    },
-    sessionIdGenerator: randomUUID
-  })
+/**
+ * Refuses a browser request from a foreign origin. The tools mutate a real
+ * cart, and a page the user happens to have open must not be able to drive them
+ * by pointing a request at a loopback port — DNS rebinding turns "bound to
+ * 127.0.0.1" into no protection at all.
+ */
+const originGuard = HttpMiddleware.make((app) =>
+  Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
+    isLocalOrigin(request.headers.origin)
+      ? app
+      : Effect.succeed(HttpServerResponse.unsafeJson(forbiddenOriginBody, { status: forbiddenStatus }))
+  )
+)
 
-  await server.connect(transport)
+/**
+ * The MCP endpoint and the liveness routes, mounted but not served: what host
+ * and port they listen on is the caller's decision, and a protocol test serves
+ * them over an in-process client rather than a real socket.
+ */
+export const voilaMcpRoutesLayer = (
+  path: HttpRouter.PathInput = defaultHttpPath,
+  version: string = packageVersion
+): Layer.Layer<never, never, HttpServer.HttpServer | VoilaOperations> =>
+  Layer.mergeAll(voilaToolsLayer, healthRoutes, HttpRouter.Default.serve(originGuard)).pipe(
+    Layer.provide(McpServer.layerHttp({ name: mcpName, path, version }))
+  )
 
-  return transport
-}
-
-const lookupHttpTransport = (
-  request: IncomingMessage,
-  transports: Map<string, NodeStreamableHTTPServerTransport>
-): NodeStreamableHTTPServerTransport | undefined => {
-  const sessionId = firstHeaderValue(request.headers["mcp-session-id"])
-
-  return sessionId === undefined ? undefined : transports.get(sessionId)
-}
-
-export const createHttpServer = (
-  env: OperationEnvironment,
+export const voilaHttpServerLayer = (
   options: VoilaMcpHttpServerOptions,
-  version?: string
-): Server => {
-  const mcpPath = options.path ?? defaultHttpPath
-  const transports = new Map<string, NodeStreamableHTTPServerTransport>()
-
-  return createServer((request, response) => {
-    const pathname = requestPathname(request)
-
-    if (request.method === "GET" && (pathname === "/" || pathname === "/health")) {
-      writeJsonResponse(response, 200, { name: mcpName, status: "ok" })
-
-      return
-    }
-
-    if (pathname !== mcpPath) {
-      writeJsonResponse(response, 404, { error: "not_found" })
-
-      return
-    }
-
-    void handleMcpRequest(request, response, env, transports, version).catch(() => {
-      if (!response.headersSent) {
-        writeJsonResponse(response, 500, { error: "mcp_request_failed" })
-
-        return
-      }
-
-      response.end()
-    })
-  })
-}
-
-const handleMcpRequest = async (
-  request: IncomingMessage,
-  response: ServerResponse,
-  env: OperationEnvironment,
-  transports: Map<string, NodeStreamableHTTPServerTransport>,
-  version?: string
-): Promise<void> => {
-  if (request.method !== "POST") {
-    const transport = lookupHttpTransport(request, transports)
-
-    if (transport === undefined) {
-      writeJsonResponse(response, 400, { error: "mcp_session_required" })
-
-      return
-    }
-
-    await transport.handleRequest(request, response)
-
-    return
-  }
-
-  const body = await readJsonBody(request)
-  const transport = isInitializePayload(body)
-    ? await makeConnectedHttpTransport(env, transports, version)
-    : lookupHttpTransport(request, transports)
-
-  if (transport === undefined) {
-    writeJsonResponse(response, 400, { error: "mcp_session_required" })
-
-    return
-  }
-
-  await transport.handleRequest(request, response, body)
-}
-
-export const startHttpServer = async (
-  env: OperationEnvironment,
-  options: VoilaMcpHttpServerOptions,
-  version?: string
-): Promise<Server> => {
-  const server = createHttpServer(env, options, version)
-
-  await new Promise<void>((resolve, reject) => {
-    const onError = (error: Error): void => {
-      reject(error)
-    }
-
-    server.once("error", onError)
-    server.listen(options.port, options.host, () => {
-      server.off("error", onError)
-      resolve()
-    })
-  })
-
-  return server
-}
+  version: string = packageVersion
+): Layer.Layer<never, ServeError, VoilaOperations> =>
+  Layer.provide(
+    voilaMcpRoutesLayer(options.path ?? defaultHttpPath, version),
+    NodeHttpServer.layer(createServer, { host: options.host, port: options.port })
+  )

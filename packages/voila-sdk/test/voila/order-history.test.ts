@@ -1,7 +1,7 @@
 import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getCompletedOrders,
   makeSessionSnapshot,
@@ -12,6 +12,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { respondingTransport, runWith } from "../helpers/transport.js"
 
 const completedOrdersResponse = {
   data: {
@@ -88,22 +89,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   }
 
   return snapshot.right
-}
-
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
 }
 
 const makeCompletedOrdersResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -207,17 +192,13 @@ describe("completed order history", () => {
   })
 
   it("fetches completed orders through the active session and persists cookies", async () => {
-    const fake = makeResponseTransport(makeCompletedOrdersResponse())
-    const result = await getCompletedOrders(
-      makeSession(),
-      { pageSize: 2, pageToken: "previous-cursor" },
-      fake.transport
-    )
+    const fake = respondingTransport(makeCompletedOrdersResponse())
+    const result = await runWith(getCompletedOrders(makeSession(), { pageSize: 2, pageToken: "previous-cursor" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
       expect(request?.url.pathname).toBe("/graphql")
@@ -233,11 +214,11 @@ describe("completed order history", () => {
   })
 
   it("rejects invalid completed order inputs before network I/O", async () => {
-    const fake = makeResponseTransport(makeCompletedOrdersResponse())
-    const result = await getCompletedOrders(makeSession(), { pageSize: 0 }, fake.transport)
+    const fake = respondingTransport(makeCompletedOrdersResponse())
+    const result = await runWith(getCompletedOrders(makeSession(), { pageSize: 0 }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("CompletedOrdersInputInvalid")
@@ -245,12 +226,11 @@ describe("completed order history", () => {
   })
 
   it("returns typed redacted errors for completed order GraphQL errors", async () => {
-    const result = await getCompletedOrders(
-      makeSession(),
-      {},
-      makeResponseTransport(
+    const result = await runWith(
+      getCompletedOrders(makeSession(), {}),
+      respondingTransport(
         makeCompletedOrdersResponse(JSON.stringify({ errors: [{ message: "secret-account-required-detail" }] }))
-      ).transport
+      )
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -262,10 +242,9 @@ describe("completed order history", () => {
   })
 
   it("returns typed errors when completed orders are unavailable in the GraphQL envelope", async () => {
-    const result = await getCompletedOrders(
-      makeSession(),
-      {},
-      makeResponseTransport(makeCompletedOrdersResponse(JSON.stringify({ data: { completedOrders: null } }))).transport
+    const result = await runWith(
+      getCompletedOrders(makeSession(), {}),
+      respondingTransport(makeCompletedOrdersResponse(JSON.stringify({ data: { completedOrders: null } })))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -276,10 +255,9 @@ describe("completed order history", () => {
   })
 
   it("propagates HTTP client errors as typed recoverable errors", async () => {
-    const result = await getCompletedOrders(
-      makeSession(" "),
-      {},
-      makeResponseTransport(makeCompletedOrdersResponse()).transport
+    const result = await runWith(
+      getCompletedOrders(makeSession(" "), {}),
+      respondingTransport(makeCompletedOrdersResponse())
     )
 
     expect(Either.isLeft(result)).toBe(true)

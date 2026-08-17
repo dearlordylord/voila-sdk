@@ -1,5 +1,5 @@
 import { makeNodeOperationEnvironment, type OperationExecutionResult, runVoilaOperation } from "@firfi/voila-mcp"
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { loginWithPlaywright } from "./auth-login.js"
 import type { CliOperationOptions, CliPorts } from "./cli.js"
@@ -22,7 +22,12 @@ const runNodeOperation = async (
     return envFailure(env.left._tag, env.left.message)
   }
 
-  return runVoilaOperation(name, input, env.right)
+  // the one promise crossing the workspace keeps: a CLI process ends in a
+  // promise whatever runs inside it, and both halves of the operation's result
+  // are reported the same way
+  const executed = await Effect.runPromise(Effect.either(runVoilaOperation(name, input, env.right)))
+
+  return Either.isLeft(executed) ? executed.left : executed.right
 }
 
 export const nodeCliPorts: CliPorts = { login: loginWithPlaywright, runOperation: runNodeOperation }

@@ -4,7 +4,7 @@ import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   applyDeliveryContextChange,
   getActiveShoppingContext,
@@ -21,6 +21,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { runWith, sequenceTransport } from "../helpers/transport.js"
 
 const propositionsFixtureText = readFileSync(new URL("../fixtures/delivery-propositions.json", import.meta.url), "utf8")
 const previewImpactFixtureText = readFileSync(
@@ -73,29 +74,6 @@ const makeResponse = (
   status: number = 200,
   headers: VoilaTransportResponse["headers"] = {}
 ): VoilaTransportResponse => ({ body, headers, status })
-
-const makeSequenceTransport = (
-  responses: ReadonlyArray<VoilaTransportResponse>
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-  const remaining = [...responses]
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        const response = remaining.shift()
-
-        if (response === undefined) {
-          return Either.left("unexpected extra request")
-        }
-
-        return Either.right(response)
-      }
-    }
-  }
-}
 
 describe("shopping context parsing", () => {
   it("normalizes delivery and collection proposition details from a sanitized fixture", () => {
@@ -205,7 +183,7 @@ describe("shopping context parsing", () => {
 
 describe("shopping context operations", () => {
   it("reads active shopping context with the optional region query", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(
         JSON.stringify({
           deliveryDestinationId: "sanitized-delivery-destination-id",
@@ -215,12 +193,12 @@ describe("shopping context operations", () => {
         })
       )
     ])
-    const result = await getActiveShoppingContext(makeSession(), { regionId: "sanitized-region-id" }, fake.transport)
+    const result = await runWith(getActiveShoppingContext(makeSession(), { regionId: "sanitized-region-id" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.method).toBe("GET")
       expect(request?.url.href).toBe(
         `${VOILA_BASE_URL}/api/customersessions/v2/sessions/active?regionId=sanitized-region-id`
@@ -230,24 +208,24 @@ describe("shopping context operations", () => {
   })
 
   it("reads active shopping context without a region query", async () => {
-    const fake = makeSequenceTransport([makeResponse(JSON.stringify({ type: "DELIVERY" }))])
-    const result = await getActiveShoppingContext(makeSession(), {}, fake.transport)
+    const fake = sequenceTransport([makeResponse(JSON.stringify({ type: "DELIVERY" }))])
+    const result = await runWith(getActiveShoppingContext(makeSession(), {}), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.url.search).toBe("")
       expect(result.right.value).toEqual({ type: "DELIVERY" })
     }
   })
 
   it("rejects invalid active shopping context input before network I/O", async () => {
-    const fake = makeSequenceTransport([])
-    const result = await getActiveShoppingContext(makeSession(), { regionId: "" }, fake.transport)
+    const fake = sequenceTransport([])
+    const result = await runWith(getActiveShoppingContext(makeSession(), { regionId: "" }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("ActiveShoppingContextInputInvalid")
@@ -255,17 +233,19 @@ describe("shopping context operations", () => {
   })
 
   it("reads delivery proposition details", async () => {
-    const fake = makeSequenceTransport([makeResponse(propositionsFixtureText)])
-    const result = await getDeliveryPropositionDetails(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", regionId: "sanitized-region-id" },
-      fake.transport
+    const fake = sequenceTransport([makeResponse(propositionsFixtureText)])
+    const result = await runWith(
+      getDeliveryPropositionDetails(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        regionId: "sanitized-region-id"
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/ecomdeliverydestinations/v1/propositions")
       expect(request?.url.searchParams.get("regionId")).toBe("sanitized-region-id")
@@ -275,15 +255,14 @@ describe("shopping context operations", () => {
   })
 
   it("rejects invalid proposition detail input before network I/O", async () => {
-    const fake = makeSequenceTransport([])
-    const result = await getDeliveryPropositionDetails(
-      makeSession(),
-      { deliveryDestinationId: "", regionId: "sanitized-region-id" },
-      fake.transport
+    const fake = sequenceTransport([])
+    const result = await runWith(
+      getDeliveryPropositionDetails(makeSession(), { deliveryDestinationId: "", regionId: "sanitized-region-id" }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("DeliveryPropositionDetailsInputInvalid")
@@ -291,17 +270,19 @@ describe("shopping context operations", () => {
   })
 
   it("previews delivery context changes and returns cart impact warnings", async () => {
-    const fake = makeSequenceTransport([makeResponse(previewImpactFixtureText)])
-    const result = await previewDeliveryContextChange(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", destinationRegionId: "sanitized-region-id" },
-      fake.transport
+    const fake = sequenceTransport([makeResponse(previewImpactFixtureText)])
+    const result = await runWith(
+      previewDeliveryContextChange(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        destinationRegionId: "sanitized-region-id"
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.method).toBe("POST")
       expect(request?.url.pathname).toBe("/api/customersessions/v2/sessions/proposition")
       expect(request?.body).toBe(
@@ -316,15 +297,17 @@ describe("shopping context operations", () => {
   })
 
   it("rejects invalid delivery context preview input before network I/O", async () => {
-    const fake = makeSequenceTransport([])
-    const result = await previewDeliveryContextChange(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", destinationRegionId: "" },
-      fake.transport
+    const fake = sequenceTransport([])
+    const result = await runWith(
+      previewDeliveryContextChange(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        destinationRegionId: ""
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("DeliveryContextPreviewInputInvalid")
@@ -332,7 +315,7 @@ describe("shopping context operations", () => {
   })
 
   it("sets active delivery destination context with optional account headers", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(
         JSON.stringify({
           deliveryDestinationId: "sanitized-delivery-destination-id",
@@ -341,21 +324,20 @@ describe("shopping context operations", () => {
         })
       )
     ])
-    const result = await setActiveDeliveryDestinationContext(
-      makeSession(),
-      {
+    const result = await runWith(
+      setActiveDeliveryDestinationContext(makeSession(), {
         customerId: secretCustomerId,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
         visitorId: secretVisitorId
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.method).toBe("PUT")
       expect(request?.url.pathname).toBe("/api/customersessions/v2/sessions/active")
       expect(request?.headers["customer-id"]).toBe(secretCustomerId)
@@ -368,15 +350,17 @@ describe("shopping context operations", () => {
   })
 
   it("rejects invalid active delivery destination context input before network I/O", async () => {
-    const fake = makeSequenceTransport([])
-    const result = await setActiveDeliveryDestinationContext(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", regionId: "" },
-      fake.transport
+    const fake = sequenceTransport([])
+    const result = await runWith(
+      setActiveDeliveryDestinationContext(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        regionId: ""
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("SetActiveDeliveryDestinationInputInvalid")
@@ -384,7 +368,7 @@ describe("shopping context operations", () => {
   })
 
   it("sets active cart proposition context", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(
         JSON.stringify({
           cartPropositionId: "sanitized-destination-cart-proposition-id",
@@ -393,19 +377,18 @@ describe("shopping context operations", () => {
         })
       )
     ])
-    const result = await setActiveCartPropositionContext(
-      makeSession(),
-      {
+    const result = await runWith(
+      setActiveCartPropositionContext(makeSession(), {
         destinationCartPropositionId: "sanitized-destination-cart-proposition-id",
         originCartPropositionId: "sanitized-origin-cart-proposition-id"
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.method).toBe("POST")
       expect(request?.url.pathname).toBe("/api/customersessions/v2/sessions/active")
       expect(request?.body).toBe(
@@ -419,15 +402,17 @@ describe("shopping context operations", () => {
   })
 
   it("rejects invalid active cart proposition context input before network I/O", async () => {
-    const fake = makeSequenceTransport([])
-    const result = await setActiveCartPropositionContext(
-      makeSession(),
-      { destinationCartPropositionId: "sanitized-destination-cart-proposition-id", originCartPropositionId: "" },
-      fake.transport
+    const fake = sequenceTransport([])
+    const result = await runWith(
+      setActiveCartPropositionContext(makeSession(), {
+        destinationCartPropositionId: "sanitized-destination-cart-proposition-id",
+        originCartPropositionId: ""
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("SetActiveCartPropositionInputInvalid")
@@ -435,17 +420,19 @@ describe("shopping context operations", () => {
   })
 
   it("does not apply a context change with cart impact unless explicitly allowed", async () => {
-    const fake = makeSequenceTransport([makeResponse(previewImpactFixtureText)])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", destinationRegionId: "sanitized-region-id" },
-      fake.transport
+    const fake = sequenceTransport([makeResponse(previewImpactFixtureText)])
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        destinationRegionId: "sanitized-region-id"
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(fake.requests()).toHaveLength(1)
+      expect(fake.requests).toHaveLength(1)
       expect(result.right.value.status).toBe("requires-confirmation")
       expect(result.right.value.applied).toBe(false)
       expect(result.right.value.preview.cartImpactWarnings).toHaveLength(3)
@@ -453,19 +440,18 @@ describe("shopping context operations", () => {
   })
 
   it("propagates preview failures before applying context changes", async () => {
-    const fake = makeSequenceTransport([makeResponse(JSON.stringify({ unexpected: true }))])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      {
+    const fake = sequenceTransport([makeResponse(JSON.stringify({ unexpected: true }))])
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
         allowCartImpact: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         destinationRegionId: "sanitized-region-id"
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(1)
+    expect(fake.requests).toHaveLength(1)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
@@ -473,7 +459,7 @@ describe("shopping context operations", () => {
   })
 
   it("applies a confirmed proposition context change and keeps the preview warnings", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(previewImpactFixtureText),
       makeResponse(
         JSON.stringify({
@@ -483,22 +469,21 @@ describe("shopping context operations", () => {
         })
       )
     ])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      {
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
         allowCartImpact: true,
         customerId: secretCustomerId,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         destinationRegionId: "sanitized-region-id",
         visitorId: secretVisitorId
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [, commitRequest] = fake.requests()
+      const [, commitRequest] = fake.requests
       expect(commitRequest?.method).toBe("POST")
       expect(commitRequest?.headers["customer-id"]).toBe(secretCustomerId)
       expect(commitRequest?.headers["visitor-id"]).toBe(secretVisitorId)
@@ -513,22 +498,21 @@ describe("shopping context operations", () => {
   })
 
   it("propagates failed confirmed cart proposition commits", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(previewImpactFixtureText),
       makeResponse(JSON.stringify({ error: "sanitized failure" }), 500)
     ])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      {
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
         allowCartImpact: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
         destinationRegionId: "sanitized-region-id"
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(2)
+    expect(fake.requests).toHaveLength(2)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("VoilaNon2xxResponse")
@@ -536,7 +520,7 @@ describe("shopping context operations", () => {
   })
 
   it("falls back to delivery destination context when preview has no origin cart proposition", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(
         JSON.stringify({
           destinationCartProposition: {
@@ -553,16 +537,18 @@ describe("shopping context operations", () => {
         })
       )
     ])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", destinationRegionId: "sanitized-region-id" },
-      fake.transport
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        destinationRegionId: "sanitized-region-id"
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [, commitRequest] = fake.requests()
+      const [, commitRequest] = fake.requests
       expect(commitRequest?.method).toBe("PUT")
       expect(commitRequest?.body).toBe(
         JSON.stringify({ deliveryDestinationId: "sanitized-delivery-destination-id", regionId: "sanitized-region-id" })
@@ -572,7 +558,7 @@ describe("shopping context operations", () => {
   })
 
   it("propagates failed fallback delivery destination commits", async () => {
-    const fake = makeSequenceTransport([
+    const fake = sequenceTransport([
       makeResponse(
         JSON.stringify({
           destinationCartProposition: {
@@ -583,14 +569,16 @@ describe("shopping context operations", () => {
       ),
       makeResponse(JSON.stringify({ error: "sanitized failure" }), 500)
     ])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id", destinationRegionId: "sanitized-region-id" },
-      fake.transport
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
+        deliveryDestinationId: "sanitized-delivery-destination-id",
+        destinationRegionId: "sanitized-region-id"
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(2)
+    expect(fake.requests).toHaveLength(2)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("VoilaNon2xxResponse")
@@ -598,15 +586,17 @@ describe("shopping context operations", () => {
   })
 
   it("rejects invalid apply input before network I/O", async () => {
-    const fake = makeSequenceTransport([])
-    const result = await applyDeliveryContextChange(
-      makeSession(),
-      { deliveryDestinationId: "", destinationRegionId: "sanitized-region-id" },
-      fake.transport
+    const fake = sequenceTransport([])
+    const result = await runWith(
+      applyDeliveryContextChange(makeSession(), {
+        deliveryDestinationId: "",
+        destinationRegionId: "sanitized-region-id"
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("ApplyDeliveryContextChangeInputInvalid")

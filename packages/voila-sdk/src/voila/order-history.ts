@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import {
   type NormalizedCompletedOrder,
@@ -10,11 +10,12 @@ import {
   type RawCompletedOrderSlot,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CompletedOrdersRequestError } from "./order-urls.js"
 import { makeCompletedOrdersRequest } from "./order-urls.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 
 export type CompletedOrdersGraphqlError = { readonly _tag: "CompletedOrdersGraphqlError"; readonly message: string }
 
@@ -112,30 +113,18 @@ const getCompletedOrdersConnection = (
   return Either.right(response.data.completedOrders)
 }
 
-export const getCompletedOrders = async (
+export const getCompletedOrders = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetCompletedOrdersResult, GetCompletedOrdersError>> => {
-  const request = makeCompletedOrdersRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawCompletedOrdersGraphqlResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetCompletedOrdersResult, GetCompletedOrdersError, VoilaTransport> =>
+  Effect.flatMap(makeCompletedOrdersRequest(input), (request) =>
+    Effect.flatMap(
+      requestVoilaJson(RawCompletedOrdersGraphqlResponseSchema, session, request, cookieJarPort),
+      (result) =>
+        Effect.map(getCompletedOrdersConnection(result.value), (connection) => ({
+          session: result.session,
+          value: normalizeCompletedOrdersResponse(connection)
+        }))
+    )
   )
-
-  return Either.flatMap(response, (result) =>
-    Either.map(getCompletedOrdersConnection(result.value), (connection) => ({
-      session: result.session,
-      value: normalizeCompletedOrdersResponse(connection)
-    }))
-  )
-}

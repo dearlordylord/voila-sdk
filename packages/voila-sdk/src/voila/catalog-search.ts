@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -7,9 +7,10 @@ import {
   ProductSearchResponseSchema,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 import type { SearchRequestError } from "./urls.js"
 import { makeSearchRequest } from "./urls.js"
 
@@ -70,19 +71,14 @@ export const parseSearchResponse = (
     normalizeSearchResponse
   )
 
-export const searchProducts = async (
+export const searchProducts = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<SearchProductsResult, SearchProductsError>> => {
-  const request = makeSearchRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(ProductSearchResponseSchema, session, request.right, transport, cookieJarPort)
-
-  return Either.map(response, (result) => ({ session: result.session, value: normalizeSearchResponse(result.value) }))
-}
+): Effect.Effect<SearchProductsResult, SearchProductsError, VoilaTransport> =>
+  Effect.flatMap(makeSearchRequest(input), (request) =>
+    Effect.map(requestVoilaJson(ProductSearchResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeSearchResponse(result.value)
+    }))
+  )

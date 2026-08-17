@@ -1,15 +1,16 @@
 import { readFile } from "node:fs/promises"
 
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
-import type {
-  ResponseHeaders,
-  SessionStoragePort,
-  VoilaTransport,
-  VoilaTransportRequest,
-  VoilaTransportResponse
+import type { SessionStoragePort } from "../../src/index.js"
+import {
+  checkSessionHealth,
+  getCart,
+  loadSdkSessionSnapshot,
+  searchProducts,
+  sessionStorageReadFailure
 } from "../../src/index.js"
-import { checkSessionHealth, getCart, loadSdkSessionSnapshot, searchProducts } from "../../src/index.js"
+import { runLive } from "./live-transport.js"
 
 const authSmokeFlag = "VOILA_AUTH_SMOKE"
 const enabledValue = "1"
@@ -35,34 +36,11 @@ interface AuthReadOnlySmokeSuccess {
   readonly productCount: number
 }
 
-const responseHeadersFromFetch = (headers: Headers): ResponseHeaders => {
-  const setCookie = headers.getSetCookie()
-  const headerEntries = Object.fromEntries(headers.entries())
-
-  return setCookie.length === 0 ? headerEntries : { ...headerEntries, "set-cookie": setCookie }
-}
-
-const fetchTransport: VoilaTransport = {
-  request: async (request: VoilaTransportRequest) => {
-    const requestInitBase = {
-      headers: request.headers,
-      method: request.method,
-      redirect: "manual"
-    } satisfies RequestInit
-    const requestInit = request.body === undefined ? requestInitBase : { ...requestInitBase, body: request.body }
-    const response = await fetch(request.url, requestInit)
-
-    return Either.right({
-      body: await response.text(),
-      headers: responseHeadersFromFetch(response.headers),
-      status: response.status
-    } satisfies VoilaTransportResponse)
-  }
-}
-
 const toCauseTag = (error: { readonly _tag: string }): string => error._tag
 
-const makeFileSessionStorage = (path: string): SessionStoragePort => ({ read: async () => readFile(path, "utf8") })
+const makeFileSessionStorage = (path: string): SessionStoragePort => ({
+  read: () => Effect.tryPromise({ catch: sessionStorageReadFailure, try: () => readFile(path, "utf8") })
+})
 
 const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthReadOnlySmokeFailure>> => {
   if (process.env[authSmokeFlag] !== enabledValue) {
@@ -75,7 +53,7 @@ const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthR
     return Either.left({ _tag: "AuthReadOnlySmokeSessionPathMissing" })
   }
 
-  const snapshot = await loadSdkSessionSnapshot(makeFileSessionStorage(sessionPath))
+  const snapshot = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(makeFileSessionStorage(sessionPath))))
 
   if (Either.isLeft(snapshot)) {
     return Either.left({ _tag: "AuthReadOnlySmokeSessionLoadFailed", causeTag: toCauseTag(snapshot.left) })
@@ -85,7 +63,7 @@ const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthR
     return Either.left({ _tag: "AuthReadOnlySmokeSessionNotAuthenticated" })
   }
 
-  const health = await checkSessionHealth(snapshot.right, fetchTransport)
+  const health = await runLive(checkSessionHealth(snapshot.right))
 
   if (Either.isLeft(health)) {
     return Either.left({ _tag: "AuthReadOnlySmokeSessionHealthFailed", causeTag: toCauseTag(health.left) })
@@ -96,7 +74,7 @@ const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthR
   }
 
   const session = health.right.session.session
-  const search = await searchProducts(session, { pageSize, query: harmlessQuery }, fetchTransport)
+  const search = await runLive(searchProducts(session, { pageSize, query: harmlessQuery }))
 
   if (Either.isLeft(search)) {
     return Either.left({ _tag: "AuthReadOnlySmokeSearchFailed", causeTag: toCauseTag(search.left) })
@@ -106,7 +84,7 @@ const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthR
     return Either.left({ _tag: "AuthReadOnlySmokeNoProducts" })
   }
 
-  const cart = await getCart(search.right.session, fetchTransport)
+  const cart = await runLive(getCart(search.right.session))
 
   if (Either.isLeft(cart)) {
     return Either.left({ _tag: "AuthReadOnlySmokeCartReadFailed", causeTag: toCauseTag(cart.left) })

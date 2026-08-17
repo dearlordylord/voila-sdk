@@ -1,7 +1,7 @@
 import { Either } from "effect"
 
-import type { ResponseHeaders, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
 import { bootstrapGuestSession, getCart, searchProducts } from "../../src/index.js"
+import { runLive } from "./live-transport.js"
 
 const driftAuditFlag = "VOILA_DRIFT_AUDIT"
 const enabledValue = "1"
@@ -25,31 +25,6 @@ interface EndpointDriftAuditSuccess {
   readonly productCount: number
 }
 
-const responseHeadersFromFetch = (headers: Headers): ResponseHeaders => {
-  const setCookie = headers.getSetCookie()
-  const headerEntries = Object.fromEntries(headers.entries())
-
-  return setCookie.length === 0 ? headerEntries : { ...headerEntries, "set-cookie": setCookie }
-}
-
-const fetchTransport: VoilaTransport = {
-  request: async (request: VoilaTransportRequest) => {
-    const requestInitBase = {
-      headers: request.headers,
-      method: request.method,
-      redirect: "manual"
-    } satisfies RequestInit
-    const requestInit = request.body === undefined ? requestInitBase : { ...requestInitBase, body: request.body }
-    const response = await fetch(request.url, requestInit)
-
-    return Either.right({
-      body: await response.text(),
-      headers: responseHeadersFromFetch(response.headers),
-      status: response.status
-    } satisfies VoilaTransportResponse)
-  }
-}
-
 const toCauseTag = (error: { readonly _tag: string }): string => error._tag
 
 const operationFailed = (operation: DriftAuditOperation, causeTag: string): EndpointDriftAuditFailure => ({
@@ -59,13 +34,13 @@ const operationFailed = (operation: DriftAuditOperation, causeTag: string): Endp
 })
 
 const runAudit = async (): Promise<Either.Either<EndpointDriftAuditSuccess, EndpointDriftAuditFailure>> => {
-  const bootstrap = await bootstrapGuestSession(fetchTransport)
+  const bootstrap = await runLive(bootstrapGuestSession())
 
   if (Either.isLeft(bootstrap)) {
     return Either.left(operationFailed("guest-bootstrap", toCauseTag(bootstrap.left)))
   }
 
-  const search = await searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }, fetchTransport)
+  const search = await runLive(searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }))
 
   if (Either.isLeft(search)) {
     return Either.left(operationFailed("catalog-search", toCauseTag(search.left)))
@@ -75,7 +50,7 @@ const runAudit = async (): Promise<Either.Either<EndpointDriftAuditSuccess, Endp
     return Either.left({ _tag: "EndpointDriftAuditNoProducts", operation: "catalog-search" })
   }
 
-  const cart = await getCart(search.right.session, fetchTransport)
+  const cart = await runLive(getCart(search.right.session))
 
   if (Either.isLeft(cart)) {
     return Either.left(operationFailed("cart-read", toCauseTag(cart.left)))

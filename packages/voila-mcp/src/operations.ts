@@ -22,10 +22,15 @@ import {
   type VoilaJsonResult,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import type { Schema } from "effect"
-import { Effect, Either } from "effect"
+import type { Layer } from "effect"
+import { Effect, Either, Schema } from "effect"
 
-import { authGuidanceForHealth, authGuidanceForSnapshot, type OperationAuthGuidance } from "./auth-guidance.js"
+import {
+  authGuidanceForHealth,
+  authGuidanceForSnapshot,
+  type OperationAuthGuidance,
+  OperationAuthGuidanceSchema
+} from "./auth-guidance.js"
 import { type VoilaOperationName } from "./operation-descriptors.js"
 import {
   ActiveShoppingContextOperationInputSchema,
@@ -60,16 +65,42 @@ export {
   type VoilaOperationName
 } from "./operation-descriptors.js"
 
-export interface OperationFailure {
-  readonly _tag: string
-  readonly authGuidance?: OperationAuthGuidance
-  readonly message: string
-  readonly status?: number
-}
+/**
+ * Every tool result crosses a protocol boundary, so the shapes are schema-owned
+ * rather than hand-written: the MCP toolkit encodes them, and a field that
+ * exists only in TypeScript would leave the wire contract unstated.
+ */
+export const OperationFailureSchema = Schema.Struct({
+  _tag: Schema.String,
+  authGuidance: Schema.optionalWith(OperationAuthGuidanceSchema, { exact: true }),
+  message: Schema.String,
+  status: Schema.optionalWith(Schema.Number, { exact: true })
+})
 
-export type OperationExecutionResult =
-  | { readonly authGuidance?: OperationAuthGuidance; readonly ok: true; readonly value: unknown }
-  | { readonly error: OperationFailure; readonly ok: false }
+export type OperationFailure = Schema.Schema.Type<typeof OperationFailureSchema>
+
+export const OperationExecutionSuccessSchema = Schema.Struct({
+  authGuidance: Schema.optionalWith(OperationAuthGuidanceSchema, { exact: true }),
+  ok: Schema.Literal(true),
+  value: Schema.Unknown
+})
+
+export type OperationExecutionSuccess = Schema.Schema.Type<typeof OperationExecutionSuccessSchema>
+
+export const OperationExecutionFailureSchema = Schema.Struct({
+  error: OperationFailureSchema,
+  ok: Schema.Literal(false)
+})
+
+export type OperationExecutionFailure = Schema.Schema.Type<typeof OperationExecutionFailureSchema>
+
+/**
+ * The two halves an operation can land on, unioned. The halves are separate
+ * types because an Effect-shaped operation puts them on separate channels — and
+ * they are unioned here because a caller at the process edge (the CLI) reports
+ * both the same way.
+ */
+export type OperationExecutionResult = OperationExecutionFailure | OperationExecutionSuccess
 
 /**
  * What one operation produced against the session it ran with: the tool result,
@@ -83,7 +114,7 @@ export interface SessionOperationOutcome<A> {
 
 export type SessionOperation<A> = (
   current: SdkSessionSnapshot
-) => Effect.Effect<SessionOperationOutcome<A>, OperationFailure>
+) => Effect.Effect<SessionOperationOutcome<A>, OperationFailure, VoilaTransport>
 
 /**
  * The session an operation runs with is never handed out to be persisted later.
@@ -94,13 +125,19 @@ export type SessionOperation<A> = (
  * started from.
  */
 export interface OperationSessionPort {
-  readonly withSession: <A>(operation: SessionOperation<A>) => Effect.Effect<A, OperationFailure>
+  readonly withSession: <A>(operation: SessionOperation<A>) => Effect.Effect<A, OperationFailure, VoilaTransport>
 }
 
+/**
+ * What an operation needs from the process it runs in. The transport arrives as
+ * a layer rather than a service value: the SDK asks for it from the
+ * environment, and the process that owns a network stack is the one that says
+ * what that stack is.
+ */
 export interface OperationEnvironment {
   readonly authGuidance?: OperationAuthGuidance
   readonly session: OperationSessionPort
-  readonly transport: VoilaTransport
+  readonly transport: Layer.Layer<VoilaTransport>
 }
 
 const inputInvalid = (): OperationFailure => ({
@@ -118,13 +155,13 @@ const bootstrapFailed = (failure: OperationFailure): OperationFailure => ({
   message: failure.message
 })
 
-const success = (value: unknown, authGuidance?: OperationAuthGuidance): OperationExecutionResult => ({
+const success = (value: unknown, authGuidance?: OperationAuthGuidance): OperationExecutionSuccess => ({
   ...(authGuidance === undefined ? {} : { authGuidance }),
   ok: true,
   value
 })
 
-const failure = (error: OperationFailure, authGuidance?: OperationAuthGuidance): OperationExecutionResult => ({
+const failure = (error: OperationFailure, authGuidance?: OperationAuthGuidance): OperationExecutionFailure => ({
   error: { ...error, ...(authGuidance === undefined ? {} : { authGuidance }) },
   ok: false
 })
@@ -149,8 +186,11 @@ const redactError = (error: unknown): OperationFailure => {
   }
 }
 
-const parseInput = <A, I>(schema: Schema.Schema<A, I, never>, input: unknown): Either.Either<A, OperationFailure> =>
-  Either.mapLeft(parseUnknown(schema, input), inputInvalid)
+const parseInput = <A, I>(
+  schema: Schema.Schema<A, I, never>,
+  input: unknown
+): Effect.Effect<A, OperationExecutionFailure> =>
+  Effect.mapError(parseUnknown(schema, input), () => failure(inputInvalid()))
 
 const updateSdkSession = (
   previous: SdkSessionSnapshot,
@@ -163,30 +203,27 @@ const updateSdkSession = (
         sessionUpdateInvalid
       )
 
-export const makeGuestSessionSnapshot = async (
-  transport: VoilaTransport
-): Promise<Either.Either<SdkSessionSnapshot, OperationFailure>> => {
-  const bootstrapped = await bootstrapGuestSession(transport)
+export const makeGuestSessionSnapshot = (): Effect.Effect<SdkSessionSnapshot, OperationFailure, VoilaTransport> =>
+  Effect.flatMap(
+    Effect.mapError(bootstrapGuestSession(), (error) => bootstrapFailed(redactError(error))),
+    (bootstrapped) => Either.mapLeft(makeGuestSdkSessionSnapshot(bootstrapped.session), sessionUpdateInvalid)
+  )
 
-  if (Either.isLeft(bootstrapped)) {
-    return Either.left(bootstrapFailed(redactError(bootstrapped.left)))
-  }
-
-  return Either.mapLeft(makeGuestSdkSessionSnapshot(bootstrapped.right.session), sessionUpdateInvalid)
-}
-
-// The one place Effect crosses into this promise-based layer: the MCP SDK
-// handlers and the CLI are promise-shaped, so every operation run crosses
-// here and nowhere else. Callers never see the Effect inside.
-const runSessionEffect = (
+/**
+ * One operation run against the session port: the ok half stays on the success
+ * channel, the not-ok half moves to the error channel. The session cycle itself
+ * failing is folded into the same failure shape, with the environment's auth
+ * guidance attached — a caller that cannot get a session at all needs the same
+ * "how do I log in" answer as one whose session was rejected.
+ */
+const runSessionResult = (
   env: OperationEnvironment,
   operation: SessionOperation<OperationExecutionResult>
-): Promise<OperationExecutionResult> =>
-  Effect.runPromise(
-    Effect.either(env.session.withSession(operation)).pipe(
-      Effect.map((executed) => (Either.isLeft(executed) ? failure(executed.left, env.authGuidance) : executed.right))
-    )
-  )
+): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
+  Effect.matchEffect(env.session.withSession(operation), {
+    onFailure: (error) => Effect.fail(failure(error, env.authGuidance)),
+    onSuccess: (executed) => (executed.ok ? Effect.succeed(executed) : Effect.fail(executed))
+  })
 
 const refreshedOutcome = (
   env: OperationEnvironment,
@@ -200,137 +237,124 @@ const refreshedOutcome = (
     : { refreshed: refreshed.right, value: success(result.value, authGuidanceForSnapshot(env.authGuidance, current)) }
 }
 
+/**
+ * What every request-shaped operation looks like from here: a session and a
+ * parsed input in, a refreshed session and a value out. Operations that fail
+ * do so on the Effect error channel with their own tags, which `redactError`
+ * strips down to what a tool result may carry.
+ */
 type SessionOperationExecutor<A> = (
   session: SessionSnapshot,
   input: A
-) => Promise<Either.Either<VoilaJsonResult<unknown>, unknown>>
+) => Effect.Effect<VoilaJsonResult<unknown>, unknown, VoilaTransport>
 
-const runSessionOperation = async <A, I>(
+const runSessionOperation = <A, I>(
   schema: Schema.Schema<A, I, never>,
   input: unknown,
   env: OperationEnvironment,
   execute: SessionOperationExecutor<A>,
   authGuidanceOnFailure = false
-): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(schema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  return runSessionEffect(env, (current) =>
-    Effect.map(
-      Effect.tryPromise({ catch: redactError, try: () => execute(current.session, parsed.right) }),
-      (result) =>
-        Either.isLeft(result)
-          ? { value: failure(redactError(result.left), authGuidanceOnFailure ? env.authGuidance : undefined) }
-          : refreshedOutcome(env, current, result.right)
+): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
+  Effect.flatMap(parseInput(schema, input), (parsed) =>
+    runSessionResult(env, (current) =>
+      Effect.match(execute(current.session, parsed), {
+        onFailure: (error) => ({
+          value: failure(redactError(error), authGuidanceOnFailure ? env.authGuidance : undefined)
+        }),
+        onSuccess: (result) => refreshedOutcome(env, current, result)
+      })
     )
   )
-}
 
-const runHealth = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> => {
-  const parsed = parseInput(EmptyOperationInputSchema, input)
-
-  if (Either.isLeft(parsed)) {
-    return failure(parsed.left)
-  }
-
-  return runSessionEffect(env, (current) =>
-    Effect.map(
-      Effect.tryPromise({ catch: redactError, try: () => checkSessionHealth(current, env.transport) }),
-      (health) =>
-        Either.isLeft(health)
-          ? { value: failure(redactError(health.left)) }
-          : {
-              refreshed: health.right.session,
-              value: success(
-                {
-                  diagnostic: redactSdkSessionSnapshot(health.right.session),
-                  ...(health.right.status === "retry" ? { reason: health.right.reason } : {}),
-                  status: health.right.status
-                },
-                authGuidanceForHealth(env.authGuidance, health.right)
-              )
-            }
+const runHealth = (
+  input: unknown,
+  env: OperationEnvironment
+): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
+  Effect.flatMap(parseInput(EmptyOperationInputSchema, input), () =>
+    runSessionResult(env, (current) =>
+      Effect.match(checkSessionHealth(current), {
+        onFailure: (error) => ({ value: failure(redactError(error)) }),
+        onSuccess: (health) => ({
+          refreshed: health.session,
+          value: success(
+            {
+              diagnostic: redactSdkSessionSnapshot(health.session),
+              ...(health.status === "retry" ? { reason: health.reason } : {}),
+              status: health.status
+            },
+            authGuidanceForHealth(env.authGuidance, health)
+          )
+        })
+      })
     )
   )
-}
 
-const runSearch = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+type OperationRun = Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport>
+
+const runSearch = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(ProductListOperationInputSchema, input, env, (session, parsed) =>
-    searchProducts(session, makeSdkSearchInput(parsed), env.transport)
+    searchProducts(session, makeSdkSearchInput(parsed))
   )
 
-const runCategoryProducts = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runCategoryProducts = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(CategoryProductsOperationInputSchema, input, env, (session, parsed) =>
-    getCategoryProducts(session, makeSdkCategoryInput(parsed), env.transport)
+    getCategoryProducts(session, makeSdkCategoryInput(parsed))
   )
 
-const runDiscountedProducts = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runDiscountedProducts = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(DiscountedProductsOperationInputSchema, input, env, (session, parsed) =>
-    getDiscountedProducts(session, makeSdkDiscountInput(parsed), env.transport)
+    getDiscountedProducts(session, makeSdkDiscountInput(parsed))
   )
 
-const runActiveShoppingContext = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runActiveShoppingContext = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(ActiveShoppingContextOperationInputSchema, input, env, (session, parsed) =>
-    getActiveShoppingContext(session, makeSdkActiveShoppingContextInput(parsed), env.transport)
+    getActiveShoppingContext(session, makeSdkActiveShoppingContextInput(parsed))
   )
 
-const runSlotListings = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runSlotListings = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(SlotListingsOperationInputSchema, input, env, (session, parsed) =>
-    getSlotListings(session, makeSdkSlotListingsInput(parsed), env.transport)
+    getSlotListings(session, makeSdkSlotListingsInput(parsed))
   )
 
-const runReserveSlot = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runReserveSlot = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(SlotReservationOperationInputSchema, input, env, (session, parsed) =>
-    reserveSlot(session, makeSdkSlotReservationInput(parsed), env.transport)
+    reserveSlot(session, makeSdkSlotReservationInput(parsed))
   )
 
-const runGetCart = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
-  runSessionOperation(EmptyOperationInputSchema, input, env, (session) => getCart(session, env.transport))
+const runGetCart = (input: unknown, env: OperationEnvironment): OperationRun =>
+  runSessionOperation(EmptyOperationInputSchema, input, env, (session) => getCart(session))
 
-const runCompletedOrders = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runCompletedOrders = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(
     OrderListOperationInputSchema,
     input,
     env,
-    (session, parsed) => getCompletedOrders(session, makeSdkOrderListInput(parsed), env.transport),
+    (session, parsed) => getCompletedOrders(session, makeSdkOrderListInput(parsed)),
     true
   )
 
-const runOrderDetails = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runOrderDetails = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(
     OrderDetailsOperationInputSchema,
     input,
     env,
-    (session, parsed) => getOrderDetails(session, makeSdkOrderDetailsInput(parsed), env.transport),
+    (session, parsed) => getOrderDetails(session, makeSdkOrderDetailsInput(parsed)),
     true
   )
 
-const runCompletedOrderItems = async (input: unknown, env: OperationEnvironment): Promise<OperationExecutionResult> =>
+const runCompletedOrderItems = (input: unknown, env: OperationEnvironment): OperationRun =>
   runSessionOperation(
     OrderItemsOperationInputSchema,
     input,
     env,
-    (session, parsed) => getCompletedOrderItems(session, makeSdkOrderItemsInput(parsed), env.transport),
+    (session, parsed) => getCompletedOrderItems(session, makeSdkOrderItemsInput(parsed)),
     true
   )
 
-const runCartItems = async (
-  input: unknown,
-  env: OperationEnvironment,
-  apply: typeof addCartItems
-): Promise<OperationExecutionResult> =>
-  runSessionOperation(CartItemOperationInputSchema, input, env, (session, parsed) =>
-    apply(session, parsed.items, env.transport)
-  )
+const runCartItems = (input: unknown, env: OperationEnvironment, apply: typeof addCartItems): OperationRun =>
+  runSessionOperation(CartItemOperationInputSchema, input, env, (session, parsed) => apply(session, parsed.items))
 
-export const runVoilaOperation = async (
-  name: VoilaOperationName,
-  input: unknown,
-  env: OperationEnvironment
-): Promise<OperationExecutionResult> => {
+const runOperation = (name: VoilaOperationName, input: unknown, env: OperationEnvironment): OperationRun => {
   switch (name) {
     case "voila_add_cart_items":
       return runCartItems(input, env, addCartItems)
@@ -360,6 +384,30 @@ export const runVoilaOperation = async (
       return runSearch(input, env)
   }
 }
+
+const operationDefect = (): OperationExecutionFailure =>
+  failure({ _tag: "VoilaOperationFailed", message: "Voila operation failed" })
+
+/**
+ * The registry's one entry point. The transport layer is provided here rather
+ * than by callers: every consumer — MCP toolkit handler, CLI command — wants
+ * the operation run against the environment it was handed, and none of them
+ * should have to know what a transport is.
+ *
+ * Defects are folded into the failure channel here because this is the last
+ * place that knows the difference between a Voila error and a rendered
+ * exception: a defect escaping this boundary reaches a client as a protocol
+ * error carrying whatever the thrower put in it, and this layer is the one
+ * handling cookies and tokens.
+ */
+export const runVoilaOperation = (
+  name: VoilaOperationName,
+  input: unknown,
+  env: OperationEnvironment
+): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure> =>
+  Effect.catchAllDefect(Effect.provide(runOperation(name, input, env), env.transport), () =>
+    Effect.fail(operationDefect())
+  )
 
 export const normalizeCliCartInput = (productId: string, quantity: number): CartItemOperationInput => ({
   items: [{ productId, quantity }]

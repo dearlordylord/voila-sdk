@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { BrowserLoginPortError } from "../../src/domain/schemas/index.js"
@@ -64,7 +64,7 @@ describe("browser login port", () => {
       Either.right({ account: { emailHint: secretEmailHint }, authenticated: true, session: makeSession(true) })
     )
 
-    const result = await loginWithBrowser(fake.port, { timeoutMs: 30_000 })
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port, { timeoutMs: 30_000 })))
 
     expect(Either.isRight(result)).toBe(true)
     expect(fake.requests).toHaveLength(1)
@@ -87,7 +87,7 @@ describe("browser login port", () => {
       })
     )
 
-    const result = await loginWithBrowser(fake.port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -105,7 +105,7 @@ describe("browser login port", () => {
       })
     )
 
-    const result = await loginWithBrowser(fake.port, { timeoutMs: 1 })
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port, { timeoutMs: 1 })))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests).toEqual([{ loginUrl: voilaUrl, timeoutMs: 1 }])
@@ -119,7 +119,7 @@ describe("browser login port", () => {
   it("rejects completed browser captures that do not include session cookies", async () => {
     const fake = makePort(Either.right({ authenticated: true, session: makeSession(false) }))
 
-    const result = await loginWithBrowser(fake.port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -132,7 +132,7 @@ describe("browser login port", () => {
   it("rejects completed browser captures without authenticated account evidence", async () => {
     const fake = makePort(Either.right({ authenticated: false, session: makeSession(true) }))
 
-    const result = await loginWithBrowser(fake.port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -145,7 +145,7 @@ describe("browser login port", () => {
   it("rejects invalid browser login options before invoking the port", async () => {
     const fake = makePort(Either.right({ session: makeSession(true) }))
 
-    const result = await loginWithBrowser(fake.port, { timeoutMs: 0 })
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port, { timeoutMs: 0 })))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.requests).toEqual([])
@@ -158,7 +158,7 @@ describe("browser login port", () => {
   it("rejects malformed browser capture payloads without leaking captured secrets", async () => {
     const fake = makePort(Either.right({ session: { csrf: { token: secretCsrfToken } } }))
 
-    const result = await loginWithBrowser(fake.port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(fake.port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -175,7 +175,7 @@ describe("browser login port", () => {
       }
     }
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -188,7 +188,7 @@ describe("browser login port", () => {
   it("redacts malformed non-Either adapter results into typed errors", async () => {
     const port: BrowserLoginPort = { captureSession: async () => secretAdapterPayload }
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -202,7 +202,7 @@ describe("browser login port", () => {
   it.each([undefined, null])("redacts missing adapter result %s into typed errors", async (adapterResult) => {
     const port: BrowserLoginPort = { captureSession: async () => adapterResult }
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -217,7 +217,7 @@ describe("browser login port", () => {
       captureSession: async () => Either.left({ _tag: "UnexpectedAdapterFailure", message: secretAdapterPayload })
     }
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 

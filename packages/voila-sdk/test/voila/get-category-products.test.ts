@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getCategoryProducts,
   makeSessionSnapshot,
@@ -11,6 +11,12 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  deadlineExceededTransport,
+  respondingTransport,
+  runWith
+} from "../helpers/transport.js"
 
 const fixtureText = readFileSync(new URL("../fixtures/category-products-produce.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
@@ -40,30 +46,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
-}
-
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
-
-const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => {
-    throw failure
-  }
-})
-
 const makeCategoryResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
   headers: { "set-cookie": "fresh-category-cookie=after; Path=/; Secure" },
@@ -82,22 +64,21 @@ const getSessionCookies = (session: SessionSnapshot): string => {
 
 describe("getCategoryProducts", () => {
   it("gets category products through the active session using retailer category ID", async () => {
-    const fake = makeResponseTransport(makeCategoryResponse())
-    const result = await getCategoryProducts(
-      makeSession(),
-      {
+    const fake = respondingTransport(makeCategoryResponse())
+    const result = await runWith(
+      getCategoryProducts(makeSession(), {
         filters: [{ id: "brand", value: "fresh-farms" }],
         pageSize: 24,
         pageToken: "next-page-token",
         retailerCategoryId: "retailer-category-produce"
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/webproductpagews/v6/product-pages")
@@ -118,17 +99,16 @@ describe("getCategoryProducts", () => {
   })
 
   it("gets category products through the active session using category ID", async () => {
-    const fake = makeResponseTransport(makeCategoryResponse())
-    const result = await getCategoryProducts(
-      makeSession(),
-      { categoryId: "sanitized-category-produce", pageSize: 12 },
-      fake.transport
+    const fake = respondingTransport(makeCategoryResponse())
+    const result = await runWith(
+      getCategoryProducts(makeSession(), { categoryId: "sanitized-category-produce", pageSize: 12 }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.url.searchParams.get("categoryId")).toBe("sanitized-category-produce")
       expect(request?.url.searchParams.has("retailerCategoryId")).toBe(false)
@@ -136,11 +116,11 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates invalid category input as a typed recoverable error", async () => {
-    const fake = makeResponseTransport(makeCategoryResponse())
-    const result = await getCategoryProducts(makeSession(), { pageSize: 0 }, fake.transport)
+    const fake = respondingTransport(makeCategoryResponse())
+    const result = await runWith(getCategoryProducts(makeSession(), { pageSize: 0 }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("CategoryPageInputInvalid")
@@ -148,10 +128,9 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates HTTP client errors as typed recoverable errors", async () => {
-    const result = await getCategoryProducts(
-      makeSession(" "),
-      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
-      makeResponseTransport(makeCategoryResponse()).transport
+    const result = await runWith(
+      getCategoryProducts(makeSession(" "), { pageSize: 24, retailerCategoryId: "retailer-category-produce" }),
+      respondingTransport(makeCategoryResponse())
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -161,38 +140,34 @@ describe("getCategoryProducts", () => {
     }
   })
 
-  it("propagates transport left failures as redacted typed recoverable errors", async () => {
-    const result = await getCategoryProducts(
-      makeSession(),
-      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
-      makeLeftTransport("secret-network-token")
+  it("propagates a refused connection as its own typed recoverable error", async () => {
+    const result = await runWith(
+      getCategoryProducts(makeSession(), { pageSize: 24, retailerCategoryId: "retailer-category-produce" }),
+      connectionFailureTransport()
     )
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-network-token")
+      expect(result.left._tag).toBe("VoilaConnectionFailure")
     }
   })
 
-  it("propagates thrown transport failures as redacted typed recoverable errors", async () => {
-    const result = await getCategoryProducts(
-      makeSession(),
-      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
-      makeThrowingTransport(new Error("secret-thrown-token"))
+  it("distinguishes an abandoned deadline from a refused connection", async () => {
+    const result = await runWith(
+      getCategoryProducts(makeSession(), { pageSize: 24, retailerCategoryId: "retailer-category-produce" }),
+      deadlineExceededTransport()
     )
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-thrown-token")
+      expect(result.left._tag).toBe("VoilaRequestDeadlineExceeded")
     }
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
-    const fake = makeResponseTransport(
+    const fake = respondingTransport(
       makeCategoryResponse(
         JSON.stringify({
           category: { categoryId: "category-id", retailerCategoryId: "retailer-category-id" },
@@ -201,10 +176,9 @@ describe("getCategoryProducts", () => {
       )
     )
 
-    const result = await getCategoryProducts(
-      makeSession(),
-      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
-      fake.transport
+    const result = await runWith(
+      getCategoryProducts(makeSession(), { pageSize: 24, retailerCategoryId: "retailer-category-produce" }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -215,10 +189,9 @@ describe("getCategoryProducts", () => {
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
-    const result = await getCategoryProducts(
-      makeSession(),
-      { pageSize: 24, retailerCategoryId: "retailer-category-produce" },
-      makeResponseTransport(makeCategoryResponse("{}", 500)).transport
+    const result = await runWith(
+      getCategoryProducts(makeSession(), { pageSize: 24, retailerCategoryId: "retailer-category-produce" }),
+      respondingTransport(makeCategoryResponse("{}", 500))
     )
 
     expect(Either.isLeft(result)).toBe(true)

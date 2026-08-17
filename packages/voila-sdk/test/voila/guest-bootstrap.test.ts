@@ -3,8 +3,19 @@ import { readFileSync } from "node:fs"
 import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { CookieJarPort, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type {
+  CookieJarPort,
+  GuestBootstrapError,
+  GuestBootstrapResult,
+  VoilaTransportResponse
+} from "../../src/index.js"
 import { bootstrapGuestSession, toughCookieJarPort, VOILA_BASE_URL } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  deadlineExceededTransport,
+  respondingTransport,
+  runWith
+} from "../helpers/transport.js"
 
 const fixtureHtml = readFileSync(new URL("../fixtures/voila-homepage.html", import.meta.url), "utf8")
 const sessionCookie = "guest-session=fixture; Path=/; Secure"
@@ -54,30 +65,6 @@ const initialStateWithItems = {
 const htmlFromInitialState = (initialState: unknown): string =>
   `<html><body><script>window.__INITIAL_STATE__ = ${JSON.stringify(initialState)};</script></body></html>`
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
-}
-
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
-
-const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => {
-    throw failure
-  }
-})
-
 const makeHomepageResponse = (
   body: string,
   headers: VoilaTransportResponse["headers"] = { "set-cookie": sessionCookie },
@@ -90,7 +77,7 @@ const failingSerializeCookieJarPort: CookieJarPort = {
   serialize: () => Either.left({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
 }
 
-const getSessionCookies = (result: Awaited<ReturnType<typeof bootstrapGuestSession>>): string => {
+const getSessionCookies = (result: Either.Either<GuestBootstrapResult, GuestBootstrapError>): string => {
   if (Either.isLeft(result)) {
     throw new Error("Expected bootstrap to succeed")
   }
@@ -106,9 +93,9 @@ const getSessionCookies = (result: Awaited<ReturnType<typeof bootstrapGuestSessi
 
 describe("bootstrapGuestSession", () => {
   it("creates a guest session from the Voila homepage fixture", async () => {
-    const fake = makeResponseTransport(makeHomepageResponse(fixtureHtml))
-    const result = await bootstrapGuestSession(fake.transport)
-    const [request] = fake.requests()
+    const fake = respondingTransport(makeHomepageResponse(fixtureHtml))
+    const result = await runWith(bootstrapGuestSession(), fake)
+    const [request] = fake.requests
 
     expect(Either.isRight(result)).toBe(true)
     expect(request?.method).toBe("GET")
@@ -127,8 +114,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("summarizes baskets that omit item groups", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(htmlFromInitialState(minimalInitialState))).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse(htmlFromInitialState(minimalInitialState)))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -140,8 +128,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("summarizes item counts across cart item groups", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(htmlFromInitialState(initialStateWithItems))).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse(htmlFromInitialState(initialStateWithItems)))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -152,7 +141,7 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when homepage cookies are missing", async () => {
-    const result = await bootstrapGuestSession(makeResponseTransport(makeHomepageResponse(fixtureHtml, {})).transport)
+    const result = await runWith(bootstrapGuestSession(), respondingTransport(makeHomepageResponse(fixtureHtml, {})))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -162,8 +151,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when homepage cookies are malformed", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(fixtureHtml, { "set-cookie": "bad cookie value" })).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse(fixtureHtml, { "set-cookie": "bad cookie value" }))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -175,9 +165,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed redacted error when homepage cookie serialization fails", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(fixtureHtml)).transport,
-      failingSerializeCookieJarPort
+    const result = await runWith(
+      bootstrapGuestSession(failingSerializeCookieJarPort),
+      respondingTransport(makeHomepageResponse(fixtureHtml))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -189,10 +179,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when CSRF is missing from initial state", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(
-        makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: { token: " " } }))
-      ).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: { token: " " } })))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -203,9 +192,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when the CSRF object is absent from initial state", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: undefined })))
-        .transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: undefined })))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -216,8 +205,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when the CSRF token is absent from initial state", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: {} }))).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse(htmlFromInitialState({ ...minimalInitialState, csrf: {} })))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -228,8 +218,9 @@ describe("bootstrapGuestSession", () => {
   })
 
   it("returns a typed error when initial state is malformed", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse('<script>window.__INITIAL_STATE__ = {"csrf":}</script>')).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse('<script>window.__INITIAL_STATE__ = {"csrf":}</script>'))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -239,31 +230,31 @@ describe("bootstrapGuestSession", () => {
     }
   })
 
-  it("returns a typed error when the homepage transport fails", async () => {
-    const result = await bootstrapGuestSession(makeLeftTransport(new Error("secret network failure")))
+  it("surfaces the transport's own failure when the homepage cannot be reached", async () => {
+    const result = await runWith(bootstrapGuestSession(), connectionFailureTransport())
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret network failure")
+      expect(result.left._tag).toBe("VoilaConnectionFailure")
     }
   })
 
-  it("returns a typed error when the homepage transport throws", async () => {
-    const result = await bootstrapGuestSession(makeThrowingTransport(new Error("secret thrown failure")))
+  it("distinguishes an abandoned deadline from a refused connection", async () => {
+    const result = await runWith(bootstrapGuestSession(), deadlineExceededTransport())
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret thrown failure")
+      expect(result.left._tag).toBe("VoilaRequestDeadlineExceeded")
+      expect(JSON.stringify(result.left)).not.toContain("voila.ca")
     }
   })
 
   it("returns a typed error for non-2xx homepage responses", async () => {
-    const result = await bootstrapGuestSession(
-      makeResponseTransport(makeHomepageResponse("not used", { "set-cookie": sessionCookie }, 500)).transport
+    const result = await runWith(
+      bootstrapGuestSession(),
+      respondingTransport(makeHomepageResponse("not used", { "set-cookie": sessionCookie }, 500))
     )
 
     expect(Either.isLeft(result)).toBe(true)

@@ -24,7 +24,7 @@
   "packages/voila-mcp/src/operations.ts": [
     {
       "complexity": 14,
-      "signature": "async ( name: VoilaOperationName, input: unknown, env: OperationEnvironment ): Promise<OperationExecutionResult> =>"
+      "signature": "(name: VoilaOperationName, input: unknown, env: OperationEnvironment): OperationRun =>"
     }
   ],
   "packages/voila-mcp/src/sdk-operation-inputs.ts": [
@@ -37,12 +37,6 @@
     {
       "complexity": 15,
       "signature": "async (request: BrowserLoginRequest) =>"
-    }
-  ],
-  "packages/voila-sdk/src/voila/browser-login.ts": [
-    {
-      "complexity": 10,
-      "signature": "async ( browser: BrowserLoginPort, options?: unknown ): Promise<Either.Either<BrowserLoginResult, BrowserLoginError>> =>"
     }
   ],
   "packages/voila-sdk/src/voila/cart-view.ts": [
@@ -77,12 +71,6 @@
       "signature": "( product: RawPromotionProduct, sourceGroup: PromotionProductsResponse[\"productGroups\"][number], input: DiscountedProductsInput ): NormalizedDiscountProduct | undefined =>"
     }
   ],
-  "packages/voila-sdk/src/voila/http-client.ts": [
-    {
-      "complexity": 13,
-      "signature": "async <A, I>( schema: Schema.Schema<A, I, never>, session: SessionSnapshot, request: VoilaHttpRequest, transport: VoilaTransport, cookieJarPort: CookieJarPort = toughCookieJarPort ): Promise<Either.Either<VoilaJsonResult<A>, VoilaSdkError>> =>"
-    }
-  ],
   "packages/voila-sdk/src/voila/initial-state.ts": [
     {
       "complexity": 10,
@@ -105,22 +93,6 @@
     {
       "complexity": 10,
       "signature": "(order: RawOrderDetailOrder) => order.slot?.start === undefined && order.slot?.end === undefined && order.slot?.timeZone === undefined ?"
-    },
-    {
-      "complexity": 13,
-      "signature": "async ( session: SessionSnapshot, input: unknown, transport: VoilaTransport, cookieJarPort?: CookieJarPort ): Promise<Either.Either<GetCompletedOrderItemsResult, GetCompletedOrderItemsError>> =>"
-    }
-  ],
-  "packages/voila-sdk/src/voila/session-health.ts": [
-    {
-      "complexity": 9,
-      "signature": "async ( session: SessionSnapshot, transport: VoilaTransport, cookieJarPort: CookieJarPort ): Promise<ActiveCustomerSessionRequestResult> =>"
-    }
-  ],
-  "packages/voila-sdk/src/voila/shopping-context.ts": [
-    {
-      "complexity": 11,
-      "signature": "async ( session: SessionSnapshot, input: unknown, transport: VoilaTransport, cookieJarPort?: CookieJarPort ): Promise<Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError>> =>"
     }
   ],
   "packages/voila-sdk/src/voila/slots.ts": [

@@ -1,14 +1,8 @@
 import { Either } from "effect"
 
-import type {
-  NormalizedCartView,
-  NormalizedSearchProduct,
-  ResponseHeaders,
-  VoilaTransport,
-  VoilaTransportRequest,
-  VoilaTransportResponse
-} from "../../src/index.js"
+import type { NormalizedCartView, NormalizedSearchProduct } from "../../src/index.js"
 import { addCartItems, bootstrapGuestSession, getCart, removeCartItems, searchProducts } from "../../src/index.js"
+import { runLive } from "./live-transport.js"
 
 const enabledValue = "1"
 const liveSmokeFlag = "VOILA_LIVE_SMOKE"
@@ -27,31 +21,6 @@ type LiveCartSmokeFailure =
   | { readonly _tag: "LiveCartSmokeCleanupFailed"; readonly causeTag: string }
   | { readonly _tag: "LiveCartSmokeVerificationFailed" }
 
-const responseHeadersFromFetch = (headers: Headers): ResponseHeaders => {
-  const setCookie = headers.getSetCookie()
-  const headerEntries = Object.fromEntries(headers.entries())
-
-  return setCookie.length === 0 ? headerEntries : { ...headerEntries, "set-cookie": setCookie }
-}
-
-const fetchTransport: VoilaTransport = {
-  request: async (request: VoilaTransportRequest) => {
-    const requestInitBase = {
-      headers: request.headers,
-      method: request.method,
-      redirect: "manual"
-    } satisfies RequestInit
-    const requestInit = request.body === undefined ? requestInitBase : { ...requestInitBase, body: request.body }
-    const response = await fetch(request.url, requestInit)
-
-    return Either.right({
-      body: await response.text(),
-      headers: responseHeadersFromFetch(response.headers),
-      status: response.status
-    } satisfies VoilaTransportResponse)
-  }
-}
-
 const toCauseTag = (error: { readonly _tag: string }): string => error._tag
 
 const isCartProductCandidate = (product: NormalizedSearchProduct): boolean =>
@@ -61,13 +30,13 @@ const cartQuantityForProduct = (cart: NormalizedCartView, productId: string): nu
   cart.items.filter((item) => item.productId === productId).reduce((total, item) => total + item.quantity, 0)
 
 const runSmoke = async (): Promise<Either.Either<string, LiveCartSmokeFailure>> => {
-  const bootstrap = await bootstrapGuestSession(fetchTransport)
+  const bootstrap = await runLive(bootstrapGuestSession())
 
   if (Either.isLeft(bootstrap)) {
     return Either.left({ _tag: "LiveCartSmokeBootstrapFailed", causeTag: toCauseTag(bootstrap.left) })
   }
 
-  const search = await searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }, fetchTransport)
+  const search = await runLive(searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }))
 
   if (Either.isLeft(search)) {
     return Either.left({ _tag: "LiveCartSmokeSearchFailed", causeTag: toCauseTag(search.left) })
@@ -79,19 +48,17 @@ const runSmoke = async (): Promise<Either.Either<string, LiveCartSmokeFailure>> 
     return Either.left({ _tag: "LiveCartSmokeNoAvailableProduct" })
   }
 
-  const add = await addCartItems(search.right.session, [{ productId: product.productId, quantity: 1 }], fetchTransport)
+  const add = await runLive(addCartItems(search.right.session, [{ productId: product.productId, quantity: 1 }]))
 
   if (Either.isLeft(add)) {
     return Either.left({ _tag: "LiveCartSmokeAddFailed", causeTag: toCauseTag(add.left) })
   }
 
-  const read = await getCart(add.right.session, fetchTransport)
+  const read = await runLive(getCart(add.right.session))
 
   if (Either.isLeft(read)) {
-    const cleanupAfterReadFailure = await removeCartItems(
-      add.right.session,
-      [{ productId: product.productId, quantity: 1 }],
-      fetchTransport
+    const cleanupAfterReadFailure = await runLive(
+      removeCartItems(add.right.session, [{ productId: product.productId, quantity: 1 }])
     )
 
     if (Either.isLeft(cleanupAfterReadFailure)) {
@@ -105,10 +72,8 @@ const runSmoke = async (): Promise<Either.Either<string, LiveCartSmokeFailure>> 
     cartQuantityForProduct(read.right.value, product.productId) < 1 ||
     read.right.value.totals.itemPriceAfterPromos.amount.length === 0
   ) {
-    const cleanupAfterVerificationFailure = await removeCartItems(
-      read.right.session,
-      [{ productId: product.productId, quantity: 1 }],
-      fetchTransport
+    const cleanupAfterVerificationFailure = await runLive(
+      removeCartItems(read.right.session, [{ productId: product.productId, quantity: 1 }])
     )
 
     if (Either.isLeft(cleanupAfterVerificationFailure)) {
@@ -121,17 +86,13 @@ const runSmoke = async (): Promise<Either.Either<string, LiveCartSmokeFailure>> 
     return Either.left({ _tag: "LiveCartSmokeVerificationFailed" })
   }
 
-  const cleanup = await removeCartItems(
-    read.right.session,
-    [{ productId: product.productId, quantity: 1 }],
-    fetchTransport
-  )
+  const cleanup = await runLive(removeCartItems(read.right.session, [{ productId: product.productId, quantity: 1 }]))
 
   if (Either.isLeft(cleanup)) {
     return Either.left({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanup.left) })
   }
 
-  const cleanedCart = await getCart(cleanup.right.session, fetchTransport)
+  const cleanedCart = await runLive(getCart(cleanup.right.session))
 
   if (Either.isLeft(cleanedCart)) {
     return Either.left({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(cleanedCart.left) })

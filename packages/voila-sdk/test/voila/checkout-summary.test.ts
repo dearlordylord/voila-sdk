@@ -4,7 +4,7 @@ import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getCheckoutSummary,
   makeSessionSnapshot,
@@ -15,6 +15,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { respondingTransport, runWith } from "../helpers/transport.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
 const blockedFixtureText = readFileSync(new URL("../fixtures/checkout-summary-blocked.json", import.meta.url), "utf8")
@@ -67,23 +68,6 @@ const makeSession = (): SessionSnapshot => {
 }
 
 const makeResponse = (body: string, status: number = 200): VoilaTransportResponse => ({ body, headers: {}, status })
-
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-
-        return Either.right(response)
-      }
-    }
-  }
-}
 
 describe("checkout summary parsing", () => {
   it("normalizes blocked checkout summaries and preserves blocking restrictions", () => {
@@ -210,17 +194,19 @@ describe("checkout summary parsing", () => {
 
 describe("getCheckoutSummary", () => {
   it("reads checkout summaries without using update or order placement endpoints", async () => {
-    const fake = makeResponseTransport(makeResponse(readyFixtureText))
-    const result = await getCheckoutSummary(
-      makeSession(),
-      { appliedPaymentCheckId: "sanitized-payment-check-id", fetchAllocatedPaymentChecks: true },
-      fake.transport
+    const fake = respondingTransport(makeResponse(readyFixtureText))
+    const result = await runWith(
+      getCheckoutSummary(makeSession(), {
+        appliedPaymentCheckId: "sanitized-payment-check-id",
+        fetchAllocatedPaymentChecks: true
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.href).toBe(
@@ -234,11 +220,11 @@ describe("getCheckoutSummary", () => {
   })
 
   it("rejects invalid checkout summary input before network I/O", async () => {
-    const fake = makeResponseTransport(makeResponse(readyFixtureText))
-    const result = await getCheckoutSummary(makeSession(), { appliedPaymentCheckId: "" }, fake.transport)
+    const fake = respondingTransport(makeResponse(readyFixtureText))
+    const result = await runWith(getCheckoutSummary(makeSession(), { appliedPaymentCheckId: "" }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("CheckoutSummaryInputInvalid")
@@ -246,10 +232,9 @@ describe("getCheckoutSummary", () => {
   })
 
   it("returns typed service errors without leaking response bodies", async () => {
-    const result = await getCheckoutSummary(
-      makeSession(),
-      {},
-      makeResponseTransport(makeResponse(serviceDownBody, 503)).transport
+    const result = await runWith(
+      getCheckoutSummary(makeSession(), {}),
+      respondingTransport(makeResponse(serviceDownBody, 503))
     )
 
     expect(Either.isLeft(result)).toBe(true)

@@ -7,20 +7,18 @@ import {
   serializeCookieJar,
   type SessionSnapshot,
   toughCookieJarPort,
-  type VoilaTransport
+  VoilaTransport
 } from "@firfi/voila-sdk"
-import { Effect, Either, Schema } from "effect"
+import { HttpClient } from "@effect/platform"
+import { it as effectIt } from "@effect/vitest"
+import { Effect, Fiber, Layer, Schema, TestClock, Either } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
 import { describe, expect, it } from "vitest"
 
-import {
-  makeFetchVoilaTransport,
-  makeNodeOperationEnvironment,
-  type NodeFetchPort,
-  type RequestDeadlinePort
-} from "../src/node-env.js"
+import { makeNodeOperationEnvironment } from "../src/node-env.js"
+import { voilaTransportLayer } from "../src/node-transport.js"
 import type { OperationEnvironment, SessionOperation } from "../src/operations.js"
 
 const voilaUrl = "https://voila.ca/"
@@ -90,16 +88,17 @@ const homepage = (): Promise<string> =>
 
 // serves the guest bootstrap request only: these tests never run a Voila
 // operation, they exercise the session cycle around one
-const bootstrapTransport = (page: string): VoilaTransport => ({
-  request: async () =>
-    Either.right({
-      body: page,
-      headers: { "set-cookie": `voila-session=${secretCookieValue}; Path=/; Secure; HttpOnly` },
-      status: 200
-    })
-})
+const bootstrapTransport = (page: string): Layer.Layer<VoilaTransport> =>
+  Layer.succeed(VoilaTransport, {
+    request: () =>
+      Effect.succeed({
+        body: page,
+        headers: { "set-cookie": `voila-session=${secretCookieValue}; Path=/; Secure; HttpOnly` },
+        status: 200
+      })
+  })
 
-const environmentFor = (file: string, transport: VoilaTransport): OperationEnvironment => {
+const environmentFor = (file: string, transport: Layer.Layer<VoilaTransport>): OperationEnvironment => {
   const env = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: file }, transport)
 
   if (Either.isLeft(env)) {
@@ -119,41 +118,35 @@ const observe =
       return { value: undefined }
     })
 
-// a server that accepts the connection and then says nothing, abandoned when
-// the test says the deadline is reached rather than after wall-clock time
-const hangingFetch: NodeFetchPort = async (_input, init) =>
-  new Promise((_resolve, reject) => {
-    // like `fetch`, a signal already aborted when the request starts rejects
-    // it at once rather than waiting for an abort that has been and gone
-    if (init.signal?.aborted === true) {
-      reject(new Error("aborted"))
-
-      return
-    }
-
-    init.signal?.addEventListener("abort", () => reject(new Error("aborted")))
-  })
-
-const controlledDeadline = (): { readonly deadline: RequestDeadlinePort; readonly reached: () => void } => {
-  const controller = new AbortController()
-
-  return { deadline: () => controller.signal, reached: () => controller.abort(new Error("deadline reached")) }
-}
-
-// an operation that makes a real request through the environment's transport
-// and fails the cycle when the request does, the way every Voila operation does
-const request =
-  (transport: VoilaTransport): SessionOperation<void> =>
-  () =>
-    Effect.promise(() =>
-      transport.request({ headers: {}, method: "GET", url: new URL("https://voila.ca/api/example") })
-    ).pipe(
-      Effect.flatMap((result) =>
-        Either.isLeft(result)
-          ? Effect.fail({ _tag: "VoilaNetworkFailure", message: "Voila network request failed" })
-          : Effect.succeed({ value: undefined })
+/**
+ * A request that never answers and records its own cancellation. Paired with
+ * the real transport's Effect deadline, this is what tells the abandonment
+ * test apart from a test that only proves a fiber stopped waiting.
+ */
+const hangingRequestLayer = (cancellations: Array<boolean>, timeoutMs: number): Layer.Layer<VoilaTransport> =>
+  Layer.provide(
+    voilaTransportLayer(undefined, timeoutMs),
+    Layer.succeed(
+      HttpClient.HttpClient,
+      HttpClient.make(() =>
+        Effect.async(() =>
+          Effect.sync(() => {
+            cancellations.push(true)
+          })
+        )
       )
     )
+  )
+
+// an operation that makes a real request through the transport in the
+// environment and fails the cycle when the request does, the way every Voila
+// operation does
+const request: SessionOperation<void> = () =>
+  Effect.flatMap(VoilaTransport, (transport) =>
+    Effect.as(transport.request({ headers: {}, method: "GET", url: new URL("https://voila.ca/api/example") }), {
+      value: undefined
+    })
+  )
 
 // an operation whose live response refreshed the session
 const refreshTo =
@@ -180,12 +173,12 @@ describe("MCP session port", () => {
     const env = environmentFor(file, bootstrapTransport(await homepage()))
     const seen: Array<string> = []
 
-    await Effect.runPromise(env.session.withSession(observe(seen)))
+    await Effect.runPromise(Effect.provide(env.session.withSession(observe(seen)), env.transport))
     // an interactive login in another terminal replaces the file mid-process
     await fs.writeFile(file, encode(authenticated("fresh-login")), { mode: 0o600 })
     // the next operation refreshes cookies: its write must descend from the
     // login it just read, not from the session this process booted with
-    await Effect.runPromise(env.session.withSession(refreshFrom(seen, "+rotated")))
+    await Effect.runPromise(Effect.provide(env.session.withSession(refreshFrom(seen, "+rotated")), env.transport))
 
     expect(seen).toEqual(["boot", "fresh-login"])
     expect((await decodeFile(file)).session.metadata.regionId).toBe("fresh-login+rotated")
@@ -197,33 +190,38 @@ describe("MCP session port", () => {
     const env = environmentFor(file, bootstrapTransport(await homepage()))
     const rotated = authenticated("rotated-cookies")
 
-    await Effect.runPromise(env.session.withSession(refreshTo(rotated)))
+    await Effect.runPromise(Effect.provide(env.session.withSession(refreshTo(rotated)), env.transport))
 
     expect(await fs.readFile(file, "utf8")).toBe(encode(rotated))
   })
 
-  it("releases the session lock when an operation's request is abandoned", async () => {
-    const file = await sessionFile()
-    await fs.writeFile(file, encode(authenticated("boot")), { mode: 0o600 })
-    // a transport that never answers, abandoned on this test's say-so
-    const { deadline, reached } = controlledDeadline()
-    const env = environmentFor(file, makeFetchVoilaTransport(undefined, hangingFetch, deadline))
-    const seen: Array<string> = []
+  effectIt.effect("releases the session lock when an operation's request is abandoned", () =>
+    Effect.gen(function* () {
+      const file = yield* Effect.promise(sessionFile)
+      yield* Effect.promise(() => fs.writeFile(file, encode(authenticated("boot")), { mode: 0o600 }))
 
-    const pending = Effect.runPromise(Effect.either(env.session.withSession(request(env.transport))))
-    reached()
+      const cancellations: Array<boolean> = []
+      const timeoutMs = 5_000
+      const env = environmentFor(file, hangingRequestLayer(cancellations, timeoutMs))
+      const seen: Array<string> = []
+      const pending = yield* Effect.fork(Effect.either(Effect.provide(env.session.withSession(request), env.transport)))
 
-    const timedOut = await pending
+      yield* TestClock.adjust(`${timeoutMs + 1} millis`)
 
-    expect(Either.isLeft(timedOut)).toBe(true)
-    expect(Either.isLeft(timedOut) ? timedOut.left._tag : undefined).toBe("VoilaNetworkFailure")
-    // the failed cycle released the file's permit: a leaked one would hang here
-    await Effect.runPromise(env.session.withSession(observe(seen)))
+      const timedOut = yield* Fiber.join(pending)
 
-    expect(seen).toEqual(["boot"])
-    // the file the failed operation ran against is untouched
-    expect((await decodeFile(file)).session.metadata.regionId).toBe("boot")
-  })
+      expect(Either.isLeft(timedOut)).toBe(true)
+      expect(Either.isLeft(timedOut) ? timedOut.left._tag : undefined).toBe("VoilaRequestDeadlineExceeded")
+      // the request itself was cancelled, not merely the fiber waiting on it
+      expect(cancellations).toEqual([true])
+      // the failed cycle released the file's permit: a leaked one would hang here
+      yield* Effect.provide(env.session.withSession(observe(seen)), env.transport)
+
+      expect(seen).toEqual(["boot"])
+      // the file the failed operation ran against is untouched
+      expect((yield* Effect.promise(() => decodeFile(file))).session.metadata.regionId).toBe("boot")
+    })
+  )
 
   it("keeps a refreshed guest session in memory instead of writing it", async () => {
     const file = await sessionFile()
@@ -232,8 +230,8 @@ describe("MCP session port", () => {
 
     // no file yet: the cycle bootstraps a guest session, and the operation
     // rotates it — the rotation may not reach disk, and may not be lost either
-    await Effect.runPromise(env.session.withSession(refreshTo(guest("rotated-guest"))))
-    await Effect.runPromise(env.session.withSession(observe(seen)))
+    await Effect.runPromise(Effect.provide(env.session.withSession(refreshTo(guest("rotated-guest"))), env.transport))
+    await Effect.runPromise(Effect.provide(env.session.withSession(observe(seen)), env.transport))
 
     expect(await fileExists(file)).toBe(false)
     expect(seen).toEqual(["rotated-guest"])

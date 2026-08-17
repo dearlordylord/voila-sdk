@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import type {
@@ -10,11 +10,12 @@ import type {
 } from "../domain/schemas/index.js"
 import { ActiveCustomerSessionResponseSchema, SessionHealthSchema } from "../domain/schemas/index.js"
 import { getHeaderValues, makeVoilaHeaders } from "./headers.js"
-import type { VoilaTransport, VoilaTransportResponse } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import { VoilaTransport, type VoilaTransportResponse } from "./transport.js"
 import {
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
+  readCookieHeader,
   toughCookieJarPort
 } from "./session-snapshot.js"
 import { makeActiveCustomerSessionRequest } from "./urls.js"
@@ -170,57 +171,38 @@ const makeTransportHeaders = (
     return Either.left("persistence")
   }
 
-  const cookieHeader = jar.right.getCookieStringSync(makeActiveCustomerSessionRequest().url.href)
+  const cookieHeader = readCookieHeader(jar.right, makeActiveCustomerSessionRequest().url.href)
+
+  if (Either.isLeft(cookieHeader)) {
+    return Either.left("persistence")
+  }
 
   return Either.right({
     ...makeVoilaHeaders(session.metadata, session.csrf.token),
-    ...(cookieHeader.length === emptyStringLength ? {} : { cookie: cookieHeader })
+    ...(cookieHeader.right.length === emptyStringLength ? {} : { cookie: cookieHeader.right })
   })
 }
 
-const requestActiveCustomerSession = async (
+const classifyActiveCustomerSession = (
   session: SessionSnapshot,
-  transport: VoilaTransport,
+  response: VoilaTransportResponse,
   cookieJarPort: CookieJarPort
-): Promise<ActiveCustomerSessionRequestResult> => {
-  if (session.csrf.token.trim().length === emptyStringLength) {
-    return { _tag: "ActiveCustomerSessionUnauthorized", session }
-  }
-
-  const headers = makeTransportHeaders(cookieJarPort, session)
-
-  if (Either.isLeft(headers)) {
-    return { _tag: "ActiveCustomerSessionRetry", reason: "persistence", session }
-  }
-
-  const request = makeActiveCustomerSessionRequest()
-  let response: Either.Either<VoilaTransportResponse, unknown>
-
-  try {
-    response = await transport.request({ headers: headers.right, method: request.method, url: request.url })
-  } catch {
-    return { _tag: "ActiveCustomerSessionRetry", reason: "network", session }
-  }
-
-  if (Either.isLeft(response)) {
-    return { _tag: "ActiveCustomerSessionRetry", reason: "network", session }
-  }
-
-  const updatedSession = applySetCookieHeaders(cookieJarPort, session, response.right)
+): ActiveCustomerSessionRequestResult => {
+  const updatedSession = applySetCookieHeaders(cookieJarPort, session, response)
 
   if (Either.isLeft(updatedSession)) {
     return { _tag: "ActiveCustomerSessionRetry", reason: "persistence", session }
   }
 
-  if (isUnauthorizedStatus(response.right.status)) {
+  if (isUnauthorizedStatus(response.status)) {
     return { _tag: "ActiveCustomerSessionUnauthorized", session: updatedSession.right }
   }
 
-  if (!isSuccessStatus(response.right.status)) {
+  if (!isSuccessStatus(response.status)) {
     return { _tag: "ActiveCustomerSessionRetry", reason: "server", session: updatedSession.right }
   }
 
-  const parsed = Either.flatMap(parseJson(response.right.body), (payload) =>
+  const parsed = Either.flatMap(parseJson(response.body), (payload) =>
     parseUnknown(ActiveCustomerSessionResponseSchema, payload)
   )
 
@@ -231,16 +213,49 @@ const requestActiveCustomerSession = async (
   return { _tag: "ActiveCustomerSessionOk", session: updatedSession.right, value: parsed.right }
 }
 
-export const checkSessionHealth = async (
-  snapshot: SdkSessionSnapshot,
-  transport: VoilaTransport,
-  cookieJarPort?: CookieJarPort
-): Promise<Either.Either<SessionHealth, CheckSessionHealthError>> => {
-  const result = await requestActiveCustomerSession(snapshot.session, transport, cookieJarPort ?? toughCookieJarPort)
+/**
+ * A health check reports rather than fails: every way the request can go wrong
+ * — no token, an unusable cookie jar, an unreachable server, a changed schema —
+ * is a health verdict a caller can act on, so the transport's typed failures
+ * are folded into the retry verdict instead of leaving through the error
+ * channel.
+ */
+const requestActiveCustomerSession = (
+  session: SessionSnapshot,
+  cookieJarPort: CookieJarPort
+): Effect.Effect<ActiveCustomerSessionRequestResult, never, VoilaTransport> => {
+  if (session.csrf.token.trim().length === emptyStringLength) {
+    return Effect.succeed({ _tag: "ActiveCustomerSessionUnauthorized", session })
+  }
 
+  const headers = makeTransportHeaders(cookieJarPort, session)
+
+  if (Either.isLeft(headers)) {
+    return Effect.succeed({ _tag: "ActiveCustomerSessionRetry", reason: "persistence", session })
+  }
+
+  const request = makeActiveCustomerSessionRequest()
+
+  return Effect.flatMap(VoilaTransport, (transport) =>
+    Effect.match(transport.request({ headers: headers.right, method: request.method, url: request.url }), {
+      onFailure: (): ActiveCustomerSessionRequestResult => ({
+        _tag: "ActiveCustomerSessionRetry",
+        reason: "network",
+        session
+      }),
+      onSuccess: (response) => classifyActiveCustomerSession(session, response, cookieJarPort)
+    })
+  )
+}
+
+const makeSessionHealth = (
+  snapshot: SdkSessionSnapshot,
+  result: ActiveCustomerSessionRequestResult,
+  cookieJarPort: CookieJarPort
+): Either.Either<SessionHealth, CheckSessionHealthError> => {
   switch (result._tag) {
     case "ActiveCustomerSessionOk":
-      return makeActiveSession(cookieJarPort ?? toughCookieJarPort, snapshot, result.value, result.session)
+      return makeActiveSession(cookieJarPort, snapshot, result.value, result.session)
     case "ActiveCustomerSessionRetry":
       return Either.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
         decodeSessionHealth({ reason: result.reason, session: updatedSnapshot, status: "retry" })
@@ -253,3 +268,11 @@ export const checkSessionHealth = async (
       return makeReauthRequired(snapshot, result.session)
   }
 }
+
+export const checkSessionHealth = (
+  snapshot: SdkSessionSnapshot,
+  cookieJarPort: CookieJarPort = toughCookieJarPort
+): Effect.Effect<SessionHealth, CheckSessionHealthError, VoilaTransport> =>
+  Effect.flatMap(requestActiveCustomerSession(snapshot.session, cookieJarPort), (result) =>
+    makeSessionHealth(snapshot, result, cookieJarPort)
+  )

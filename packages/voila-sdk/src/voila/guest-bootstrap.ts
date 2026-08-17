@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import type {
   CartTotals,
@@ -10,9 +10,10 @@ import type {
 } from "../domain/schemas/index.js"
 import { getInitialStateCategories } from "./categories.js"
 import { getHeaderValues } from "./headers.js"
-import type { VoilaTransport, VoilaTransportResponse } from "./http-client.js"
 import { extractInitialState, extractInitialStatePayload } from "./initial-state.js"
 import { type CookieJarPort, makeSessionSnapshot, toughCookieJarPort } from "./session-snapshot.js"
+import { VoilaTransport, type VoilaTransportResponse } from "./transport.js"
+import type { VoilaTransportError } from "./transport-error.js"
 import { VOILA_BASE_URL } from "./urls.js"
 
 export interface GuestCartSummary {
@@ -32,7 +33,7 @@ export interface GuestBootstrapResult {
 }
 
 export type GuestBootstrapError =
-  | { readonly _tag: "GuestBootstrapNetworkFailure"; readonly message: string }
+  | VoilaTransportError
   | { readonly _tag: "GuestBootstrapNon2xxResponse"; readonly message: string; readonly status: number }
   | { readonly _tag: "GuestBootstrapMissingCookies"; readonly message: string }
   | { readonly _tag: "GuestBootstrapCookiePersistenceFailure"; readonly message: string }
@@ -44,11 +45,6 @@ const emptyStringLength = 0
 const successStatusMin = 200
 const successStatusMax = 300
 const setCookieHeader = "set-cookie"
-
-const networkFailure = (): GuestBootstrapError => ({
-  _tag: "GuestBootstrapNetworkFailure",
-  message: "Voila homepage request failed"
-})
 
 const non2xxResponse = (status: number): GuestBootstrapError => ({
   _tag: "GuestBootstrapNon2xxResponse",
@@ -132,28 +128,16 @@ const decodeInitialState = (html: string): Either.Either<InitialState, GuestBoot
     return Either.mapLeft(extractInitialState(html), initialStateMalformed)
   })
 
-export const bootstrapGuestSession = async (
-  transport: VoilaTransport,
-  cookieJarPort: CookieJarPort = toughCookieJarPort
-): Promise<Either.Either<GuestBootstrapResult, GuestBootstrapError>> => {
-  let response: Either.Either<VoilaTransportResponse, unknown>
-
-  try {
-    response = await transport.request({ headers: {}, method: "GET", url: homepageUrl })
-  } catch {
-    return Either.left(networkFailure())
+const makeGuestBootstrapResult = (
+  response: VoilaTransportResponse,
+  cookieJarPort: CookieJarPort
+): Either.Either<GuestBootstrapResult, GuestBootstrapError> => {
+  if (!isSuccessStatus(response.status)) {
+    return Either.left(non2xxResponse(response.status))
   }
 
-  if (Either.isLeft(response)) {
-    return Either.left(networkFailure())
-  }
-
-  if (!isSuccessStatus(response.right.status)) {
-    return Either.left(non2xxResponse(response.right.status))
-  }
-
-  return Either.flatMap(storeHomepageCookies(cookieJarPort, response.right), (cookieJar) =>
-    Either.flatMap(decodeInitialState(response.right.body), (initialState) => {
+  return Either.flatMap(storeHomepageCookies(cookieJarPort, response), (cookieJar) =>
+    Either.flatMap(decodeInitialState(response.body), (initialState) => {
       if (initialState.csrf.token.trim().length === emptyStringLength) {
         return Either.left(missingCsrf())
       }
@@ -174,3 +158,12 @@ export const bootstrapGuestSession = async (
     })
   )
 }
+
+export const bootstrapGuestSession = (
+  cookieJarPort: CookieJarPort = toughCookieJarPort
+): Effect.Effect<GuestBootstrapResult, GuestBootstrapError, VoilaTransport> =>
+  Effect.flatMap(VoilaTransport, (transport) =>
+    Effect.flatMap(transport.request({ headers: {}, method: "GET", url: homepageUrl }), (response) =>
+      makeGuestBootstrapResult(response, cookieJarPort)
+    )
+  )

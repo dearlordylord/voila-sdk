@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -17,9 +17,10 @@ import {
   type UnitPrice
 } from "../domain/schemas/index.js"
 import { type DiscountedProductsRequestError, makeDiscountedProductsRequestFromInput } from "./discount-urls.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 
 export interface NormalizedDiscountProduct {
   readonly available: boolean
@@ -275,62 +276,78 @@ const makeScanMetadata = (
   ...(input.pageToken === undefined ? {} : { startedPageToken: input.pageToken })
 })
 
-export const getDiscountedProducts = async (
-  session: SessionSnapshot,
-  input: unknown,
-  transport: VoilaTransport,
+/**
+ * Where one query's page scan has got to. `done` is carried rather than
+ * recomputed because the stop condition is about the page that just arrived —
+ * a scan stops when the last page had no successor or when enough matches have
+ * accumulated, and neither is derivable from the accumulated response alone.
+ */
+interface DiscountScanState {
+  readonly done: boolean
+  readonly pageToken: string | undefined
+  readonly pagesScanned: number
+  readonly response: PromotionProductsResponse
+  readonly session: SessionSnapshot
+}
+
+const discountInputInvalid = (): DiscountedProductsRequestError => ({
+  _tag: "DiscountedProductsInputInvalid",
+  message: "Discounted products input does not match the SDK schema"
+})
+
+const scanNextPage = (
+  state: DiscountScanState,
+  input: DiscountedProductsInput,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetDiscountedProductsResult, GetDiscountedProductsError>> => {
-  const parsed = Either.mapLeft(
-    parseUnknown(DiscountedProductsInputSchema, input),
-    (): DiscountedProductsRequestError => ({
-      _tag: "DiscountedProductsInputInvalid",
-      message: "Discounted products input does not match the SDK schema"
-    })
+): Effect.Effect<DiscountScanState, VoilaSdkError, VoilaTransport> =>
+  Effect.map(
+    requestVoilaJson(
+      PromotionProductsResponseSchema,
+      state.session,
+      makeDiscountedProductsRequestFromInput(makePageInput(input, state.pageToken)),
+      cookieJarPort
+    ),
+    (page) => {
+      const response = { ...page.value, productGroups: [...state.response.productGroups, ...page.value.productGroups] }
+      const pageToken = page.value.nextPageToken
+
+      return {
+        done: pageToken === undefined || normalizeResponseProducts(response, input).length >= input.pageSize,
+        pageToken,
+        pagesScanned: state.pagesScanned + 1,
+        response,
+        session: page.session
+      }
+    }
   )
 
-  if (Either.isLeft(parsed)) {
-    return Either.left(parsed.left)
-  }
+export const getDiscountedProducts = (
+  session: SessionSnapshot,
+  input: unknown,
+  cookieJarPort?: CookieJarPort
+): Effect.Effect<GetDiscountedProductsResult, GetDiscountedProductsError, VoilaTransport> =>
+  Effect.flatMap(Either.mapLeft(parseUnknown(DiscountedProductsInputSchema, input), discountInputInvalid), (parsed) => {
+    const maxPages = parsed.query === undefined ? 1 : MAX_DISCOUNT_QUERY_SCAN_PAGES
+    const initial: DiscountScanState = {
+      done: false,
+      pageToken: parsed.pageToken,
+      pagesScanned: noPagesScanned,
+      response: { productGroups: [] },
+      session
+    }
 
-  const maxPages = parsed.right.query === undefined ? 1 : MAX_DISCOUNT_QUERY_SCAN_PAGES
-  let currentSession = session
-  let pageToken = parsed.right.pageToken
-  let response: PromotionProductsResponse = { productGroups: [] }
-  let pagesScanned = noPagesScanned
-
-  while (pagesScanned < maxPages) {
-    const pageInput = makePageInput(parsed.right, pageToken)
-    const request = makeDiscountedProductsRequestFromInput(pageInput)
-
-    const page = await requestVoilaJson(
-      PromotionProductsResponseSchema,
-      currentSession,
-      request,
-      transport,
-      cookieJarPort
+    return Effect.map(
+      Effect.iterate(initial, {
+        body: (state) => scanNextPage(state, parsed, cookieJarPort),
+        while: (state) => !state.done && state.pagesScanned < maxPages
+      }),
+      (state) => ({
+        session: state.session,
+        value: normalizeDiscountedProductsResponse(
+          state.response,
+          parsed,
+          makeScanMetadata(parsed, state.pagesScanned, maxPages, state.pageToken)
+        )
+      })
     )
-
-    if (Either.isLeft(page)) {
-      return Either.left(page.left)
-    }
-
-    pagesScanned += 1
-    currentSession = page.right.session
-    response = { ...page.right.value, productGroups: [...response.productGroups, ...page.right.value.productGroups] }
-    pageToken = page.right.value.nextPageToken
-
-    const matchedProducts = normalizeResponseProducts(response, parsed.right).length
-
-    if (pageToken === undefined || matchedProducts >= parsed.right.pageSize) {
-      break
-    }
-  }
-
-  const scan = makeScanMetadata(parsed.right, pagesScanned, maxPages, pageToken)
-
-  return Either.right({
-    session: currentSession,
-    value: normalizeDiscountedProductsResponse(response, parsed.right, scan)
   })
-}

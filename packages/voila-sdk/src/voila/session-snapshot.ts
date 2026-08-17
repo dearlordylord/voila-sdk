@@ -95,6 +95,25 @@ export const deserializeCookieJar = (
   }
 }
 
+const cookieHeaderReadFailed = (_cause: unknown): CookieJarPortError => ({
+  _tag: "CookieJarSnapshotImportFailed",
+  message: "Cookie header could not be read from the restored jar"
+})
+
+/**
+ * Reads the cookie header a request must carry. A jar restored from a snapshot
+ * is boundary data and its read can throw, so this reports the failure the way
+ * every other jar operation does — a thrown cookie error would otherwise reach
+ * a caller as a defect carrying cookie material.
+ */
+export const readCookieHeader = (jar: CookieJar, url: string): Either.Either<string, CookieJarPortError> => {
+  try {
+    return Either.right(jar.getCookieStringSync(url))
+  } catch (error) {
+    return Either.left(cookieHeaderReadFailed(error))
+  }
+}
+
 export const toughCookieJarPort: CookieJarPort = {
   create: createCookieJar,
   deserialize: deserializeCookieJar,

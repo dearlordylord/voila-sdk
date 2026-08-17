@@ -1,6 +1,6 @@
 {
   "name": "@firfi/voila-mcp",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Voila MCP server for safe personal grocery search, cart, slots, and order-history workflows",
   "mcpName": "io.github.dearlordylord/voila-mcp",
   "type": "module",
@@ -65,9 +65,12 @@
     "access": "public"
   },
   "dependencies": {
+    "@effect/ai": "0.37.0",
+    "@effect/experimental": "^0.61.1",
+    "@effect/platform": "^0.97.1",
+    "@effect/platform-node": "^0.108.1",
+    "@effect/rpc": "^0.76.2",
     "@firfi/voila-sdk": "workspace:*",
-    "@modelcontextprotocol/node": "^2.0.0",
-    "@modelcontextprotocol/server": "^2.0.0",
     "effect": "^3.22.1",
     "top-user-agents": "^2.1.125"
   },

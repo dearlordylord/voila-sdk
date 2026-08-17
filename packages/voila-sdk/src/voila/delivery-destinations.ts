@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -14,9 +14,10 @@ import {
   RawDeliveryDestinationsResponseSchema,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 import type { DeliveryDestinationRequestError, DeliveryDestinationsRequestError } from "./urls.js"
 import { makeDeliveryDestinationRequest, makeDeliveryDestinationsRequest } from "./urls.js"
 
@@ -115,54 +116,26 @@ export const parseDeliveryDestinationsDiagnostic = (
 ): Either.Either<DeliveryDestinationsDiagnostic, DeliveryDestinationsResponseNormalizationError> =>
   Either.mapLeft(parseUnknown(DeliveryDestinationsDiagnosticSchema, input), deliveryDestinationsResponseSchemaMismatch)
 
-export const getDeliveryDestinations = async (
+export const getDeliveryDestinations = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetDeliveryDestinationsResult, GetDeliveryDestinationsError>> => {
-  const request = makeDeliveryDestinationsRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawDeliveryDestinationsResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetDeliveryDestinationsResult, GetDeliveryDestinationsError, VoilaTransport> =>
+  Effect.flatMap(makeDeliveryDestinationsRequest(input), (request) =>
+    Effect.map(requestVoilaJson(RawDeliveryDestinationsResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeDeliveryDestinationsResponse(result.value)
+    }))
   )
 
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeDeliveryDestinationsResponse(result.value)
-  }))
-}
-
-export const getDeliveryDestination = async (
+export const getDeliveryDestination = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetDeliveryDestinationResult, GetDeliveryDestinationError>> => {
-  const request = makeDeliveryDestinationRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawDeliveryDestinationSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetDeliveryDestinationResult, GetDeliveryDestinationError, VoilaTransport> =>
+  Effect.flatMap(makeDeliveryDestinationRequest(input), (request) =>
+    Effect.map(requestVoilaJson(RawDeliveryDestinationSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeDeliveryDestination(result.value)
+    }))
   )
-
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeDeliveryDestination(result.value)
-  }))
-}

@@ -1,6 +1,6 @@
 # MCP Readiness
 
-Voila now includes a stdio MCP server package: `@firfi/voila-mcp`.
+Voila includes an MCP server package: `@firfi/voila-mcp`. The server is built on `@effect/ai`'s `McpServer` over `@effect/rpc`; no `@modelcontextprotocol/*` package is a dependency.
 
 ## Package Boundary
 
@@ -14,7 +14,8 @@ The SDK owns Voila endpoint behavior:
 
 The MCP package owns:
 
-- MCP tool names and input schemas
+- MCP tool names and Effect Schema tool parameters
+- the Node transport layer the server and the CLI run on
 - session file configuration from environment variables
 - guest fallback
 - redacted typed failures
@@ -25,13 +26,17 @@ The CLI reuses the MCP operation registry so command behavior and tool behavior 
 ## Server
 
 - MCP server name: `io.github.dearlordylord/voila-mcp`
-- Transport: stdio only
+- Transports: stdio (default) and HTTP, selected with `MCP_TRANSPORT`
 - Bin: `voila-mcp`
+- Negotiated protocol version: `2025-06-18`
 
 Environment:
 
 - `VOILA_AUTH_SESSION_PATH`: absolute path to a session snapshot, read and written as one path.
 - `VOILA_GUEST=1`: force guest behavior. Guest sessions live in memory and are never written to the session file.
+- `VOILA_USER_AGENT`: optional browser identity override.
+- `MCP_TRANSPORT`: `stdio` by default, or `http`.
+- `MCP_HTTP_HOST` (default `127.0.0.1`), `MCP_HTTP_PORT` / `PORT` (default `3000`), `MCP_HTTP_PATH` (default `/mcp`). The HTTP transport also answers liveness on `/` and `/health`.
 
 Client config:
 
@@ -52,8 +57,12 @@ Client config:
 ## Tools
 
 - `voila_check_session_health`
+- `voila_get_active_shopping_context`
+- `voila_get_slot_listings`
+- `voila_reserve_slot`
 - `voila_search_products`
 - `voila_get_category_products`
+- `voila_get_discounted_products`
 - `voila_get_completed_orders`
 - `voila_get_order_details`
 - `voila_get_completed_order_items`
@@ -61,8 +70,14 @@ Client config:
 - `voila_add_cart_items`
 - `voila_remove_cart_items`
 
+Every tool states all four MCP behaviour hints: reads are `readOnlyHint: true` / `idempotentHint: true` / `destructiveHint: false`, and the mutating tools (`voila_add_cart_items`, `voila_remove_cart_items`, `voila_reserve_slot`) invert the first three. All tools are `openWorldHint: true`.
+
+Tool parameters are Effect Schemas, published as JSON Schema on `tools/list` with `additionalProperties: false` and the refinement bounds intact. A call whose arguments violate that schema, and a call whose operation fails, both come back as a tool result with `isError: true` rather than a JSON-RPC protocol error. The `arguments` field is required by the MCP schema: a parameterless tool is called with `arguments: {}`.
+
 Cart mutation tools return normalized SDK results including totals, limited items, unavailable data, and pricing notifications.
 
 ## Safety
+
+The HTTP transport is stateless per POST and has no session handshake to gate on, so it refuses any request whose `Origin` header is not local; a client that sends no `Origin` (a bridge, a gateway, `curl`) is served. Put authentication and access control in front of `/mcp` before exposing it beyond the local machine.
 
 The MCP package does not expose checkout or order placement. Any future checkout mutation must fetch the latest server summary and require explicit caller confirmation.

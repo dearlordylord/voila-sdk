@@ -1,7 +1,7 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { DiscountedProductsInput, SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
+import type { DiscountedProductsInput, SessionSnapshot } from "../../src/index.js"
 import {
   getDiscountedProducts,
   makeDiscountedProductsRequest,
@@ -12,6 +12,13 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  respondingTransport,
+  runWith,
+  sequenceTransport,
+  stubTransport
+} from "../helpers/transport.js"
 
 const csrfToken = "csrf-token"
 const sampleMetadata = {
@@ -357,7 +364,7 @@ describe("discounted product normalization", () => {
   })
 
   it("scans promotion pages for sparse query matches", async () => {
-    const responses: ReadonlyArray<VoilaTransportResponse> = [
+    const fake = sequenceTransport([
       {
         body: JSON.stringify(
           makePromotionResponse([makeProduct("Discounted cereal", "6.00", "5.00", "cereal-id")], "p2")
@@ -370,29 +377,17 @@ describe("discounted product normalization", () => {
         headers: {},
         status: 200
       }
-    ]
-    const requests: Array<URL> = []
-    let index = 0
-    const result = await getDiscountedProducts(
-      makeSession(),
-      { pageSize: 1, query: "milk" },
-      {
-        request: async (request) => {
-          requests.push(request.url)
-          const response = responses[index]
-          index += 1
-
-          return response === undefined ? Either.left("missing response") : Either.right(response)
-        }
-      }
-    )
+    ])
+    const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1, query: "milk" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
+      const requests = fake.requests
+
       expect(requests).toHaveLength(2)
-      expect(requests[0]?.searchParams.has("q")).toBe(false)
-      expect(requests[1]?.searchParams.get("pageToken")).toBe("p2")
+      expect(requests[0]?.url.searchParams.has("q")).toBe(false)
+      expect(requests[1]?.url.searchParams.get("pageToken")).toBe("p2")
       expect(result.right.value.products.map((product) => product.productId)).toEqual(["milk-id"])
       expect(result.right.value.scan.pagesScanned).toBe(2)
       expect(result.right.value.scan.exhausted).toBe(true)
@@ -400,7 +395,7 @@ describe("discounted product normalization", () => {
   })
 
   it("returns all query matches from scanned pages when a page overshoots the fill target", async () => {
-    const responses: ReadonlyArray<VoilaTransportResponse> = [
+    const fake = sequenceTransport([
       {
         body: JSON.stringify(
           makePromotionResponse([makeProduct("Discounted milk one", "5.00", "4.00", "milk-id-1")], "p2")
@@ -421,20 +416,8 @@ describe("discounted product normalization", () => {
         headers: {},
         status: 200
       }
-    ]
-    let index = 0
-    const result = await getDiscountedProducts(
-      makeSession(),
-      { pageSize: 2, query: "milk" },
-      {
-        request: async () => {
-          const response = responses[index]
-          index += 1
-
-          return response === undefined ? Either.left("missing response") : Either.right(response)
-        }
-      }
-    )
+    ])
+    const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 2, query: "milk" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -450,62 +433,45 @@ describe("discounted product normalization", () => {
   })
 
   it("passes explicit page tokens through no-query promotion requests", async () => {
-    const requests: Array<URL> = []
-    const result = await getDiscountedProducts(
-      makeSession(),
-      { pageSize: 1, pageToken: "start-token" },
-      {
-        request: async (request) => {
-          requests.push(request.url)
-
-          return Either.right({
-            body: JSON.stringify(makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")])),
-            headers: {},
-            status: 200
-          })
-        }
-      }
-    )
+    const fake = respondingTransport({
+      body: JSON.stringify(makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")])),
+      headers: {},
+      status: 200
+    })
+    const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1, pageToken: "start-token" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(requests).toHaveLength(1)
-      expect(requests[0]?.searchParams.get("pageToken")).toBe("start-token")
+      expect(fake.requests).toHaveLength(1)
+      expect(fake.requests[0]?.url.searchParams.get("pageToken")).toBe("start-token")
       expect(result.right.value.scan.startedPageToken).toBe("start-token")
       expect(result.right.value.scan.maxPages).toBe(1)
     }
   })
 
   it("stops query scans at five pages and exposes incomplete scan metadata", async () => {
-    const requests: Array<URL> = []
-    let index = 0
-    const result = await getDiscountedProducts(
-      makeSession(),
-      { pageSize: 1, query: "milk" },
-      {
-        request: async (request) => {
-          requests.push(request.url)
-          index += 1
+    const fake = stubTransport((request) => {
+      const page = request.url.searchParams.get("pageToken")
+      const index = page === null ? 1 : Number(page.slice(1))
 
-          return Either.right({
-            body: JSON.stringify(
-              makePromotionResponse(
-                [makeProduct(`Discounted cereal ${index}`, "6.00", "5.00", `cereal-id-${index}`)],
-                `p${index + 1}`
-              )
-            ),
-            headers: {},
-            status: 200
-          })
-        }
-      }
-    )
+      return Effect.succeed({
+        body: JSON.stringify(
+          makePromotionResponse(
+            [makeProduct(`Discounted cereal ${index}`, "6.00", "5.00", `cereal-id-${index}`)],
+            `p${index + 1}`
+          )
+        ),
+        headers: {},
+        status: 200
+      })
+    })
+    const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1, query: "milk" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(requests).toHaveLength(5)
+      expect(fake.requests).toHaveLength(5)
       expect(result.right.value.products).toEqual([])
       expect(result.right.value.scan).toMatchObject({
         exhausted: false,
@@ -517,21 +483,11 @@ describe("discounted product normalization", () => {
   })
 
   it("propagates invalid SDK input before making a promotions request", async () => {
-    let called = false
-    const result = await getDiscountedProducts(
-      makeSession(),
-      { pageSize: 0 },
-      {
-        request: async () => {
-          called = true
-
-          return Either.left("unused")
-        }
-      }
-    )
+    const fake = respondingTransport({ body: "{}", headers: {}, status: 200 })
+    const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 0 }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(called).toBe(false)
+    expect(fake.requests).toEqual([])
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("DiscountedProductsInputInvalid")
@@ -539,43 +495,42 @@ describe("discounted product normalization", () => {
   })
 
   it("uses the SDK default page size for direct discounted product calls", async () => {
-    const requests: Array<URL> = []
-    const result = await getDiscountedProducts(
-      makeSession(),
-      {},
-      {
-        request: async (request) => {
-          requests.push(request.url)
-
-          return Either.right({
-            body: JSON.stringify(makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")])),
-            headers: {},
-            status: 200
-          })
-        }
-      }
-    )
+    const fake = respondingTransport({
+      body: JSON.stringify(makePromotionResponse([makeProduct("Discounted milk", "5.00", "4.00", "milk-id")])),
+      headers: {},
+      status: 200
+    })
+    const result = await runWith(getDiscountedProducts(makeSession(), {}), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      expect(requests[0]?.searchParams.get("maxPageSize")).toBe("12")
+      expect(fake.requests[0]?.url.searchParams.get("maxPageSize")).toBe("12")
       expect(result.right.value.scan.requestedPageSize).toBe(12)
       expect(result.right.value.products.map((product) => product.productId)).toEqual(["milk-id"])
     }
   })
 
   it("propagates HTTP client failures as typed recoverable errors", async () => {
-    const result = await getDiscountedProducts(
-      makeSession(),
-      { pageSize: 1 },
-      { request: async () => Either.right({ body: "{}", headers: {}, status: 500 }) }
+    const result = await runWith(
+      getDiscountedProducts(makeSession(), { pageSize: 1 }),
+      respondingTransport({ body: "{}", headers: {}, status: 500 })
     )
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    }
+  })
+
+  it("surfaces a refused connection with its own tag", async () => {
+    const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1 }), connectionFailureTransport())
+
+    expect(Either.isLeft(result)).toBe(true)
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("VoilaConnectionFailure")
     }
   })
 })

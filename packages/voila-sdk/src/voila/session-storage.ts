@@ -7,20 +7,25 @@
  * one that lets a snapshot loaded at boot land on top of a fresh interactive
  * login.
  */
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import { type SdkSessionSnapshot, SdkSessionSnapshotSchema } from "../domain/schemas/index.js"
 
 export interface SessionStoragePort {
-  readonly read: () => Promise<unknown>
+  readonly read: () => Effect.Effect<unknown, SessionStorageError>
 }
 
 export type SessionStorageError =
   | { readonly _tag: "SessionStorageReadFailure"; readonly message: string }
   | { readonly _tag: "SessionStorageContentsInvalid"; readonly message: string }
 
-const sessionStorageReadFailure = (): SessionStorageError => ({
+/**
+ * What a storage adapter reports when the read itself did not happen. Exported
+ * because the adapter owns the read and must name the failure in the SDK's
+ * vocabulary rather than leak a platform error.
+ */
+export const sessionStorageReadFailure = (): SessionStorageError => ({
   _tag: "SessionStorageReadFailure",
   message: "Session snapshot could not be read"
 })
@@ -30,26 +35,16 @@ const sessionStorageContentsInvalid = (): SessionStorageError => ({
   message: "Stored session snapshot is corrupt or stale"
 })
 
-export const loadSdkSessionSnapshot = async (
-  storage: SessionStoragePort
-): Promise<Either.Either<SdkSessionSnapshot, SessionStorageError>> => {
-  let contents: unknown
-
-  try {
-    contents = await storage.read()
-  } catch {
-    return Either.left(sessionStorageReadFailure())
-  }
-
+const decodeStoredSnapshot = (contents: unknown): Either.Either<SdkSessionSnapshot, SessionStorageError> => {
   if (typeof contents !== "string") {
     return Either.left(sessionStorageContentsInvalid())
   }
 
-  const parsed = Either.mapLeft(parseJson(contents), sessionStorageContentsInvalid)
-
-  if (Either.isLeft(parsed)) {
-    return Either.left(parsed.left)
-  }
-
-  return Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, parsed.right), sessionStorageContentsInvalid)
+  return Either.flatMap(Either.mapLeft(parseJson(contents), sessionStorageContentsInvalid), (parsed) =>
+    Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, parsed), sessionStorageContentsInvalid)
+  )
 }
+
+export const loadSdkSessionSnapshot = (
+  storage: SessionStoragePort
+): Effect.Effect<SdkSessionSnapshot, SessionStorageError> => Effect.flatMap(storage.read(), decodeStoredSnapshot)

@@ -1,16 +1,21 @@
 import type { SdkSessionSnapshot } from "@firfi/voila-sdk"
 import type { StateFilePath } from "@firfi/voila-session-store"
+import { Schema } from "effect"
 
 // what to suggest when no path is configured: shell-expanded rather than
 // absolute, so it is guidance text and not a `StateFilePath`
 const defaultSessionPath = "~/.config/voila/session.json"
 
-export interface OperationAuthGuidance {
-  readonly command: string
-  readonly instructions: string
-  readonly mcpEnv: Readonly<Record<"VOILA_AUTH_SESSION_PATH", string>>
-  readonly message: string
-}
+// guidance is part of every tool result that carries it, so the schema owns
+// the shape rather than a hand-written interface
+export const OperationAuthGuidanceSchema = Schema.Struct({
+  command: Schema.String,
+  instructions: Schema.String,
+  mcpEnv: Schema.Struct({ VOILA_AUTH_SESSION_PATH: Schema.String }),
+  message: Schema.String
+})
+
+export type OperationAuthGuidance = Schema.Schema.Type<typeof OperationAuthGuidanceSchema>
 
 export const makeAuthGuidance = (sessionPath?: StateFilePath): OperationAuthGuidance => {
   const path = sessionPath ?? defaultSessionPath

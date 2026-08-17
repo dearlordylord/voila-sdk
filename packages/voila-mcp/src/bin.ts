@@ -1,12 +1,18 @@
-import { Either, Schema } from "effect"
+import type { HttpRouter } from "@effect/platform"
+import type { ServeError } from "@effect/platform/HttpServerError"
+import { NodeRuntime } from "@effect/platform-node"
+import { Effect, Either, Layer, Schema } from "effect"
 
-import { startHttpServer } from "./mcp-http-server.js"
-import { startStdioServer } from "./mcp-server.js"
+import { voilaHttpServerLayer } from "./mcp-http-server.js"
+import { voilaStdioServerLayer, VoilaOperations } from "./mcp-server.js"
 import { makeNodeOperationEnvironment } from "./node-env.js"
 import { packageVersion } from "./package-version.js"
 
 const defaultHttpHost = "127.0.0.1"
-const defaultHttpPath = "/mcp"
+// the router's own path type: a route that does not start with "/" is not a
+// path the server can mount, and that is a startup failure, not a 404
+const HttpPathSchema = Schema.TemplateLiteral("/", Schema.String)
+const defaultHttpPath: HttpRouter.PathInput = "/mcp"
 const defaultHttpPort = 3000
 const decimalRadix = 10
 const maxTcpPort = 65_535
@@ -16,9 +22,7 @@ const RuntimeEnvSchema = Schema.Struct({
   MCP_HTTP_HOST: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
     default: () => defaultHttpHost
   }),
-  MCP_HTTP_PATH: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), {
-    default: () => defaultHttpPath
-  }),
+  MCP_HTTP_PATH: Schema.optionalWith(HttpPathSchema, { default: () => defaultHttpPath }),
   MCP_HTTP_PORT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), { exact: true }),
   MCP_TRANSPORT: Schema.optionalWith(Schema.Literal("stdio", "http"), { default: () => "stdio" }),
   PORT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), { exact: true })
@@ -26,7 +30,7 @@ const RuntimeEnvSchema = Schema.Struct({
 
 interface RuntimeConfig {
   readonly httpHost: string
-  readonly httpPath: string
+  readonly httpPath: HttpRouter.PathInput
   readonly httpPort: number
   readonly transport: "http" | "stdio"
 }
@@ -80,50 +84,35 @@ const makeRuntimeConfig = (
   })
 }
 
-const waitForShutdown = async (): Promise<void> =>
-  new Promise((resolve) => {
-    process.once("SIGINT", resolve)
-    process.once("SIGTERM", resolve)
+const makeServerLayer = (runtime: RuntimeConfig): Layer.Layer<never, ServeError, VoilaOperations> =>
+  runtime.transport === "http"
+    ? voilaHttpServerLayer({ host: runtime.httpHost, path: runtime.httpPath, port: runtime.httpPort }, packageVersion)
+    : voilaStdioServerLayer(undefined, packageVersion)
+
+const reportStartupFailure = (failure: { readonly _tag: string; readonly message: string }): Effect.Effect<void> =>
+  Effect.sync(() => {
+    process.stderr.write(`${failure._tag}: ${failure.message}\n`)
+    process.exitCode = 1
   })
 
-const main = async (): Promise<void> => {
+/**
+ * The process is one layer, launched. Shutdown on SIGINT/SIGTERM, finalizer
+ * ordering, and non-zero exit on failure all come from the Effect runtime
+ * rather than from hand-rolled signal handlers.
+ */
+const main = Effect.gen(function* () {
   const runtime = makeRuntimeConfig()
   const env = makeNodeOperationEnvironment()
 
   if (Either.isLeft(runtime)) {
-    process.stderr.write(`${runtime.left._tag}: ${runtime.left.message}\n`)
-    process.exitCode = 1
-
-    return
+    return yield* reportStartupFailure(runtime.left)
   }
 
   if (Either.isLeft(env)) {
-    process.stderr.write(`${env.left._tag}: ${env.left.message}\n`)
-    process.exitCode = 1
-
-    return
+    return yield* reportStartupFailure(env.left)
   }
 
-  if (runtime.right.transport === "http") {
-    const server = await startHttpServer(
-      env.right,
-      { host: runtime.right.httpHost, path: runtime.right.httpPath, port: runtime.right.httpPort },
-      packageVersion
-    )
-
-    process.stderr.write(
-      `Voila MCP HTTP server listening on ${runtime.right.httpHost}:${runtime.right.httpPort}${runtime.right.httpPath}\n`
-    )
-    await waitForShutdown()
-    server.close()
-
-    return
-  }
-
-  await startStdioServer(env.right, packageVersion)
-}
-
-main().catch((error: unknown) => {
-  process.stderr.write(error instanceof Error ? `${error.message}\n` : "Voila MCP failed to start\n")
-  process.exitCode = 1
+  return yield* Layer.launch(Layer.provide(makeServerLayer(runtime.right), Layer.succeed(VoilaOperations, env.right)))
 })
+
+NodeRuntime.runMain(main)

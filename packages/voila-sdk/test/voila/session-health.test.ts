@@ -1,4 +1,5 @@
 import { Either } from "effect"
+import { CookieJar, Store } from "tough-cookie"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -13,10 +14,15 @@ import {
   type SessionSnapshot,
   toughCookieJarPort,
   VOILA_BASE_URL,
-  type VoilaTransport,
-  type VoilaTransportRequest,
   type VoilaTransportResponse
 } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  deadlineExceededTransport,
+  respondingTransport,
+  responseReadFailureTransport,
+  runWith
+} from "../helpers/transport.js"
 import { assertDecodeFailure } from "../helpers/property.js"
 
 const csrfToken = "csrf-token"
@@ -133,34 +139,20 @@ const makeResponse = (
   headers: VoilaTransportResponse["headers"] = {}
 ): VoilaTransportResponse => ({ body, headers, status })
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-
-        return Either.right(response)
-      }
-    }
-  }
-}
-
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
-
-const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => {
-    throw failure
-  }
-})
-
 const failingDeserializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: () => Either.left({ _tag: "CookieJarSnapshotImportFailed", message: secretTransportPayload }),
+  serialize: toughCookieJarPort.serialize
+}
+
+/**
+ * A jar whose store is asynchronous: tough-cookie's synchronous read throws
+ * rather than returning, which the health check must report as a typed retry
+ * rather than let escape as a defect.
+ */
+const asyncStoreCookieJarPort: CookieJarPort = {
+  create: toughCookieJarPort.create,
+  deserialize: () => Either.right(new CookieJar(new Store())),
   serialize: toughCookieJarPort.serialize
 }
 
@@ -198,18 +190,18 @@ const getSessionCookieHeader = (session: SessionSnapshot): string => {
 
 describe("session health", () => {
   it("checks an active authenticated session and preserves account summary", async () => {
-    const fake = makeResponseTransport(
+    const fake = respondingTransport(
       makeResponse(JSON.stringify({ authenticated: true }), 200, {
         "set-cookie": "fresh-session=after; Path=/; Secure"
       })
     )
 
-    const result = await checkSessionHealth(makeAuthenticatedSnapshot(), fake.transport)
+    const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot()), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.href).toBe(`${VOILA_BASE_URL}/api/customersessions/v2/sessions/active`)
@@ -226,9 +218,9 @@ describe("session health", () => {
   })
 
   it("checks an active guest session", async () => {
-    const result = await checkSessionHealth(
-      makeGuestSnapshot(),
-      makeResponseTransport(makeResponse(JSON.stringify({ authenticated: false }))).transport
+    const result = await runWith(
+      checkSessionHealth(makeGuestSnapshot()),
+      respondingTransport(makeResponse(JSON.stringify({ authenticated: false })))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -240,13 +232,13 @@ describe("session health", () => {
   })
 
   it("checks an active guest session without sending a cookie header when the jar is empty", async () => {
-    const fake = makeResponseTransport(makeResponse(JSON.stringify({ authenticated: false })))
-    const result = await checkSessionHealth(makeEmptyCookieGuestSnapshot(), fake.transport)
+    const fake = respondingTransport(makeResponse(JSON.stringify({ authenticated: false })))
+    const result = await runWith(checkSessionHealth(makeEmptyCookieGuestSnapshot()), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.headers.cookie).toBeUndefined()
       expect(result.right.status).toBe("active")
@@ -259,9 +251,9 @@ describe("session health", () => {
     { body: { customer: { authenticated: true } }, name: "customer authenticated" },
     { body: { status: "AUTHENTICATED" }, name: "authenticated status" }
   ])("accepts $name as authenticated evidence", async ({ body }) => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      makeResponseTransport(makeResponse(JSON.stringify(body))).transport
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot()),
+      respondingTransport(makeResponse(JSON.stringify(body)))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -273,11 +265,11 @@ describe("session health", () => {
   })
 
   it("accepts active cart session identifiers for an authenticated snapshot", async () => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      makeResponseTransport(
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot()),
+      respondingTransport(
         makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id", type: "CART" }))
-      ).transport
+      )
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -289,11 +281,11 @@ describe("session health", () => {
   })
 
   it("preserves authenticated cookie sessions when active cart identifiers are returned", async () => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedCookieSnapshot(),
-      makeResponseTransport(
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedCookieSnapshot()),
+      respondingTransport(
         makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id", type: "CART" }))
-      ).transport
+      )
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -305,13 +297,13 @@ describe("session health", () => {
   })
 
   it("requires reauthentication when an authenticated session loses authenticated evidence", async () => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      makeResponseTransport(
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot()),
+      respondingTransport(
         makeResponse(JSON.stringify({ authenticated: false }), 200, {
           "set-cookie": "reauth-session=after; Path=/; Secure"
         })
-      ).transport
+      )
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -329,10 +321,9 @@ describe("session health", () => {
   })
 
   it("maps unauthorized authenticated sessions to reauthentication-required", async () => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      makeResponseTransport(makeResponse("{}", 401, { "set-cookie": "unauthorized-session=after; Path=/; Secure" }))
-        .transport
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot()),
+      respondingTransport(makeResponse("{}", 401, { "set-cookie": "unauthorized-session=after; Path=/; Secure" }))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -349,10 +340,9 @@ describe("session health", () => {
   })
 
   it("maps unauthorized guest sessions to unauthorized", async () => {
-    const result = await checkSessionHealth(
-      makeGuestSnapshot(),
-      makeResponseTransport(makeResponse("{}", 403, { "set-cookie": "guest-unauthorized=after; Path=/; Secure" }))
-        .transport
+    const result = await runWith(
+      checkSessionHealth(makeGuestSnapshot()),
+      respondingTransport(makeResponse("{}", 403, { "set-cookie": "guest-unauthorized=after; Path=/; Secure" }))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -374,9 +364,9 @@ describe("session health", () => {
     { body: "{", name: "malformed JSON" },
     { body: "[]", name: "schema drift" }
   ])("maps $name to schema-changed health", async ({ body }) => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      makeResponseTransport(makeResponse(body)).transport
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot()),
+      respondingTransport(makeResponse(body))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -387,9 +377,9 @@ describe("session health", () => {
   })
 
   it("maps missing CSRF to reauthentication-required for authenticated sessions", async () => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(" "),
-      makeResponseTransport(makeResponse(JSON.stringify({ authenticated: true }))).transport
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot(" ")),
+      respondingTransport(makeResponse(JSON.stringify({ authenticated: true })))
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -400,38 +390,33 @@ describe("session health", () => {
   })
 
   it.each([
-    { expectedReason: "network", name: "network failures", transport: makeLeftTransport(secretTransportPayload) },
-    {
-      expectedReason: "network",
-      name: "thrown network failures",
-      transport: makeThrowingTransport(secretTransportPayload)
-    },
-    {
-      expectedReason: "server",
-      name: "server failures",
-      transport: makeResponseTransport(makeResponse("{}", 500)).transport
-    },
+    { expectedReason: "network", name: "refused connections", transport: connectionFailureTransport() },
+    { expectedReason: "network", name: "abandoned deadlines", transport: deadlineExceededTransport() },
+    { expectedReason: "network", name: "unreadable response bodies", transport: responseReadFailureTransport() },
+    { expectedReason: "server", name: "server failures", transport: respondingTransport(makeResponse("{}", 500)) },
     {
       expectedReason: "persistence",
       name: "cookie persistence failures",
-      transport: makeResponseTransport(
+      transport: respondingTransport(
         makeResponse(JSON.stringify({ authenticated: true }), 200, {
           "set-cookie": "fresh-session=after; Path=/; Secure"
         })
-      ).transport
+      )
     },
     {
       expectedReason: "persistence",
       name: "malformed response cookie failures",
-      transport: makeResponseTransport(
+      transport: respondingTransport(
         makeResponse(JSON.stringify({ authenticated: true }), 200, { "set-cookie": "bad cookie value" })
-      ).transport
+      )
     }
   ])("maps $name to retry health", async ({ expectedReason, name, transport }) => {
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      transport,
-      name === "cookie persistence failures" ? failingSerializeCookieJarPort : undefined
+    const result = await runWith(
+      checkSessionHealth(
+        makeAuthenticatedSnapshot(),
+        name === "cookie persistence failures" ? failingSerializeCookieJarPort : undefined
+      ),
+      transport
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -445,16 +430,24 @@ describe("session health", () => {
     }
   })
 
-  it("maps cookie jar restoration failures to retry health before network I/O", async () => {
-    const fake = makeResponseTransport(makeResponse(JSON.stringify({ authenticated: true })))
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      fake.transport,
-      failingDeserializeCookieJarPort
-    )
+  it("maps an unreadable restored jar to retry health before network I/O", async () => {
+    const fake = respondingTransport(makeResponse(JSON.stringify({ authenticated: true })))
+    const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot(), asyncStoreCookieJarPort), fake)
 
     expect(Either.isRight(result)).toBe(true)
-    expect(fake.requests()).toEqual([])
+    expect(fake.requests).toEqual([])
+
+    if (Either.isRight(result) && result.right.status === "retry") {
+      expect(result.right.reason).toBe("persistence")
+    }
+  })
+
+  it("maps cookie jar restoration failures to retry health before network I/O", async () => {
+    const fake = respondingTransport(makeResponse(JSON.stringify({ authenticated: true })))
+    const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot(), failingDeserializeCookieJarPort), fake)
+
+    expect(Either.isRight(result)).toBe(true)
+    expect(fake.requests).toEqual([])
 
     if (Either.isRight(result)) {
       expect(result.right.status).toBe("retry")
@@ -468,19 +461,18 @@ describe("session health", () => {
   })
 
   it("maps cookie jar restoration failures during Set-Cookie application to retry health", async () => {
-    const fake = makeResponseTransport(
+    const fake = respondingTransport(
       makeResponse(JSON.stringify({ authenticated: true }), 200, {
         "set-cookie": "fresh-session=after; Path=/; Secure"
       })
     )
-    const result = await checkSessionHealth(
-      makeAuthenticatedSnapshot(),
-      fake.transport,
-      makeFailingSecondDeserializeCookieJarPort()
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot(), makeFailingSecondDeserializeCookieJarPort()),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(1)
+    expect(fake.requests).toHaveLength(1)
 
     if (Either.isRight(result)) {
       expect(result.right.status).toBe("retry")
@@ -494,7 +486,7 @@ describe("session health", () => {
   })
 
   it("maps guest network failures to retry health", async () => {
-    const result = await checkSessionHealth(makeGuestSnapshot(), makeLeftTransport(secretTransportPayload))
+    const result = await runWith(checkSessionHealth(makeGuestSnapshot()), connectionFailureTransport())
 
     expect(Either.isRight(result)).toBe(true)
 

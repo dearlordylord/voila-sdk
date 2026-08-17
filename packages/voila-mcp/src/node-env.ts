@@ -1,9 +1,4 @@
-import type {
-  SdkSessionSnapshot,
-  VoilaTransport,
-  VoilaTransportRequest,
-  VoilaTransportResponse
-} from "@firfi/voila-sdk"
+import type { SdkSessionSnapshot, VoilaTransport } from "@firfi/voila-sdk"
 import {
   keepSessionFile,
   makeStateFileLocks,
@@ -16,9 +11,7 @@ import {
   StateFilePathSchema,
   updateSessionFileCarrying
 } from "@firfi/voila-session-store"
-import { Effect, Either, Option, Ref, Schema } from "effect"
-
-import topDesktopUserAgents from "top-user-agents/desktop"
+import { Effect, Either, type Layer, Option, Ref, Schema } from "effect"
 
 import { makeAuthGuidance } from "./auth-guidance.js"
 import {
@@ -29,6 +22,7 @@ import {
   type SessionOperation,
   type SessionOperationOutcome
 } from "./operations.js"
+import { nodeVoilaTransportLayer } from "./node-transport.js"
 
 // One configured path, parsed here at the environment boundary: the read path
 // and the write path cannot differ, because a write compared against a file
@@ -44,13 +38,6 @@ type EnvConfig = Schema.Schema.Type<typeof EnvSchema>
 const envInvalid = (): OperationFailure => ({
   _tag: "VoilaEnvironmentInvalid",
   message: "Voila MCP environment variables are invalid"
-})
-
-// a transport that rejects rather than returning a typed failure must still
-// leave the operation layer as a typed, redacted failure, not a defect
-const bootstrapRejected = (): OperationFailure => ({
-  _tag: "VoilaSessionBootstrapFailed",
-  message: "Guest session could not be bootstrapped"
 })
 
 /**
@@ -70,7 +57,7 @@ const cycleStep = <A>(ran: SessionOperationOutcome<A>): SessionFileCycleStep<Ses
   update: sessionFileUpdateFor(ran)
 })
 
-const makeSessionPort = (config: EnvConfig, transport: VoilaTransport): OperationSessionPort => {
+const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
   // The guest session lives for the process's lifetime instead of on disk, and
   // is the only session this port holds in memory. A configured session file is
   // read inside every update cycle, so a login that lands between two
@@ -84,26 +71,23 @@ const makeSessionPort = (config: EnvConfig, transport: VoilaTransport): Operatio
   const locks = Effect.runSync(makeStateFileLocks())
   const sessionFile = config.VOILA_GUEST === "1" ? undefined : config.VOILA_AUTH_SESSION_PATH
 
-  const bootstrapGuest: Effect.Effect<SdkSessionSnapshot, OperationFailure> = guestBootstrapLock.withPermits(1)(
-    Effect.gen(function* () {
-      const cached = yield* Ref.get(guest)
+  const bootstrapGuest: Effect.Effect<SdkSessionSnapshot, OperationFailure, VoilaTransport> =
+    guestBootstrapLock.withPermits(1)(
+      Effect.gen(function* () {
+        const cached = yield* Ref.get(guest)
 
-      if (Option.isSome(cached)) {
-        return cached.value
-      }
+        if (Option.isSome(cached)) {
+          return cached.value
+        }
 
-      const bootstrapped = yield* Effect.tryPromise({
-        catch: bootstrapRejected,
-        try: () => makeGuestSessionSnapshot(transport)
+        const snapshot = yield* makeGuestSessionSnapshot()
+        yield* Ref.set(guest, Option.some(snapshot))
+
+        return snapshot
       })
-      const snapshot = yield* bootstrapped
-      yield* Ref.set(guest, Option.some(snapshot))
+    )
 
-      return snapshot
-    })
-  )
-
-  const runWithGuest = <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure> =>
+  const runWithGuest = <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure, VoilaTransport> =>
     Effect.gen(function* () {
       const outcome = yield* Effect.flatMap(bootstrapGuest, operation)
 
@@ -117,7 +101,7 @@ const makeSessionPort = (config: EnvConfig, transport: VoilaTransport): Operatio
   const runWithSessionFile = <A>(
     file: StateFilePath,
     operation: SessionOperation<A>
-  ): Effect.Effect<A, OperationFailure> =>
+  ): Effect.Effect<A, OperationFailure, VoilaTransport> =>
     Effect.gen(function* () {
       // A dropped update needs no adoption here: the losing snapshot is never
       // kept, and the next cycle reads whatever the winner wrote. The
@@ -150,93 +134,15 @@ const makeSessionPort = (config: EnvConfig, transport: VoilaTransport): Operatio
   }
 }
 
-const collectResponseHeaders = (headers: Headers): VoilaTransportResponse["headers"] =>
-  Object.fromEntries(headers.entries())
-
-const getMostPopularUserAgent = (): string => {
-  const [mostPopularUserAgent] = topDesktopUserAgents
-
-  if (mostPopularUserAgent === undefined) {
-    throw new Error("top-user-agents/desktop returned an empty list")
-  }
-
-  return mostPopularUserAgent
-}
-
-export type NodeFetchPort = (input: URL, init: RequestInit) => Promise<Response>
-
-/**
- * How long one Voila request may take before it is abandoned. A request runs
- * inside the session file cycle and holds that file's lock while it does, so
- * an unbounded request is not one slow tool call — it is every tool call in
- * the process waiting behind it. Generous enough for the slowest observed
- * endpoints (decorated order details, large category pages); Node's own
- * defaults are roughly ten times this.
- */
-export const defaultRequestTimeoutMs = 30_000
-
-/**
- * What decides that a request has gone on long enough. A port rather than a
- * bare duration: the deadline is a platform timer that no clock service can
- * drive, so a test that wants to observe the abandonment says when to abandon
- * instead of waiting for wall-clock time to pass.
- */
-export type RequestDeadlinePort = () => AbortSignal
-
-export const timeoutDeadline =
-  (timeoutMs: number = defaultRequestTimeoutMs): RequestDeadlinePort =>
-  () =>
-    AbortSignal.timeout(timeoutMs)
-
-export const makeFetchVoilaTransport = (
-  configuredUserAgent?: string,
-  fetchPort: NodeFetchPort = fetch,
-  deadline: RequestDeadlinePort = timeoutDeadline()
-): VoilaTransport => ({
-  request: async (request: VoilaTransportRequest) => {
-    const hasRequestUserAgent = Object.keys(request.headers).some((name) => name.toLowerCase() === "user-agent")
-    const headers = hasRequestUserAgent
-      ? request.headers
-      : { ...request.headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent() }
-
-    try {
-      // the body is read under the same deadline and the same handling: a
-      // response whose headers arrive and whose body then stalls is the same
-      // held lock as one that never answers at all
-      const response = await fetchPort(request.url, {
-        ...(request.body === undefined ? {} : { body: request.body }),
-        headers,
-        method: request.method,
-        signal: deadline()
-      })
-
-      return Either.right({
-        body: await response.text(),
-        headers: collectResponseHeaders(response.headers),
-        status: response.status
-      })
-    } catch (error) {
-      return Either.left(error)
-    }
-  }
-})
-
-export const fetchVoilaTransport: VoilaTransport = makeFetchVoilaTransport()
-
 export const makeNodeOperationEnvironment = (
   env: Readonly<Record<string, string | undefined>> = process.env,
-  transport?: VoilaTransport,
-  fetchPort: NodeFetchPort = fetch
+  transport?: Layer.Layer<VoilaTransport>
 ): Either.Either<OperationEnvironment, OperationFailure> =>
-  Either.map(Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid), (config) => {
-    const effectiveTransport = transport ?? makeFetchVoilaTransport(config.VOILA_USER_AGENT, fetchPort)
-
-    return {
-      ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-      session: makeSessionPort(config, effectiveTransport),
-      transport: effectiveTransport
-    }
-  })
+  Either.map(Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid), (config) => ({
+    ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
+    session: makeSessionPort(config),
+    transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
+  }))
 
 export const defaultNodeOperationEnvironment = (): OperationEnvironment => {
   const env = makeNodeOperationEnvironment()

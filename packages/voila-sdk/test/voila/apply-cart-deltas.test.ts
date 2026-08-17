@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   addCartItems,
   applyCartDeltas,
@@ -15,6 +15,12 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  deadlineExceededTransport,
+  respondingTransport,
+  runWith
+} from "../helpers/transport.js"
 
 const fixtureText = readFileSync(new URL("../fixtures/cart-apply-success.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
@@ -46,30 +52,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
-}
-
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
-
-const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => {
-    throw failure
-  }
-})
-
 const makeMutationResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
   headers: { "set-cookie": "fresh-mutation-cookie=after; Path=/; Secure" },
@@ -98,17 +80,16 @@ const makeDelta = (productId: string, quantity: number) => {
 
 describe("applyCartDeltas", () => {
   it("applies batch cart deltas through the active session", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const result = await applyCartDeltas(
-      makeSession(),
-      [makeDelta(productUuid, 2), makeDelta(secondProductUuid, -1)],
-      fake.transport
+    const fake = respondingTransport(makeMutationResponse())
+    const result = await runWith(
+      applyCartDeltas(makeSession(), [makeDelta(productUuid, 2), makeDelta(secondProductUuid, -1)]),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
       expect(request?.url.pathname).toBe("/api/cart/v1/carts/active/apply-quantity")
@@ -127,12 +108,12 @@ describe("applyCartDeltas", () => {
   })
 
   it("propagates invalid mutation input before network I/O", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
+    const fake = respondingTransport(makeMutationResponse())
     const invalidDelta = { productId: "243255EA", quantity: 1 }
-    const result = await applyCartDeltas(makeSession(), [invalidDelta], fake.transport)
+    const result = await runWith(applyCartDeltas(makeSession(), [invalidDelta]), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("CartQuantityInputInvalid")
@@ -140,11 +121,11 @@ describe("applyCartDeltas", () => {
   })
 
   it("rejects empty mutation batches before network I/O", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const result = await applyCartDeltas(makeSession(), [], fake.transport)
+    const fake = respondingTransport(makeMutationResponse())
+    const result = await runWith(applyCartDeltas(makeSession(), []), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("CartQuantityInputInvalid")
@@ -152,16 +133,16 @@ describe("applyCartDeltas", () => {
   })
 
   it("propagates missing CSRF as a typed recoverable error before network I/O", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
+    const fake = respondingTransport(makeMutationResponse())
     const delta = makeAddToCartDelta(productUuid, 1)
 
     expect(Either.isRight(delta)).toBe(true)
 
     if (Either.isRight(delta)) {
-      const result = await applyCartDeltas(makeSession(" "), [delta.right], fake.transport)
+      const result = await runWith(applyCartDeltas(makeSession(" "), [delta.right]), fake)
 
       expect(Either.isLeft(result)).toBe(true)
-      expect(fake.requests()).toHaveLength(0)
+      expect(fake.requests).toHaveLength(0)
 
       if (Either.isLeft(result)) {
         expect(result.left._tag).toBe("VoilaMissingCsrfToken")
@@ -169,41 +150,36 @@ describe("applyCartDeltas", () => {
     }
   })
 
-  it("propagates transport left failures as redacted typed recoverable errors", async () => {
-    const result = await applyCartDeltas(
-      makeSession(),
-      [makeDelta(productUuid, 1)],
-      makeLeftTransport("secret-cart-mutation-token")
+  it("propagates a refused connection as its own typed recoverable error", async () => {
+    const result = await runWith(
+      applyCartDeltas(makeSession(), [makeDelta(productUuid, 1)]),
+      connectionFailureTransport()
     )
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-cart-mutation-token")
+      expect(result.left._tag).toBe("VoilaConnectionFailure")
     }
   })
 
-  it("propagates thrown transport failures as redacted typed recoverable errors", async () => {
-    const result = await applyCartDeltas(
-      makeSession(),
-      [makeDelta(productUuid, 1)],
-      makeThrowingTransport(new Error("secret-cart-mutation-thrown-token"))
+  it("distinguishes an abandoned deadline from a refused connection", async () => {
+    const result = await runWith(
+      applyCartDeltas(makeSession(), [makeDelta(productUuid, 1)]),
+      deadlineExceededTransport()
     )
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-cart-mutation-thrown-token")
+      expect(result.left._tag).toBe("VoilaRequestDeadlineExceeded")
     }
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
-    const result = await applyCartDeltas(
-      makeSession(),
-      [makeDelta(productUuid, 1)],
-      makeResponseTransport(
+    const result = await runWith(
+      applyCartDeltas(makeSession(), [makeDelta(productUuid, 1)]),
+      respondingTransport(
         makeMutationResponse(
           JSON.stringify({
             basketUpdateResult: {},
@@ -213,7 +189,7 @@ describe("applyCartDeltas", () => {
             unavailableData: []
           })
         )
-      ).transport
+      )
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -224,10 +200,9 @@ describe("applyCartDeltas", () => {
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
-    const result = await applyCartDeltas(
-      makeSession(),
-      [makeDelta(productUuid, 1)],
-      makeResponseTransport(makeMutationResponse("{}", 500)).transport
+    const result = await runWith(
+      applyCartDeltas(makeSession(), [makeDelta(productUuid, 1)]),
+      respondingTransport(makeMutationResponse("{}", 500))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -240,20 +215,19 @@ describe("applyCartDeltas", () => {
 
 describe("cart item convenience operations", () => {
   it("adds cart items with positive deltas through observable request behavior", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const result = await addCartItems(
-      makeSession(),
-      [
+    const fake = respondingTransport(makeMutationResponse())
+    const result = await runWith(
+      addCartItems(makeSession(), [
         { productId: productUuid, quantity: -2 },
         { productId: secondProductUuid, quantity: 1 }
-      ],
-      fake.transport
+      ]),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.body).toBe(
         `[{"productId":"${productUuid}","quantity":2},{"productId":"${secondProductUuid}","quantity":1}]`
@@ -264,20 +238,19 @@ describe("cart item convenience operations", () => {
   })
 
   it("removes cart items with negative deltas through observable request behavior", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const result = await removeCartItems(
-      makeSession(),
-      [
+    const fake = respondingTransport(makeMutationResponse())
+    const result = await runWith(
+      removeCartItems(makeSession(), [
         { productId: productUuid, quantity: -2 },
         { productId: secondProductUuid, quantity: 1 }
-      ],
-      fake.transport
+      ]),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.body).toBe(
         `[{"productId":"${productUuid}","quantity":-2},{"productId":"${secondProductUuid}","quantity":-1}]`
@@ -287,13 +260,13 @@ describe("cart item convenience operations", () => {
   })
 
   it("rejects invalid convenience item inputs before network I/O", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const addResult = await addCartItems(makeSession(), [{ productId: "243255EA", quantity: 1 }], fake.transport)
-    const removeResult = await removeCartItems(makeSession(), [{ productId: productUuid, quantity: 0 }], fake.transport)
+    const fake = respondingTransport(makeMutationResponse())
+    const addResult = await runWith(addCartItems(makeSession(), [{ productId: "243255EA", quantity: 1 }]), fake)
+    const removeResult = await runWith(removeCartItems(makeSession(), [{ productId: productUuid, quantity: 0 }]), fake)
 
     expect(Either.isLeft(addResult)).toBe(true)
     expect(Either.isLeft(removeResult)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(addResult) && Either.isLeft(removeResult)) {
       expect(addResult.left._tag).toBe("CartQuantityDeltaInvalid")
@@ -302,13 +275,13 @@ describe("cart item convenience operations", () => {
   })
 
   it("rejects structurally invalid convenience item inputs before network I/O", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const addResult = await addCartItems(makeSession(), [null], fake.transport)
-    const removeResult = await removeCartItems(makeSession(), "not-items", fake.transport)
+    const fake = respondingTransport(makeMutationResponse())
+    const addResult = await runWith(addCartItems(makeSession(), [null]), fake)
+    const removeResult = await runWith(removeCartItems(makeSession(), "not-items"), fake)
 
     expect(Either.isLeft(addResult)).toBe(true)
     expect(Either.isLeft(removeResult)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(addResult) && Either.isLeft(removeResult)) {
       expect(addResult.left._tag).toBe("CartItemsInputInvalid")
@@ -317,13 +290,13 @@ describe("cart item convenience operations", () => {
   })
 
   it("rejects empty convenience item batches before network I/O", async () => {
-    const fake = makeResponseTransport(makeMutationResponse())
-    const addResult = await addCartItems(makeSession(), [], fake.transport)
-    const removeResult = await removeCartItems(makeSession(), [], fake.transport)
+    const fake = respondingTransport(makeMutationResponse())
+    const addResult = await runWith(addCartItems(makeSession(), []), fake)
+    const removeResult = await runWith(removeCartItems(makeSession(), []), fake)
 
     expect(Either.isLeft(addResult)).toBe(true)
     expect(Either.isLeft(removeResult)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(addResult) && Either.isLeft(removeResult)) {
       expect(addResult.left._tag).toBe("CartQuantityInputInvalid")

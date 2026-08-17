@@ -1,4 +1,6 @@
 export * from "./mcp-http-server.js"
+export * from "./mcp-toolkit.js"
+export * from "./node-transport.js"
 export * from "./mcp-server.js"
 export * from "./node-env.js"
 export * from "./operation-schemas.js"

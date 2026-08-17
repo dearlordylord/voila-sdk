@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Effect, Either, Schema } from "effect"
 
 import { type CartQuantityDeltaError, makeAddToCartDelta, makeRemoveFromCartDelta } from "../domain/cart.js"
 import { parseUnknown } from "../domain/parse.js"
@@ -11,9 +11,10 @@ import {
   NormalizedCartMutationResultSchema,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 import type { CartQuantityRequestError } from "./urls.js"
 import { makeApplyQuantityRequest } from "./urls.js"
 
@@ -70,25 +71,17 @@ export const parseCartMutationResponse = (
       )
   )
 
-export const applyCartDeltas = async (
+export const applyCartDeltas = (
   session: SessionSnapshot,
   deltas: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<ApplyCartDeltasResult, ApplyCartDeltasError>> => {
-  const request = makeApplyQuantityRequest(deltas)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(CartUpdateResponseSchema, session, request.right, transport, cookieJarPort)
-
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeCartMutationResponse(result.value)
-  }))
-}
+): Effect.Effect<ApplyCartDeltasResult, ApplyCartDeltasError, VoilaTransport> =>
+  Effect.flatMap(makeApplyQuantityRequest(deltas), (request) =>
+    Effect.map(requestVoilaJson(CartUpdateResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeCartMutationResponse(result.value)
+    }))
+  )
 
 const makeCartDeltas = (
   items: ReadonlyArray<CartItemQuantityInput>,
@@ -102,40 +95,30 @@ const makeCartDeltas = (
     Either.right([])
   )
 
-const applyCartItemOperation = async (
+const applyCartItemOperation = (
   session: SessionSnapshot,
   items: unknown,
-  transport: VoilaTransport,
   makeDelta: (productId: string, quantity: number) => Either.Either<unknown, CartQuantityDeltaError>,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<ApplyCartDeltasResult, CartItemsOperationError>> => {
-  const parsedItems = Either.mapLeft(parseUnknown(CartItemQuantityInputArraySchema, items), cartItemsInputInvalid)
+): Effect.Effect<ApplyCartDeltasResult, CartItemsOperationError, VoilaTransport> =>
+  Effect.flatMap(
+    Either.mapLeft(parseUnknown(CartItemQuantityInputArraySchema, items), cartItemsInputInvalid),
+    (parsedItems) =>
+      Effect.flatMap(makeCartDeltas(parsedItems, makeDelta), (deltas) =>
+        applyCartDeltas(session, deltas, cookieJarPort)
+      )
+  )
 
-  if (Either.isLeft(parsedItems)) {
-    return Either.left(parsedItems.left)
-  }
-
-  const deltas = makeCartDeltas(parsedItems.right, makeDelta)
-
-  if (Either.isLeft(deltas)) {
-    return Either.left(deltas.left)
-  }
-
-  return applyCartDeltas(session, deltas.right, transport, cookieJarPort)
-}
-
-export const addCartItems = async (
+export const addCartItems = (
   session: SessionSnapshot,
   items: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<ApplyCartDeltasResult, CartItemsOperationError>> =>
-  applyCartItemOperation(session, items, transport, makeAddToCartDelta, cookieJarPort)
+): Effect.Effect<ApplyCartDeltasResult, CartItemsOperationError, VoilaTransport> =>
+  applyCartItemOperation(session, items, makeAddToCartDelta, cookieJarPort)
 
-export const removeCartItems = async (
+export const removeCartItems = (
   session: SessionSnapshot,
   items: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<ApplyCartDeltasResult, CartItemsOperationError>> =>
-  applyCartItemOperation(session, items, transport, makeRemoveFromCartDelta, cookieJarPort)
+): Effect.Effect<ApplyCartDeltasResult, CartItemsOperationError, VoilaTransport> =>
+  applyCartItemOperation(session, items, makeRemoveFromCartDelta, cookieJarPort)

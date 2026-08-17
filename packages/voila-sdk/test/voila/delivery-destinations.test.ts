@@ -8,8 +8,6 @@ import {
   DeliveryDestinationsDiagnosticSchema,
   NormalizedDeliveryDestinationsSchema,
   type SessionSnapshot,
-  type VoilaTransport,
-  type VoilaTransportRequest,
   type VoilaTransportResponse,
   getDeliveryDestination,
   getDeliveryDestinations,
@@ -23,6 +21,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { respondingTransport, runWith } from "../helpers/transport.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
 const fixtureText = readFileSync(new URL("../fixtures/delivery-destinations-home.json", import.meta.url), "utf8")
@@ -64,22 +63,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   }
 
   return snapshot.right
-}
-
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
 }
 
 const makeResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -261,13 +244,13 @@ describe("delivery destination parsing", () => {
 
 describe("delivery destination operations", () => {
   it("fetches saved home delivery destinations through the active session", async () => {
-    const fake = makeResponseTransport(makeResponse())
-    const result = await getDeliveryDestinations(makeSession(), {}, fake.transport)
+    const fake = respondingTransport(makeResponse())
+    const result = await runWith(getDeliveryDestinations(makeSession(), {}), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/ecomdeliverydestinations/v4/delivery-addresses")
@@ -280,27 +263,26 @@ describe("delivery destination operations", () => {
   })
 
   it("fetches saved collection destinations when requested", async () => {
-    const fake = makeResponseTransport(makeResponse())
-    const result = await getDeliveryDestinations(
-      makeSession(),
-      { deliveryMethod: "CUSTOMER_COLLECTION" },
-      fake.transport
+    const fake = respondingTransport(makeResponse())
+    const result = await runWith(
+      getDeliveryDestinations(makeSession(), { deliveryMethod: "CUSTOMER_COLLECTION" }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
       expect(request?.url.searchParams.get("deliveryMethod")).toBe("CUSTOMER_COLLECTION")
     }
   })
 
   it("rejects invalid delivery method input before network I/O", async () => {
-    const fake = makeResponseTransport(makeResponse())
-    const result = await getDeliveryDestinations(makeSession(), { deliveryMethod: "INVALID" }, fake.transport)
+    const fake = respondingTransport(makeResponse())
+    const result = await runWith(getDeliveryDestinations(makeSession(), { deliveryMethod: "INVALID" }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("DeliveryDestinationsInputInvalid")
@@ -308,7 +290,7 @@ describe("delivery destination operations", () => {
   })
 
   it("fetches a single delivery destination by ID", async () => {
-    const fake = makeResponseTransport(
+    const fake = respondingTransport(
       makeResponse(
         JSON.stringify({
           deliverability: "DELIVERABLE",
@@ -319,16 +301,15 @@ describe("delivery destination operations", () => {
         })
       )
     )
-    const result = await getDeliveryDestination(
-      makeSession(),
-      { deliveryDestinationId: "sanitized-delivery-destination-id" },
-      fake.transport
+    const result = await runWith(
+      getDeliveryDestination(makeSession(), { deliveryDestinationId: "sanitized-delivery-destination-id" }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe(
@@ -340,11 +321,11 @@ describe("delivery destination operations", () => {
   })
 
   it("rejects invalid single-destination input before network I/O", async () => {
-    const fake = makeResponseTransport(makeResponse())
-    const result = await getDeliveryDestination(makeSession(), { deliveryDestinationId: "" }, fake.transport)
+    const fake = respondingTransport(makeResponse())
+    const result = await runWith(getDeliveryDestination(makeSession(), { deliveryDestinationId: "" }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("DeliveryDestinationInputInvalid")
@@ -352,10 +333,9 @@ describe("delivery destination operations", () => {
   })
 
   it("propagates API schema failures as redacted typed errors", async () => {
-    const result = await getDeliveryDestinations(
-      makeSession(),
-      {},
-      makeResponseTransport(makeResponse(JSON.stringify([{ formattedAddress: secretAddress }]))).transport
+    const result = await runWith(
+      getDeliveryDestinations(makeSession(), {}),
+      respondingTransport(makeResponse(JSON.stringify([{ formattedAddress: secretAddress }])))
     )
 
     expect(Either.isLeft(result)).toBe(true)

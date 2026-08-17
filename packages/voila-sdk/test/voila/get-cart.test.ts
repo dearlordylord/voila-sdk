@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getCart,
   makeSessionSnapshot,
@@ -11,6 +11,13 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  deadlineExceededTransport,
+  respondingTransport,
+  responseReadFailureTransport,
+  runWith
+} from "../helpers/transport.js"
 
 const fixtureText = readFileSync(new URL("../fixtures/cart-view-non-empty.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
@@ -40,30 +47,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
-}
-
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
-
-const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => {
-    throw failure
-  }
-})
-
 const makeCartResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
   body,
   headers: { "set-cookie": "fresh-cart-cookie=after; Path=/; Secure" },
@@ -82,13 +65,13 @@ const getSessionCookies = (session: SessionSnapshot): string => {
 
 describe("getCart", () => {
   it("fetches the active cart through the active session", async () => {
-    const fake = makeResponseTransport(makeCartResponse())
-    const result = await getCart(makeSession(), fake.transport)
+    const fake = respondingTransport(makeCartResponse())
+    const result = await runWith(getCart(makeSession()), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/cart/v2/carts/active/cart-view")
@@ -108,7 +91,7 @@ describe("getCart", () => {
   })
 
   it("normalizes the current root active cart response shape", async () => {
-    const fake = makeResponseTransport(
+    const fake = respondingTransport(
       makeCartResponse(
         JSON.stringify({
           activeCheckoutGroup: { checkoutRestrictions: ["NOT_REACHED_THRESHOLD", "MISSING_SLOT"] },
@@ -151,7 +134,7 @@ describe("getCart", () => {
         })
       )
     )
-    const result = await getCart(makeSession(), fake.transport)
+    const result = await runWith(getCart(makeSession()), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -166,9 +149,9 @@ describe("getCart", () => {
   })
 
   it("normalizes an empty current root active cart response without optional groups", async () => {
-    const result = await getCart(
-      makeSession(),
-      makeResponseTransport(
+    const result = await runWith(
+      getCart(makeSession()),
+      respondingTransport(
         makeCartResponse(
           JSON.stringify({
             cartId: "sanitized-empty-current-cart-id",
@@ -180,7 +163,7 @@ describe("getCart", () => {
             }
           })
         )
-      ).transport
+      )
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -196,43 +179,39 @@ describe("getCart", () => {
   })
 
   it("propagates missing CSRF as a typed recoverable error before network I/O", async () => {
-    const fake = makeResponseTransport(makeCartResponse())
-    const result = await getCart(makeSession(" "), fake.transport)
+    const fake = respondingTransport(makeCartResponse())
+    const result = await runWith(getCart(makeSession(" ")), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("VoilaMissingCsrfToken")
     }
   })
 
-  it("propagates transport left failures as redacted typed recoverable errors", async () => {
-    const result = await getCart(makeSession(), makeLeftTransport("secret-cart-network-token"))
+  it("propagates a refused connection as its own typed recoverable error", async () => {
+    const result = await runWith(getCart(makeSession()), connectionFailureTransport())
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-cart-network-token")
+      expect(result.left._tag).toBe("VoilaConnectionFailure")
     }
   })
 
-  it("propagates thrown transport failures as redacted typed recoverable errors", async () => {
-    const result = await getCart(makeSession(), makeThrowingTransport(new Error("secret-cart-thrown-token")))
+  it("distinguishes an abandoned deadline from a refused connection and an unreadable body", async () => {
+    const deadline = await runWith(getCart(makeSession()), deadlineExceededTransport())
+    const unreadable = await runWith(getCart(makeSession()), responseReadFailureTransport())
 
-    expect(Either.isLeft(result)).toBe(true)
-
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-cart-thrown-token")
-    }
+    expect(Either.isLeft(deadline) && deadline.left._tag).toBe("VoilaRequestDeadlineExceeded")
+    expect(Either.isLeft(unreadable) && unreadable.left._tag).toBe("VoilaResponseReadFailure")
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
-    const result = await getCart(
-      makeSession(),
-      makeResponseTransport(makeCartResponse(JSON.stringify({ basket: { basketId: "basket-id" } }))).transport
+    const result = await runWith(
+      getCart(makeSession()),
+      respondingTransport(makeCartResponse(JSON.stringify({ basket: { basketId: "basket-id" } })))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -243,7 +222,7 @@ describe("getCart", () => {
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
-    const result = await getCart(makeSession(), makeResponseTransport(makeCartResponse("{}", 500)).transport)
+    const result = await runWith(getCart(makeSession()), respondingTransport(makeCartResponse("{}", 500)))
 
     expect(Either.isLeft(result)).toBe(true)
 

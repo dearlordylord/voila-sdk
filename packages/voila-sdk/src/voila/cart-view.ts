@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -13,9 +13,10 @@ import {
   NormalizedCartViewSchema,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 import { makeCartViewRequest } from "./urls.js"
 
 export type CartViewResponseNormalizationError = {
@@ -87,18 +88,11 @@ export const parseCartViewResponse = (
       )
   )
 
-export const getCart = async (
+export const getCart = (
   session: SessionSnapshot,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetCartResult, GetCartError>> => {
-  const response = await requestVoilaJson(
-    AnyCartViewResponseSchema,
-    session,
-    makeCartViewRequest(),
-    transport,
-    cookieJarPort
-  )
-
-  return Either.map(response, (result) => ({ session: result.session, value: normalizeCartViewResponse(result.value) }))
-}
+): Effect.Effect<GetCartResult, GetCartError, VoilaTransport> =>
+  Effect.map(requestVoilaJson(AnyCartViewResponseSchema, session, makeCartViewRequest(), cookieJarPort), (result) => ({
+    session: result.session,
+    value: normalizeCartViewResponse(result.value)
+  }))

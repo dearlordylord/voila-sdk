@@ -4,7 +4,7 @@ import { Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getSlotListings,
   makeSessionSnapshot,
@@ -18,6 +18,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { respondingTransport, runWith } from "../helpers/transport.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
 const availableFixtureText = readFileSync(new URL("../fixtures/slot-listing-available.json", import.meta.url), "utf8")
@@ -70,23 +71,6 @@ const makeSession = (): SessionSnapshot => {
 }
 
 const makeResponse = (body: string, status: number = 200): VoilaTransportResponse => ({ body, headers: {}, status })
-
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-
-        return Either.right(response)
-      }
-    }
-  }
-}
 
 const slotListingInput = {
   deliveryDestinationId: "sanitized-delivery-destination-id",
@@ -398,13 +382,13 @@ describe("slot reservation guardrails", () => {
 
 describe("getSlotListings", () => {
   it("reads slot listings without using reservation endpoints", async () => {
-    const fake = makeResponseTransport(makeResponse(availableFixtureText))
-    const result = await getSlotListings(makeSession(), slotListingInput, fake.transport)
+    const fake = respondingTransport(makeResponse(availableFixtureText))
+    const result = await runWith(getSlotListings(makeSession(), slotListingInput), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
       expect(request?.url.href).toBe(`${VOILA_BASE_URL}/api/ecomslots/v2/slots`)
@@ -427,11 +411,11 @@ describe("getSlotListings", () => {
   })
 
   it("rejects invalid slot listing input before network I/O", async () => {
-    const fake = makeResponseTransport(makeResponse(availableFixtureText))
-    const result = await getSlotListings(makeSession(), { ...slotListingInput, numberOfDays: 0 }, fake.transport)
+    const fake = respondingTransport(makeResponse(availableFixtureText))
+    const result = await runWith(getSlotListings(makeSession(), { ...slotListingInput, numberOfDays: 0 }), fake)
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("SlotListingInputInvalid")
@@ -439,10 +423,9 @@ describe("getSlotListings", () => {
   })
 
   it("returns typed service-down errors without leaking response bodies", async () => {
-    const result = await getSlotListings(
-      makeSession(),
-      slotListingInput,
-      makeResponseTransport(makeResponse(serviceDownBody, 503)).transport
+    const result = await runWith(
+      getSlotListings(makeSession(), slotListingInput),
+      respondingTransport(makeResponse(serviceDownBody, 503))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -456,13 +439,13 @@ describe("getSlotListings", () => {
 
 describe("reserveSlot", () => {
   it("reserves a slot only through the explicit reservation operation", async () => {
-    const fake = makeResponseTransport(makeResponse(reservationFixtureText))
-    const result = await reserveSlot(makeSession(), slotReservationInput, fake.transport)
+    const fake = respondingTransport(makeResponse(reservationFixtureText))
+    const result = await runWith(reserveSlot(makeSession(), slotReservationInput), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
       expect(request?.url.href).toBe(`${VOILA_BASE_URL}/api/ecomslots/v1/slots/reservation`)
@@ -478,19 +461,18 @@ describe("reserveSlot", () => {
   })
 
   it("rejects reservation input without explicit acknowledgements before network I/O", async () => {
-    const fake = makeResponseTransport(makeResponse(reservationFixtureText))
-    const result = await reserveSlot(
-      makeSession(),
-      {
+    const fake = respondingTransport(makeResponse(reservationFixtureText))
+    const result = await runWith(
+      reserveSlot(makeSession(), {
         deliveryDestinationId: "sanitized-delivery-destination-id",
         regionId: "sanitized-region-id",
         slotId: "sanitized-slot-id"
-      },
-      fake.transport
+      }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("SlotReservationInputInvalid")
@@ -498,10 +480,9 @@ describe("reserveSlot", () => {
   })
 
   it("returns typed API rejections without leaking response bodies", async () => {
-    const result = await reserveSlot(
-      makeSession(),
-      slotReservationInput,
-      makeResponseTransport(makeResponse(reservationRejectedBody, 409)).transport
+    const result = await runWith(
+      reserveSlot(makeSession(), slotReservationInput),
+      respondingTransport(makeResponse(reservationRejectedBody, 409))
     )
 
     expect(Either.isLeft(result)).toBe(true)

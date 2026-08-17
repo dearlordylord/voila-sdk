@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -12,6 +12,11 @@ import {
 import { makeAuthenticatedSdkSessionSnapshot } from "./session-snapshot.js"
 import { VOILA_BASE_URL } from "./urls.js"
 
+/**
+ * Playwright is promise-shaped and stays that way: this port is the one place
+ * an external promise library meets the SDK, and it is wrapped exactly once,
+ * here, rather than at every call site.
+ */
 export interface BrowserLoginPort {
   readonly captureSession: (request: BrowserLoginRequest) => Promise<unknown>
 }
@@ -94,24 +99,7 @@ const makeBrowserLoginRequest = (options?: unknown): Either.Either<BrowserLoginR
       )
   )
 
-export const loginWithBrowser = async (
-  browser: BrowserLoginPort,
-  options?: unknown
-): Promise<Either.Either<BrowserLoginResult, BrowserLoginError>> => {
-  const request = makeBrowserLoginRequest(options)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  let captureResult: unknown
-
-  try {
-    captureResult = await browser.captureSession(request.right)
-  } catch {
-    return Either.left(browserLoginAdapterFailure())
-  }
-
+const makeBrowserLoginResult = (captureResult: unknown): Either.Either<BrowserLoginResult, BrowserLoginError> => {
   if (captureResult === undefined || captureResult === null || !Either.isEither(captureResult)) {
     return Either.left(browserLoginAdapterFailure())
   }
@@ -120,28 +108,35 @@ export const loginWithBrowser = async (
     return Either.left(normalizeBrowserLoginPortError(captureResult.left))
   }
 
-  const capture = Either.mapLeft(
-    parseUnknown(BrowserLoginCaptureSchema, captureResult.right),
-    browserLoginCaptureInvalid
-  )
+  return Either.flatMap(
+    Either.mapLeft(parseUnknown(BrowserLoginCaptureSchema, captureResult.right), browserLoginCaptureInvalid),
+    (capture) => {
+      if (capture.session.cookieJar.cookies.length === emptyCookieCount) {
+        return Either.left(browserLoginMissingCookies())
+      }
 
-  if (Either.isLeft(capture)) {
-    return Either.left(capture.left)
-  }
+      if (!capture.authenticated) {
+        return Either.left(browserLoginNotAuthenticated())
+      }
 
-  if (capture.right.session.cookieJar.cookies.length === emptyCookieCount) {
-    return Either.left(browserLoginMissingCookies())
-  }
-
-  if (!capture.right.authenticated) {
-    return Either.left(browserLoginNotAuthenticated())
-  }
-
-  return Either.map(
-    Either.mapLeft(
-      makeAuthenticatedSdkSessionSnapshot(capture.right.session, "authenticated", capture.right.account),
-      browserLoginCaptureInvalid
-    ),
-    (session) => ({ session })
+      return Either.map(
+        Either.mapLeft(
+          makeAuthenticatedSdkSessionSnapshot(capture.session, "authenticated", capture.account),
+          browserLoginCaptureInvalid
+        ),
+        (session) => ({ session })
+      )
+    }
   )
 }
+
+export const loginWithBrowser = (
+  browser: BrowserLoginPort,
+  options?: unknown
+): Effect.Effect<BrowserLoginResult, BrowserLoginError> =>
+  Effect.flatMap(makeBrowserLoginRequest(options), (request) =>
+    Effect.flatMap(
+      Effect.tryPromise({ catch: browserLoginAdapterFailure, try: () => browser.captureSession(request) }),
+      makeBrowserLoginResult
+    )
+  )

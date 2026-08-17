@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -8,13 +8,13 @@ import {
   makeSessionSnapshot,
   serializeCookieJar,
   type SessionStoragePort,
+  sessionStorageReadFailure,
   toughCookieJarPort
 } from "../../src/index.js"
 
 const voilaUrl = "https://voila.ca/"
 const secretCookieValue = "secret-cookie-value"
 const secretCsrfToken = "secret-csrf-token"
-const secretStorageFailure = "secret-storage-failure"
 const secretEmailHint = "secret@example.test"
 
 const sampleMetadata = {
@@ -65,20 +65,18 @@ const makeAuthenticatedSnapshot = () => {
   return snapshot.right
 }
 
-const makeMemoryStorage = (contents: unknown = ""): SessionStoragePort => ({ read: async () => contents })
+const makeMemoryStorage = (contents: unknown = ""): SessionStoragePort => ({ read: () => Effect.succeed(contents) })
 
 const storedSnapshot = (snapshot: unknown): SessionStoragePort => makeMemoryStorage(JSON.stringify(snapshot))
 
-const throwingReadStorage: SessionStoragePort = {
-  read: async () => {
-    throw new Error(secretStorageFailure)
-  }
-}
+// an adapter whose read did not happen reports it in the SDK's own vocabulary:
+// the platform error that caused it never crosses this boundary
+const failingReadStorage: SessionStoragePort = { read: () => Effect.fail(sessionStorageReadFailure()) }
 
 describe("session storage", () => {
   it("reads back a stored guest SDK session snapshot", async () => {
     const snapshot = makeGuestSnapshot()
-    const loaded = await loadSdkSessionSnapshot(storedSnapshot(snapshot))
+    const loaded = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(storedSnapshot(snapshot))))
 
     expect(Either.isRight(loaded)).toBe(true)
 
@@ -89,7 +87,7 @@ describe("session storage", () => {
 
   it("reads back a stored authenticated SDK session snapshot", async () => {
     const snapshot = makeAuthenticatedSnapshot()
-    const loaded = await loadSdkSessionSnapshot(storedSnapshot(snapshot))
+    const loaded = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(storedSnapshot(snapshot))))
 
     expect(Either.isRight(loaded)).toBe(true)
 
@@ -99,13 +97,12 @@ describe("session storage", () => {
   })
 
   it("returns redacted typed read failures", async () => {
-    const result = await loadSdkSessionSnapshot(throwingReadStorage)
+    const result = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(failingReadStorage)))
 
     expect(Either.isLeft(result)).toBe(true)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("SessionStorageReadFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretStorageFailure)
     }
   })
 
@@ -121,7 +118,7 @@ describe("session storage", () => {
       name: "stale session JSON"
     }
   ])("returns redacted typed failures for $name", async ({ contents }) => {
-    const result = await loadSdkSessionSnapshot(makeMemoryStorage(contents))
+    const result = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(makeMemoryStorage(contents))))
 
     expect(Either.isLeft(result)).toBe(true)
 

@@ -1,7 +1,7 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getCompletedOrderItems,
   getOrderDetails,
@@ -13,6 +13,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { respondingTransport, runWith, type StubTransport, stubTransport } from "../helpers/transport.js"
 
 const csrfToken = "csrf-token"
 const sampleMetadata = {
@@ -147,17 +148,14 @@ const decoratedOrderFor = (orderId: string) => ({
   }
 })
 
-const makeRoutingTransport = (): VoilaTransport => ({
-  request: async (request) => {
-    if (request.url.pathname === "/graphql") {
-      return Either.right(okResponse(completedOrders()))
-    }
-
-    const orderId = request.url.pathname.includes("order-b") ? "order-b" : "order-a"
-
-    return Either.right(okResponse(decoratedOrderFor(orderId)))
-  }
-})
+const makeRoutingTransport = (): StubTransport =>
+  stubTransport((request) =>
+    Effect.succeed(
+      request.url.pathname === "/graphql"
+        ? okResponse(completedOrders())
+        : okResponse(decoratedOrderFor(request.url.pathname.includes("order-b") ? "order-b" : "order-a"))
+    )
+  )
 
 describe("order detail edge cases", () => {
   it("normalizes sparse decorated order details and fallback order maps", () => {
@@ -197,7 +195,7 @@ describe("order detail edge cases", () => {
   })
 
   it("returns typed failures for invalid and unavailable order details", async () => {
-    const invalid = await getOrderDetails(makeSession(), {}, makeRoutingTransport())
+    const invalid = await runWith(getOrderDetails(makeSession(), {}), makeRoutingTransport())
 
     expect(Either.isLeft(invalid)).toBe(true)
 
@@ -249,9 +247,14 @@ describe("order detail edge cases", () => {
   })
 
   it("aggregates and sorts multiple completed order items", async () => {
-    const result = await getCompletedOrderItems(
-      makeSession(),
-      { fromDate: "2026-06-01", maxOrders: 2, pageSize: 2, pageToken: "cursor", toDate: "2026-06-30" },
+    const result = await runWith(
+      getCompletedOrderItems(makeSession(), {
+        fromDate: "2026-06-01",
+        maxOrders: 2,
+        pageSize: 2,
+        pageToken: "cursor",
+        toDate: "2026-06-30"
+      }),
       makeRoutingTransport()
     )
 
@@ -289,12 +292,11 @@ describe("order detail edge cases", () => {
   })
 
   it("returns empty aggregate results when no orders match the date range", async () => {
-    const transport: VoilaTransport = {
-      request: async () => Either.right(okResponse(completedOrdersPage(["old-order", "short-date-order"], false, null)))
-    }
-    const result = await getCompletedOrderItems(
-      makeSession(),
-      { fromDate: "2026-06-01", toDate: "2026-06-30" },
+    const transport = respondingTransport(
+      okResponse(completedOrdersPage(["old-order", "short-date-order"], false, null))
+    )
+    const result = await runWith(
+      getCompletedOrderItems(makeSession(), { fromDate: "2026-06-01", toDate: "2026-06-30" }),
       transport
     )
 
@@ -307,29 +309,31 @@ describe("order detail edge cases", () => {
 
   it("scans completed order pages until enough date-range matches are found", async () => {
     const requests: Array<string | null> = []
-    const transport: VoilaTransport = {
-      request: async (request) => {
-        if (request.url.pathname !== "/graphql") {
-          return Either.right(
-            okResponse(decoratedOrderFor(request.url.pathname.includes("order-b") ? "order-b" : "order-a"))
-          )
-        }
-
-        const body = request.body === undefined ? "" : request.body
-        requests.push(body.includes("page-2") ? "page-2" : null)
-
-        return Either.right(
-          okResponse(
-            body.includes("page-2")
-              ? completedOrdersPage(["order-b"], false, null)
-              : completedOrdersPage(["old-order"], true, "page-2")
-          )
+    const transport = stubTransport((request) => {
+      if (request.url.pathname !== "/graphql") {
+        return Effect.succeed(
+          okResponse(decoratedOrderFor(request.url.pathname.includes("order-b") ? "order-b" : "order-a"))
         )
       }
-    }
-    const result = await getCompletedOrderItems(
-      makeSession(),
-      { fromDate: "2026-06-01", maxOrders: 1, pageSize: 1, toDate: "2026-06-30" },
+
+      const body = request.body ?? ""
+      requests.push(body.includes("page-2") ? "page-2" : null)
+
+      return Effect.succeed(
+        okResponse(
+          body.includes("page-2")
+            ? completedOrdersPage(["order-b"], false, null)
+            : completedOrdersPage(["old-order"], true, "page-2")
+        )
+      )
+    })
+    const result = await runWith(
+      getCompletedOrderItems(makeSession(), {
+        fromDate: "2026-06-01",
+        maxOrders: 1,
+        pageSize: 1,
+        toDate: "2026-06-30"
+      }),
       transport
     )
 
@@ -346,18 +350,16 @@ describe("order detail edge cases", () => {
 
   it("caps completed order page size to remaining aggregate capacity", async () => {
     const graphqlBodies: Array<string> = []
-    const transport: VoilaTransport = {
-      request: async (request) => {
-        if (request.url.pathname === "/graphql") {
-          graphqlBodies.push(request.body ?? "")
+    const transport = stubTransport((request) => {
+      if (request.url.pathname === "/graphql") {
+        graphqlBodies.push(request.body ?? "")
 
-          return Either.right(okResponse(completedOrdersPage(["order-a"], true, "page-2")))
-        }
-
-        return Either.right(okResponse(decoratedOrderFor("order-a")))
+        return Effect.succeed(okResponse(completedOrdersPage(["order-a"], true, "page-2")))
       }
-    }
-    const result = await getCompletedOrderItems(makeSession(), { maxOrders: 1, pageSize: 5 }, transport)
+
+      return Effect.succeed(okResponse(decoratedOrderFor("order-a")))
+    })
+    const result = await runWith(getCompletedOrderItems(makeSession(), { maxOrders: 1, pageSize: 5 }), transport)
 
     expect(Either.isRight(result)).toBe(true)
     expect(graphqlBodies).toHaveLength(1)
@@ -365,7 +367,7 @@ describe("order detail edge cases", () => {
   })
 
   it("returns typed failures for invalid aggregate input and upstream failures", async () => {
-    const invalid = await getCompletedOrderItems(makeSession(), { maxOrders: 0 }, makeRoutingTransport())
+    const invalid = await runWith(getCompletedOrderItems(makeSession(), { maxOrders: 0 }), makeRoutingTransport())
 
     expect(Either.isLeft(invalid)).toBe(true)
 
@@ -373,10 +375,9 @@ describe("order detail edge cases", () => {
       expect(invalid.left._tag).toBe("CompletedOrderItemsInputInvalid")
     }
 
-    const graphqlFailure = await getCompletedOrderItems(
-      makeSession(),
-      {},
-      { request: async () => Either.right(okResponse({ errors: [{ message: "auth required" }] })) }
+    const graphqlFailure = await runWith(
+      getCompletedOrderItems(makeSession(), {}),
+      respondingTransport(okResponse({ errors: [{ message: "auth required" }] }))
     )
 
     expect(Either.isLeft(graphqlFailure)).toBe(true)
@@ -385,17 +386,15 @@ describe("order detail edge cases", () => {
       expect(graphqlFailure.left._tag).toBe("CompletedOrdersGraphqlError")
     }
 
-    const detailFailure = await getCompletedOrderItems(
-      makeSession(),
-      { fromDate: "2026-06-01", toDate: "2026-06-30" },
-      {
-        request: async (request) =>
-          Either.right(
-            request.url.pathname === "/graphql"
-              ? okResponse(completedOrders(["order-a"]))
-              : okResponse({ entities: { order: {} } })
-          )
-      }
+    const detailFailure = await runWith(
+      getCompletedOrderItems(makeSession(), { fromDate: "2026-06-01", toDate: "2026-06-30" }),
+      stubTransport((request) =>
+        Effect.succeed(
+          request.url.pathname === "/graphql"
+            ? okResponse(completedOrders(["order-a"]))
+            : okResponse({ entities: { order: {} } })
+        )
+      )
     )
 
     expect(Either.isLeft(detailFailure)).toBe(true)

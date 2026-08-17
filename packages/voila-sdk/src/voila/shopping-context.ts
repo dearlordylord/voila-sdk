@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -21,9 +21,10 @@ import {
   NormalizedDeliveryPropositionDetailsSchema,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaHttpRequest, VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaHttpRequest, VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 import type {
   ActiveShoppingContextRequestError,
   ApplyDeliveryContextChangeRequestError,
@@ -183,113 +184,66 @@ export const parseDeliveryContextPreviewResponse = (
       )
   )
 
-export const getActiveShoppingContext = async (
+export const getActiveShoppingContext = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetActiveShoppingContextResult, GetActiveShoppingContextError>> => {
-  const request = makeActiveShoppingContextRequest(input)
+): Effect.Effect<GetActiveShoppingContextResult, GetActiveShoppingContextError, VoilaTransport> =>
+  Effect.flatMap(makeActiveShoppingContextRequest(input), (request) =>
+    requestNormalizedActiveShoppingContext(session, request, cookieJarPort)
+  )
 
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  return requestNormalizedActiveShoppingContext(session, request.right, transport, cookieJarPort)
-}
-
-const requestNormalizedActiveShoppingContext = async (
+const requestNormalizedActiveShoppingContext = (
   session: SessionSnapshot,
   request: VoilaHttpRequest,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<SetActiveShoppingContextResult, VoilaSdkError>> =>
-  Either.map(
-    await requestVoilaJson(ActiveShoppingContextResponseSchema, session, request, transport, cookieJarPort),
-    (result) => ({ session: result.session, value: normalizeActiveShoppingContext(result.value) })
-  )
-
-export const getDeliveryPropositionDetails = async (
-  session: SessionSnapshot,
-  input: unknown,
-  transport: VoilaTransport,
-  cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetDeliveryPropositionDetailsResult, GetDeliveryPropositionDetailsError>> => {
-  const request = makeDeliveryPropositionDetailsRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    DeliveryPropositionDetailsResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
-  )
-
-  return Either.map(response, (result) => ({
+): Effect.Effect<SetActiveShoppingContextResult, VoilaSdkError, VoilaTransport> =>
+  Effect.map(requestVoilaJson(ActiveShoppingContextResponseSchema, session, request, cookieJarPort), (result) => ({
     session: result.session,
-    value: normalizeDeliveryPropositionDetailsResponse(result.value)
+    value: normalizeActiveShoppingContext(result.value)
   }))
-}
 
-export const previewDeliveryContextChange = async (
+export const getDeliveryPropositionDetails = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<PreviewDeliveryContextChangeResult, PreviewDeliveryContextChangeError>> => {
-  const request = makeDeliveryContextPreviewRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    DeliveryContextPreviewResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetDeliveryPropositionDetailsResult, GetDeliveryPropositionDetailsError, VoilaTransport> =>
+  Effect.flatMap(makeDeliveryPropositionDetailsRequest(input), (request) =>
+    Effect.map(
+      requestVoilaJson(DeliveryPropositionDetailsResponseSchema, session, request, cookieJarPort),
+      (result) => ({ session: result.session, value: normalizeDeliveryPropositionDetailsResponse(result.value) })
+    )
   )
 
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeDeliveryContextPreviewResponse(result.value)
-  }))
-}
-
-export const setActiveDeliveryDestinationContext = async (
+export const previewDeliveryContextChange = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<SetActiveShoppingContextResult, SetActiveDeliveryDestinationContextError>> => {
-  const request = makeSetActiveDeliveryDestinationRequest(input)
+): Effect.Effect<PreviewDeliveryContextChangeResult, PreviewDeliveryContextChangeError, VoilaTransport> =>
+  Effect.flatMap(makeDeliveryContextPreviewRequest(input), (request) =>
+    Effect.map(requestVoilaJson(DeliveryContextPreviewResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeDeliveryContextPreviewResponse(result.value)
+    }))
+  )
 
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  return requestNormalizedActiveShoppingContext(session, request.right, transport, cookieJarPort)
-}
-
-export const setActiveCartPropositionContext = async (
+export const setActiveDeliveryDestinationContext = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<SetActiveShoppingContextResult, SetActiveCartPropositionContextError>> => {
-  const request = makeSetActiveCartPropositionRequest(input)
+): Effect.Effect<SetActiveShoppingContextResult, SetActiveDeliveryDestinationContextError, VoilaTransport> =>
+  Effect.flatMap(makeSetActiveDeliveryDestinationRequest(input), (request) =>
+    requestNormalizedActiveShoppingContext(session, request, cookieJarPort)
+  )
 
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  return requestNormalizedActiveShoppingContext(session, request.right, transport, cookieJarPort)
-}
+export const setActiveCartPropositionContext = (
+  session: SessionSnapshot,
+  input: unknown,
+  cookieJarPort?: CookieJarPort
+): Effect.Effect<SetActiveShoppingContextResult, SetActiveCartPropositionContextError, VoilaTransport> =>
+  Effect.flatMap(makeSetActiveCartPropositionRequest(input), (request) =>
+    requestNormalizedActiveShoppingContext(session, request, cookieJarPort)
+  )
 
 const makeRequiresConfirmationResult = (
   session: SessionSnapshot,
@@ -316,73 +270,60 @@ const makeAppliedResult = (
     (value) => ({ session, value })
   )
 
-export const applyDeliveryContextChange = async (
+/**
+ * Applying a context change is two requests with a decision between them: the
+ * preview says what the change would cost the cart, and only an explicit
+ * `allowCartImpact` lets the second request run. The proposition path is taken
+ * when the preview names both propositions — that is Voila's own signal that
+ * the destination lives under a different proposition than the origin.
+ */
+export const applyDeliveryContextChange = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError>> => {
-  const parsedInput = parseApplyDeliveryContextChangeInput(input)
+): Effect.Effect<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError, VoilaTransport> =>
+  Effect.flatMap(parseApplyDeliveryContextChangeInput(input), (parsedInput) =>
+    Effect.flatMap(
+      previewDeliveryContextChange(
+        session,
+        {
+          deliveryDestinationId: parsedInput.deliveryDestinationId,
+          destinationRegionId: parsedInput.destinationRegionId
+        },
+        cookieJarPort
+      ),
+      (preview) => {
+        if (preview.value.requiresConfirmation && !parsedInput.allowCartImpact) {
+          return makeRequiresConfirmationResult(preview.session, preview.value)
+        }
 
-  if (Either.isLeft(parsedInput)) {
-    return Either.left(parsedInput.left)
-  }
+        const accountContext = {
+          ...(parsedInput.customerId === undefined ? {} : { customerId: parsedInput.customerId }),
+          ...(parsedInput.visitorId === undefined ? {} : { visitorId: parsedInput.visitorId })
+        }
+        const applied: Effect.Effect<SetActiveShoppingContextResult, ApplyDeliveryContextChangeError, VoilaTransport> =
+          preview.value.destinationCartPropositionId !== undefined &&
+          preview.value.originCartPropositionId !== undefined
+            ? setActiveCartPropositionContext(
+                preview.session,
+                {
+                  ...accountContext,
+                  destinationCartPropositionId: preview.value.destinationCartPropositionId,
+                  originCartPropositionId: preview.value.originCartPropositionId
+                },
+                cookieJarPort
+              )
+            : setActiveDeliveryDestinationContext(
+                preview.session,
+                {
+                  ...accountContext,
+                  deliveryDestinationId: parsedInput.deliveryDestinationId,
+                  regionId: parsedInput.destinationRegionId
+                },
+                cookieJarPort
+              )
 
-  const preview = await previewDeliveryContextChange(
-    session,
-    {
-      deliveryDestinationId: parsedInput.right.deliveryDestinationId,
-      destinationRegionId: parsedInput.right.destinationRegionId
-    },
-    transport,
-    cookieJarPort
-  )
-
-  if (Either.isLeft(preview)) {
-    return Either.left(preview.left)
-  }
-
-  if (preview.right.value.requiresConfirmation && !parsedInput.right.allowCartImpact) {
-    return makeRequiresConfirmationResult(preview.right.session, preview.right.value)
-  }
-
-  const accountContext = {
-    ...(parsedInput.right.customerId === undefined ? {} : { customerId: parsedInput.right.customerId }),
-    ...(parsedInput.right.visitorId === undefined ? {} : { visitorId: parsedInput.right.visitorId })
-  }
-
-  if (
-    preview.right.value.destinationCartPropositionId !== undefined &&
-    preview.right.value.originCartPropositionId !== undefined
-  ) {
-    const context = await setActiveCartPropositionContext(
-      preview.right.session,
-      {
-        ...accountContext,
-        destinationCartPropositionId: preview.right.value.destinationCartPropositionId,
-        originCartPropositionId: preview.right.value.originCartPropositionId
-      },
-      transport,
-      cookieJarPort
+        return Effect.flatMap(applied, (context) => makeAppliedResult(context.session, preview.value, context.value))
+      }
     )
-
-    return Either.isLeft(context)
-      ? Either.left(context.left)
-      : makeAppliedResult(context.right.session, preview.right.value, context.right.value)
-  }
-
-  const context = await setActiveDeliveryDestinationContext(
-    preview.right.session,
-    {
-      ...accountContext,
-      deliveryDestinationId: parsedInput.right.deliveryDestinationId,
-      regionId: parsedInput.right.destinationRegionId
-    },
-    transport,
-    cookieJarPort
   )
-
-  return Either.isLeft(context)
-    ? Either.left(context.left)
-    : makeAppliedResult(context.right.session, preview.right.value, context.right.value)
-}

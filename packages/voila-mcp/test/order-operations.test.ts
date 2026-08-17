@@ -7,10 +7,11 @@ import {
   toughCookieJarPort,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import { Effect, Either } from "effect"
+import { Effect, Either, type Layer } from "effect"
 import { describe, expect, it } from "vitest"
 
-import { type OperationEnvironment, runVoilaOperation } from "../src/operations.js"
+import type { OperationEnvironment } from "../src/operations.js"
+import { runOperation, stubTransportLayer } from "./helpers/operations.js"
 
 const voilaUrl = "https://voila.ca/"
 const csrfToken = "csrf-token"
@@ -89,7 +90,7 @@ const makeSdkSessionForTest = (): SdkSessionSnapshot => {
   return snapshot.right
 }
 
-const makeEnvironment = (transport: VoilaTransport): OperationEnvironment => {
+const makeEnvironment = (transport: Layer.Layer<VoilaTransport>): OperationEnvironment => {
   const initialSession = makeSdkSessionForTest()
 
   return {
@@ -98,18 +99,18 @@ const makeEnvironment = (transport: VoilaTransport): OperationEnvironment => {
   }
 }
 
-const makeTransport = (): VoilaTransport => ({
-  request: async (request) =>
-    Either.right({
+const makeTransport = (): Layer.Layer<VoilaTransport> =>
+  stubTransportLayer((request) =>
+    Effect.succeed({
       body: JSON.stringify(request.url.pathname === "/graphql" ? completedOrdersResponse : decoratedOrderResponse),
       headers: {},
       status: 200
     })
-})
+  )
 
 describe("Voila MCP order operations", () => {
   it("returns order details", async () => {
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_get_order_details",
       { orderId: "sanitized-order-id-1" },
       makeEnvironment(makeTransport())
@@ -126,7 +127,7 @@ describe("Voila MCP order operations", () => {
   })
 
   it("returns aggregated completed order items", async () => {
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_get_completed_order_items",
       { fromDate: "2026-06-01", toDate: "2026-06-30" },
       makeEnvironment(makeTransport())

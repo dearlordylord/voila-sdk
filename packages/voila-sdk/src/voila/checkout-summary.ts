@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -18,9 +18,10 @@ import {
 import type { Money } from "../domain/schemas/money.js"
 import type { CheckoutSummaryRequestError } from "./checkout-urls.js"
 import { makeCheckoutSummaryRequest } from "./checkout-urls.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 
 export type CheckoutSummaryNormalizationError = {
   readonly _tag: "CheckoutSummarySchemaMismatch"
@@ -126,28 +127,14 @@ export const parseCheckoutSummaryResponse = (
       )
   )
 
-export const getCheckoutSummary = async (
+export const getCheckoutSummary = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetCheckoutSummaryResult, GetCheckoutSummaryError>> => {
-  const request = makeCheckoutSummaryRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawCheckoutSummaryResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetCheckoutSummaryResult, GetCheckoutSummaryError, VoilaTransport> =>
+  Effect.flatMap(makeCheckoutSummaryRequest(input), (request) =>
+    Effect.map(requestVoilaJson(RawCheckoutSummaryResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeCheckoutSummaryResponse(result.value)
+    }))
   )
-
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeCheckoutSummaryResponse(result.value)
-  }))
-}

@@ -46,6 +46,8 @@ HTTP transport is intended for registry inspection and deployments behind a trus
 MCP_TRANSPORT=http MCP_HTTP_HOST=0.0.0.0 PORT=8080 VOILA_GUEST=1 npx -y @firfi/voila-mcp
 ```
 
+Requests carrying a non-local `Origin` header are refused with `403`, so a page in the user's browser cannot drive the tools through a loopback port. That is not access control: put authentication in front of `/mcp` before exposing it.
+
 `VOILA_GUEST=1` lets Glama start the server and inspect tool definitions without a user browser session or account credentials. Do not expose HTTP with a real session file directly to the public internet; put authentication and access control in front of `/mcp`.
 
 ## Tools

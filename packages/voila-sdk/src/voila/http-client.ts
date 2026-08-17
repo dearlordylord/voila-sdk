@@ -1,35 +1,28 @@
-import { Either, Schema } from "effect"
+import { Effect, Either, Schema } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import { type SessionSnapshot } from "../domain/schemas/index.js"
-import { getHeaderValues, makeVoilaHeaders, type ResponseHeaders } from "./headers.js"
-import { type CookieJarPort, type CookieJarPortError, toughCookieJarPort } from "./session-snapshot.js"
+import { getHeaderValues, makeVoilaHeaders } from "./headers.js"
+import {
+  type CookieJarPort,
+  type CookieJarPortError,
+  readCookieHeader,
+  toughCookieJarPort
+} from "./session-snapshot.js"
+import {
+  VoilaTransport,
+  type VoilaHttpMethod,
+  type VoilaTransportRequest,
+  type VoilaTransportResponse
+} from "./transport.js"
+import type { VoilaTransportError } from "./transport-error.js"
 import { VOILA_BASE_URL } from "./urls.js"
-
-export type VoilaHttpMethod = "DELETE" | "GET" | "PATCH" | "POST" | "PUT"
 
 export interface VoilaHttpRequest {
   readonly body?: string
   readonly headers?: Readonly<Record<string, string>>
   readonly method: VoilaHttpMethod
   readonly url: URL
-}
-
-export interface VoilaTransportRequest {
-  readonly body?: string
-  readonly headers: Readonly<Record<string, string>>
-  readonly method: VoilaHttpMethod
-  readonly url: URL
-}
-
-export interface VoilaTransportResponse {
-  readonly body: string
-  readonly headers: ResponseHeaders
-  readonly status: number
-}
-
-export interface VoilaTransport {
-  readonly request: (request: VoilaTransportRequest) => Promise<Either.Either<VoilaTransportResponse, unknown>>
 }
 
 export interface VoilaJsonResult<A> {
@@ -51,7 +44,7 @@ export type VoilaSdkError =
   | { readonly _tag: "VoilaMissingCsrfToken"; readonly message: string }
   | { readonly _tag: "VoilaUnsupportedOrigin"; readonly message: string; readonly origin: string }
   | { readonly _tag: "VoilaSessionPersistenceFailure"; readonly message: string }
-  | { readonly _tag: "VoilaNetworkFailure"; readonly message: string }
+  | VoilaTransportError
   | { readonly _tag: "VoilaUnauthorizedSession"; readonly message: string; readonly status: 401 | 403 }
   | VoilaRequestBlocked
   | { readonly _tag: "VoilaNon2xxResponse"; readonly message: string; readonly status: number }
@@ -87,11 +80,6 @@ const sessionPersistenceFailure = (_cause: CookieJarPortError): VoilaSdkError =>
 const setCookiePersistenceFailure = (): VoilaSdkError => ({
   _tag: "VoilaSessionPersistenceFailure",
   message: "Session cookies could not be restored or persisted"
-})
-
-const networkFailure = (_cause: unknown): VoilaSdkError => ({
-  _tag: "VoilaNetworkFailure",
-  message: "Voila network request failed"
 })
 
 const unauthorizedSession = (status: 401 | 403): VoilaSdkError => ({
@@ -174,70 +162,68 @@ const applySetCookieHeaders = (
     }
   )
 
-export const requestVoilaJson = async <A, I>(
+const classifyResponse = (
+  response: VoilaTransportResponse,
+  request: VoilaHttpRequest
+): Either.Either<VoilaTransportResponse, VoilaSdkError> => {
+  if (!isSuccessStatus(response.status) && isBlockedResponse(response)) {
+    return Either.left(requestBlocked(response, request))
+  }
+
+  if (isUnauthorizedStatus(response.status)) {
+    return Either.left(unauthorizedSession(response.status))
+  }
+
+  return isSuccessStatus(response.status) ? Either.right(response) : Either.left(non2xxResponse(response.status))
+}
+
+const decodeBody = <A, I>(
+  schema: Schema.Schema<A, I, never>,
+  session: SessionSnapshot,
+  body: string
+): Either.Either<VoilaJsonResult<A>, VoilaSdkError> =>
+  Either.flatMap(Either.mapLeft(parseJson(body), malformedJson), (payload) =>
+    Either.map(Either.mapLeft(parseUnknown(schema, payload), schemaDecodeFailure), (value) => ({ session, value }))
+  )
+
+const makeTransportRequest = (
+  request: VoilaHttpRequest,
+  session: SessionSnapshot,
+  cookieHeader: string
+): VoilaTransportRequest => {
+  const base = { headers: makeRequestHeaders(request, session, cookieHeader), method: request.method, url: request.url }
+
+  return request.body === undefined ? base : { ...base, body: request.body }
+}
+
+/**
+ * The request pipeline: guard, send, classify, fold cookies back, decode. The
+ * order is the contract — the Set-Cookie fold-back happens before the body is
+ * decoded, so a response that refreshes the session but fails to parse still
+ * fails the operation rather than silently dropping the refresh onto a caller
+ * that never gets it (ADR-0002).
+ */
+export const requestVoilaJson = <A, I>(
   schema: Schema.Schema<A, I, never>,
   session: SessionSnapshot,
   request: VoilaHttpRequest,
-  transport: VoilaTransport,
   cookieJarPort: CookieJarPort = toughCookieJarPort
-): Promise<Either.Either<VoilaJsonResult<A>, VoilaSdkError>> => {
-  if (session.csrf.token.trim().length === emptyStringLength) {
-    return Either.left(missingCsrfToken())
-  }
+): Effect.Effect<VoilaJsonResult<A>, VoilaSdkError, VoilaTransport> =>
+  Effect.gen(function* () {
+    if (session.csrf.token.trim().length === emptyStringLength) {
+      return yield* Effect.fail(missingCsrfToken())
+    }
 
-  if (request.url.origin !== VOILA_BASE_URL) {
-    return Either.left(unsupportedOrigin(request.url.origin))
-  }
+    if (request.url.origin !== VOILA_BASE_URL) {
+      return yield* Effect.fail(unsupportedOrigin(request.url.origin))
+    }
 
-  const cookieJar = cookieJarPort.deserialize(session.cookieJar)
+    const cookieJar = yield* Either.mapLeft(cookieJarPort.deserialize(session.cookieJar), sessionPersistenceFailure)
+    const transport = yield* VoilaTransport
+    const cookieHeader = yield* Either.mapLeft(readCookieHeader(cookieJar, request.url.href), sessionPersistenceFailure)
+    const response = yield* transport.request(makeTransportRequest(request, session, cookieHeader))
+    const classified = yield* classifyResponse(response, request)
+    const updatedSession = yield* applySetCookieHeaders(cookieJarPort, session, classified, request.url)
 
-  if (Either.isLeft(cookieJar)) {
-    return Either.left(sessionPersistenceFailure(cookieJar.left))
-  }
-
-  const cookieHeader = cookieJar.right.getCookieStringSync(request.url.href)
-  const transportRequestBase = {
-    headers: makeRequestHeaders(request, session, cookieHeader),
-    method: request.method,
-    url: request.url
-  }
-  const transportRequest: VoilaTransportRequest =
-    request.body === undefined ? transportRequestBase : { ...transportRequestBase, body: request.body }
-
-  let response: Either.Either<VoilaTransportResponse, unknown>
-
-  try {
-    response = await transport.request(transportRequest)
-  } catch (error) {
-    return Either.left(networkFailure(error))
-  }
-
-  if (Either.isLeft(response)) {
-    return Either.left(networkFailure(response.left))
-  }
-
-  if (!isSuccessStatus(response.right.status) && isBlockedResponse(response.right)) {
-    return Either.left(requestBlocked(response.right, request))
-  }
-
-  if (isUnauthorizedStatus(response.right.status)) {
-    return Either.left(unauthorizedSession(response.right.status))
-  }
-
-  if (!isSuccessStatus(response.right.status)) {
-    return Either.left(non2xxResponse(response.right.status))
-  }
-
-  const updatedSession = applySetCookieHeaders(cookieJarPort, session, response.right, request.url)
-
-  if (Either.isLeft(updatedSession)) {
-    return Either.left(updatedSession.left)
-  }
-
-  return Either.flatMap(Either.mapLeft(parseJson(response.right.body), malformedJson), (payload) =>
-    Either.map(Either.mapLeft(parseUnknown(schema, payload), schemaDecodeFailure), (value) => ({
-      session: updatedSession.right,
-      value
-    }))
-  )
-}
+    return yield* decodeBody(schema, updatedSession, classified.body)
+  })

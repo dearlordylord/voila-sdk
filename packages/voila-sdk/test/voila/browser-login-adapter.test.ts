@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -161,7 +161,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage()
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port, { timeoutMs: 120_000 })
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port, { timeoutMs: 120_000 })))
 
     expect(Either.isRight(result)).toBe(true)
     expect(fake.calls).toEqual([
@@ -190,7 +190,7 @@ describe("interactive browser login adapter", () => {
     })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
@@ -208,7 +208,7 @@ describe("interactive browser login adapter", () => {
     })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
@@ -223,7 +223,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ accountAbsent: true })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isRight(result)).toBe(true)
 
@@ -236,7 +236,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ initialStatePayload: { csrf: { token: secretCsrfToken } } })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.calls).toContain("close")
@@ -251,7 +251,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ authenticatedPayload: false })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -266,7 +266,7 @@ describe("interactive browser login adapter", () => {
       const fake = makePage({ waitResult, waitResultProvided: true })
       const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-      const result = await loginWithBrowser(port)
+      const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
       expect(Either.isLeft(result)).toBe(true)
       expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
@@ -285,7 +285,7 @@ describe("interactive browser login adapter", () => {
     })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -351,7 +351,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ [option]: true })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.calls).toEqual(expectedCalls)
@@ -369,7 +369,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ cookiesPayload })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -408,7 +408,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage(options)
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
     expect(fake.calls).toEqual(expectedCalls)
@@ -426,7 +426,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ accountPayload, authenticatedPayload })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 
@@ -440,7 +440,7 @@ describe("interactive browser login adapter", () => {
     const fake = makePage()
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page }, failingSerializeCookieJarPort)
 
-    const result = await loginWithBrowser(port)
+    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
 
     expect(Either.isLeft(result)).toBe(true)
 

@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -20,12 +20,13 @@ import {
   type RawOrderDetailProductReference,
   type SessionSnapshot
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import { getCompletedOrders, type GetCompletedOrdersError } from "./order-history.js"
 import type { OrderDetailsRequestError } from "./order-urls.js"
 import { makeOrderDetailsRequest } from "./order-urls.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 
 export type OrderDetailsUnavailableError = { readonly _tag: "OrderDetailsUnavailable"; readonly message: string }
 
@@ -309,33 +310,19 @@ const toCompletedOrderItem = (aggregate: ItemAggregate): NormalizedCompletedOrde
     : { totalSpend: { amount: formatCents(aggregate.spendCents), currency: aggregate.spendCurrency } })
 })
 
-export const getOrderDetails = async (
+export const getOrderDetails = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetOrderDetailsResult, GetOrderDetailsError>> => {
-  const request = makeOrderDetailsRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawDecoratedOrderResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetOrderDetailsResult, GetOrderDetailsError, VoilaTransport> =>
+  Effect.flatMap(makeOrderDetailsRequest(input), (request) =>
+    Effect.flatMap(requestVoilaJson(RawDecoratedOrderResponseSchema, session, request, cookieJarPort), (result) =>
+      Effect.map(normalizeOrderDetailsResponse(result.value, request.orderId), (value) => ({
+        session: result.session,
+        value
+      }))
+    )
   )
-
-  return Either.flatMap(response, (result) =>
-    Either.map(normalizeOrderDetailsResponse(result.value, request.right.orderId), (value) => ({
-      session: result.session,
-      value
-    }))
-  )
-}
 
 const makeOrderPageInput = (
   input: CompletedOrderItemsInput,
@@ -346,76 +333,125 @@ const makeOrderPageInput = (
   ...(pageToken === undefined ? {} : { pageToken })
 })
 
-export const getCompletedOrderItems = async (
-  session: SessionSnapshot,
-  input: unknown,
-  transport: VoilaTransport,
+/**
+ * Where the order scan has got to: the orders that matched the window, how many
+ * were looked at to find them, and the page the next request would ask for.
+ * `done` is carried because the scan's stop condition is about the page that
+ * just arrived — Voila repeating a page token is how a scan ends without a
+ * next page, and that is only visible by comparing against the token used.
+ */
+interface OrderScanState {
+  readonly done: boolean
+  readonly matchingOrders: ReadonlyArray<NormalizedCompletedOrder>
+  readonly ordersScanned: number
+  readonly pageToken: string | undefined
+  readonly pagination: NormalizedCompletedOrderItemsResult["pagination"]
+  readonly session: SessionSnapshot
+}
+
+const scanOrderPage = (
+  state: OrderScanState,
+  input: CompletedOrderItemsInput,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetCompletedOrderItemsResult, GetCompletedOrderItemsError>> => {
-  const parsed = Either.mapLeft(parseUnknown(CompletedOrderItemsInputSchema, input), inputInvalid)
-
-  if (Either.isLeft(parsed)) {
-    return Either.left(parsed.left)
-  }
-
-  const matchingOrders: Array<NormalizedCompletedOrder> = []
-  let currentSession = session
-  let ordersScanned = 0
-  let pageToken = parsed.right.pageToken
-  let pagination: NormalizedCompletedOrderItemsResult["pagination"] = { hasNextPage: false }
-
-  do {
-    const ordersResult = await getCompletedOrders(
-      currentSession,
-      makeOrderPageInput(parsed.right, pageToken, parsed.right.maxOrders - matchingOrders.length),
-      transport,
+): Effect.Effect<OrderScanState, GetCompletedOrdersError, VoilaTransport> =>
+  Effect.map(
+    getCompletedOrders(
+      state.session,
+      makeOrderPageInput(input, state.pageToken, input.maxOrders - state.matchingOrders.length),
       cookieJarPort
-    )
+    ),
+    (orders) => {
+      const matchingOrders = orders.value.orders.reduce<ReadonlyArray<NormalizedCompletedOrder>>(
+        (matched, order) =>
+          matched.length < input.maxOrders && isInRange(order, input) ? [...matched, order] : matched,
+        state.matchingOrders
+      )
+      const pagination = orders.value.pagination
+      // a repeated token is Voila answering with the page just read: treat it
+      // as the end of the scan rather than asking for it again forever
+      const pageToken = pagination.nextPageToken === state.pageToken ? undefined : pagination.nextPageToken
 
-    if (Either.isLeft(ordersResult)) {
-      return Either.left(ordersResult.left)
-    }
-
-    currentSession = ordersResult.right.session
-    pagination = ordersResult.right.value.pagination
-    ordersScanned += ordersResult.right.value.orders.length
-
-    for (const order of ordersResult.right.value.orders) {
-      if (matchingOrders.length < parsed.right.maxOrders && isInRange(order, parsed.right)) {
-        matchingOrders.push(order)
+      return {
+        done: !(matchingOrders.length < input.maxOrders && pagination.hasNextPage && pageToken !== undefined),
+        matchingOrders,
+        ordersScanned: state.ordersScanned + orders.value.orders.length,
+        pageToken,
+        pagination,
+        session: orders.session
       }
     }
+  )
 
-    if (pagination.nextPageToken === pageToken) {
-      pageToken = undefined
-    } else {
-      pageToken = pagination.nextPageToken
-    }
-  } while (matchingOrders.length < parsed.right.maxOrders && pagination.hasNextPage && pageToken !== undefined)
+interface ItemAggregation {
+  readonly aggregates: ReadonlyMap<string, ItemAggregate>
+  readonly session: SessionSnapshot
+}
 
-  const aggregates = new Map<string, ItemAggregate>()
+const aggregateOrderItems = (
+  state: ItemAggregation,
+  order: NormalizedCompletedOrder,
+  cookieJarPort?: CookieJarPort
+): Effect.Effect<ItemAggregation, GetOrderDetailsError, VoilaTransport> =>
+  Effect.map(getOrderDetails(state.session, { orderId: order.orderId }, cookieJarPort), (details) => {
+    const aggregates = new Map(state.aggregates)
 
-  for (const order of matchingOrders.slice(firstOrder, parsed.right.maxOrders)) {
-    const details = await getOrderDetails(currentSession, { orderId: order.orderId }, transport, cookieJarPort)
-
-    if (Either.isLeft(details)) {
-      return Either.left(details.left)
-    }
-
-    currentSession = details.right.session
-
-    for (const item of details.right.value.items.filter((detailItem) => detailItem.groupKind === receivedKind)) {
+    for (const item of details.value.items.filter((detailItem) => detailItem.groupKind === receivedKind)) {
       const key = itemKeyFor(item)
       aggregates.set(key, aggregateItem(aggregates.get(key), item, order))
     }
-  }
 
-  const items = Array.from(aggregates.values())
+    return { aggregates, session: details.session }
+  })
+
+const makeCompletedOrderItemsResult = (
+  scan: OrderScanState,
+  aggregation: ItemAggregation
+): GetCompletedOrderItemsResult => {
+  const items = Array.from(aggregation.aggregates.values())
     .map(toCompletedOrderItem)
     .sort((left, right) => right.totalQuantity - left.totalQuantity || left.itemKey.localeCompare(right.itemKey))
 
-  return Either.right({
-    session: currentSession,
-    value: { itemCount: items.length, items, ordersMatched: matchingOrders.length, ordersScanned, pagination }
-  })
+  return {
+    session: aggregation.session,
+    value: {
+      itemCount: items.length,
+      items,
+      ordersMatched: scan.matchingOrders.length,
+      ordersScanned: scan.ordersScanned,
+      pagination: scan.pagination
+    }
+  }
 }
+
+export const getCompletedOrderItems = (
+  session: SessionSnapshot,
+  input: unknown,
+  cookieJarPort?: CookieJarPort
+): Effect.Effect<GetCompletedOrderItemsResult, GetCompletedOrderItemsError, VoilaTransport> =>
+  Effect.flatMap(Either.mapLeft(parseUnknown(CompletedOrderItemsInputSchema, input), inputInvalid), (parsed) => {
+    const initial: OrderScanState = {
+      done: false,
+      matchingOrders: [],
+      ordersScanned: 0,
+      pageToken: parsed.pageToken,
+      pagination: { hasNextPage: false },
+      session
+    }
+
+    return Effect.flatMap(
+      Effect.iterate(initial, {
+        body: (state) => scanOrderPage(state, parsed, cookieJarPort),
+        while: (state) => !state.done
+      }),
+      (scan) => {
+        const noAggregates: ItemAggregation = { aggregates: new Map(), session: scan.session }
+
+        return Effect.map(
+          Effect.reduce(scan.matchingOrders.slice(firstOrder, parsed.maxOrders), noAggregates, (aggregation, order) =>
+            aggregateOrderItems(aggregation, order, cookieJarPort)
+          ),
+          (aggregation) => makeCompletedOrderItemsResult(scan, aggregation)
+        )
+      }
+    )
+  })

@@ -14,60 +14,59 @@ The package is ESM-only and supports Node.js 20+.
 
 ## Quick Start
 
+Every operation is an `Effect` that requires a `VoilaTransport`. The transport is a
+service: provide one layer, and every operation in the program uses it.
+
 ```ts
-import { Either } from "effect"
-import { bootstrapGuestSession, searchProducts, type VoilaTransport } from "@firfi/voila-sdk"
+import { Effect, Layer } from "effect"
+import {
+  bootstrapGuestSession,
+  connectionFailure,
+  responseReadFailure,
+  searchProducts,
+  VoilaTransport
+} from "@firfi/voila-sdk"
 
 const responseHeadersFromFetch = (headers: Headers) => {
   const setCookie = headers.getSetCookie()
   const entries = Object.fromEntries(headers.entries())
 
-  return setCookie.length === 0
-    ? entries
-    : {
-      ...entries,
-      "set-cookie": setCookie
-    }
+  return setCookie.length === 0 ? entries : { ...entries, "set-cookie": setCookie }
 }
 
-const fetchTransport: VoilaTransport = {
-  request: async (request) => {
-    const response = await fetch(request.url, {
-      body: request.body,
-      headers: request.headers,
-      method: request.method,
-      redirect: "manual"
-    })
+const fetchTransportLayer = Layer.succeed(VoilaTransport, {
+  request: (request) =>
+    Effect.flatMap(
+      Effect.tryPromise({
+        catch: connectionFailure,
+        try: () =>
+          fetch(request.url, {
+            ...(request.body === undefined ? {} : { body: request.body }),
+            headers: request.headers,
+            method: request.method,
+            redirect: "manual"
+          })
+      }),
+      (response) =>
+        Effect.map(
+          Effect.tryPromise({ catch: responseReadFailure, try: () => response.text() }),
+          (body) => ({ body, headers: responseHeadersFromFetch(response.headers), status: response.status })
+        )
+    )
+})
 
-    return Either.right({
-      body: await response.text(),
-      headers: responseHeadersFromFetch(response.headers),
-      status: response.status
-    })
-  }
-}
+const program = Effect.gen(function*() {
+  const bootstrap = yield* bootstrapGuestSession()
+  const search = yield* searchProducts(bootstrap.session, { pageSize: 12, query: "milk" })
 
-const bootstrap = await bootstrapGuestSession(fetchTransport)
+  return search.value.products.map((product) => product.name)
+})
 
-if (Either.isLeft(bootstrap)) {
-  throw new Error(bootstrap.left._tag)
-}
-
-const search = await searchProducts(
-  bootstrap.right.session,
-  {
-    pageSize: 12,
-    query: "milk"
-  },
-  fetchTransport
-)
-
-if (Either.isLeft(search)) {
-  throw new Error(search.left._tag)
-}
-
-console.log(search.right.value.products.map((product) => product.name))
+console.log(await Effect.runPromise(Effect.provide(program, fetchTransportLayer)))
 ```
+
+Failures stay in the typed error channel: `Effect.either` turns them into an
+`Either` where a caller would rather branch than short-circuit.
 
 ## What It Supports
 

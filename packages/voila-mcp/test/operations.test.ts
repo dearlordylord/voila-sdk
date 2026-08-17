@@ -1,10 +1,7 @@
 import {
-  makeGuestSdkSessionSnapshot,
-  makeSessionSnapshot,
+  connectionFailure,
+  requestDeadlineExceeded,
   type SdkSessionSnapshot,
-  serializeCookieJar,
-  type SessionSnapshot,
-  toughCookieJarPort,
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import { StateFilePathSchema } from "@firfi/voila-session-store"
@@ -13,30 +10,28 @@ import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
 
 import { makeAuthGuidance } from "../src/auth-guidance.js"
+import {
+  makeSdkSessionForTest,
+  makeStubEnvironment,
+  runOperation,
+  stubTransportLayer,
+  unusedTransportLayer
+} from "./helpers/operations.js"
 import { makeNodeOperationEnvironment } from "../src/node-env.js"
 import {
   mcpName,
   type OperationEnvironment,
   type OperationFailure,
-  runVoilaOperation,
   type SessionOperation,
   voilaOperationDescriptors,
   type VoilaOperationName
 } from "../src/operations.js"
 
-const voilaUrl = "https://voila.ca/"
-const csrfToken = "csrf-token"
-const secretNetworkValue = "secret-network-value"
+const secretTimeoutMs = 30_000
+const secretCookieValue = "voila-session=secret-cookie"
 // the test owns an absolute path, so the brand is applied directly; production
 // callers parse a configured path at the environment boundary
 const sessionPath = StateFilePathSchema.make("/tmp/voila-session.json")
-
-const sampleMetadata = {
-  assetVersion: "asset-version",
-  clientRouteId: "client-route-id",
-  pageViewId: "page-view-id",
-  regionId: "region-id"
-}
 
 const completedOrdersResponse = JSON.stringify({
   data: {
@@ -136,64 +131,9 @@ const invalidSlotOperationInputs: ReadonlyArray<readonly [VoilaOperationName, un
 const fixture = (name: string): Promise<string> =>
   readFile(new URL(`../../voila-sdk/test/fixtures/${name}`, import.meta.url), "utf8")
 
-const makeSessionSnapshotForTest = (): SessionSnapshot => {
-  const jar = toughCookieJarPort.create()
-  jar.setCookieSync("voila-session=sanitized-cookie; Path=/; Secure; HttpOnly", voilaUrl)
-
-  const cookieJar = serializeCookieJar(jar)
-
-  if (Either.isLeft(cookieJar)) {
-    throw new Error("Expected cookie jar serialization")
-  }
-
-  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
-
-  if (Either.isLeft(session)) {
-    throw new Error("Expected session snapshot")
-  }
-
-  return session.right
-}
-
-const makeSdkSessionForTest = (): SdkSessionSnapshot => {
-  const snapshot = makeGuestSdkSessionSnapshot(makeSessionSnapshotForTest())
-
-  if (Either.isLeft(snapshot)) {
-    throw new Error("Expected SDK session snapshot")
-  }
-
-  return snapshot.right
-}
-
-const makeEnvironment = (
-  transport: VoilaTransport
-): { readonly env: OperationEnvironment; readonly saved: () => SdkSessionSnapshot | undefined } => {
-  let savedSession: SdkSessionSnapshot | undefined
-  const initialSession = makeSdkSessionForTest()
-
-  return {
-    env: {
-      session: {
-        withSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure> =>
-          Effect.gen(function* () {
-            const outcome = yield* operation(savedSession ?? initialSession)
-
-            if (outcome.refreshed !== undefined) {
-              savedSession = outcome.refreshed
-            }
-
-            return outcome.value
-          })
-      },
-      transport
-    },
-    saved: () => savedSession
-  }
-}
-
 // a session port that records whether any operation ran against a session
 const trackingSessionPort = (initialSession: SdkSessionSnapshot, ran: { current: boolean }) => ({
-  withSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure> => {
+  withSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure, VoilaTransport> => {
     ran.current = true
 
     return Effect.map(operation(initialSession), (outcome) => outcome.value)
@@ -237,10 +177,10 @@ describe("Voila MCP operations", () => {
     const ran = { current: false }
     const env: OperationEnvironment = {
       session: trackingSessionPort(makeSdkSessionForTest(), ran),
-      transport: { request: async () => Either.left("unused") }
+      transport: unusedTransportLayer
     }
 
-    const result = await runVoilaOperation("voila_search_products", {}, env)
+    const result = await runOperation("voila_search_products", {}, env)
 
     expect(result.ok).toBe(false)
     expect(ran.current).toBe(false)
@@ -260,10 +200,10 @@ describe("Voila MCP operations", () => {
       const ran = { current: false }
       const env: OperationEnvironment = {
         session: trackingSessionPort(makeSdkSessionForTest(), ran),
-        transport: { request: async () => Either.left("unused") }
+        transport: unusedTransportLayer
       }
 
-      const result = await runVoilaOperation("voila_get_discounted_products", input, env)
+      const result = await runOperation("voila_get_discounted_products", input, env)
 
       expect(result.ok).toBe(false)
       expect(ran.current).toBe(false)
@@ -279,10 +219,10 @@ describe("Voila MCP operations", () => {
       const ran = { current: false }
       const env: OperationEnvironment = {
         session: trackingSessionPort(makeSdkSessionForTest(), ran),
-        transport: { request: async () => Either.left("unused") }
+        transport: unusedTransportLayer
       }
 
-      const result = await runVoilaOperation(name, input, env)
+      const result = await runOperation(name, input, env)
 
       expect(result.ok).toBe(false)
       expect(ran.current).toBe(false)
@@ -298,26 +238,24 @@ describe("Voila MCP operations", () => {
     const paths: Array<string> = []
     const env = makeNodeOperationEnvironment(
       {},
-      {
-        request: async (request) => {
-          paths.push(request.url.pathname)
+      stubTransportLayer((request) => {
+        paths.push(request.url.pathname)
 
-          return Either.right({
-            body: request.url.pathname === "/" ? homepage : JSON.stringify({ authenticated: false }),
-            headers:
-              request.url.pathname === "/"
-                ? { "set-cookie": "voila-session=sanitized-cookie; Path=/; Secure; HttpOnly" }
-                : {},
-            status: 200
-          })
-        }
-      }
+        return Effect.succeed({
+          body: request.url.pathname === "/" ? homepage : JSON.stringify({ authenticated: false }),
+          headers:
+            request.url.pathname === "/"
+              ? { "set-cookie": "voila-session=sanitized-cookie; Path=/; Secure; HttpOnly" }
+              : {},
+          status: 200
+        })
+      })
     )
 
     expect(Either.isRight(env)).toBe(true)
 
     if (Either.isRight(env)) {
-      const result = await runVoilaOperation("voila_check_session_health", {}, env.right)
+      const result = await runOperation("voila_check_session_health", {}, env.right)
 
       expect(result.ok).toBe(true)
       // the first request is the homepage bootstrap of the in-memory guest session
@@ -326,11 +264,11 @@ describe("Voila MCP operations", () => {
   })
 
   it("returns CLI login guidance for guest session health", async () => {
-    const fake = makeEnvironment({
-      request: async () => Either.right({ body: JSON.stringify({ authenticated: false }), headers: {}, status: 200 })
-    })
+    const fake = makeStubEnvironment(() =>
+      Effect.succeed({ body: JSON.stringify({ authenticated: false }), headers: {}, status: 200 })
+    )
     const env: OperationEnvironment = { ...fake.env, authGuidance: makeAuthGuidance(sessionPath) }
-    const result = await runVoilaOperation("voila_check_session_health", {}, env)
+    const result = await runOperation("voila_check_session_health", {}, env)
 
     expect(result.ok).toBe(true)
 
@@ -348,10 +286,10 @@ describe("Voila MCP operations", () => {
         withSession: () =>
           Effect.fail({ _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" })
       },
-      transport: { request: async () => Either.left("unused") }
+      transport: unusedTransportLayer
     }
 
-    const result = await runVoilaOperation("voila_get_cart", {}, env)
+    const result = await runOperation("voila_get_cart", {}, env)
 
     expect(result.ok).toBe(false)
 
@@ -363,9 +301,9 @@ describe("Voila MCP operations", () => {
 
   it("returns normalized cart mutation data and persists the updated session", async () => {
     const cartApply = await fixture("cart-apply-success.json")
-    const fake = makeEnvironment({ request: async () => Either.right({ body: cartApply, headers: {}, status: 200 }) })
+    const fake = makeStubEnvironment(() => Effect.succeed({ body: cartApply, headers: {}, status: 200 }))
 
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_add_cart_items",
       { items: [{ productId: "11111111-1111-4111-8111-111111111111", quantity: 1 }] },
       fake.env
@@ -385,11 +323,9 @@ describe("Voila MCP operations", () => {
   })
 
   it("returns paginated completed orders", async () => {
-    const fake = makeEnvironment({
-      request: async () => Either.right({ body: completedOrdersResponse, headers: {}, status: 200 })
-    })
+    const fake = makeStubEnvironment(() => Effect.succeed({ body: completedOrdersResponse, headers: {}, status: 200 }))
 
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_get_completed_orders",
       { pageSize: 2, pageToken: "previous-cursor" },
       fake.env
@@ -408,15 +344,13 @@ describe("Voila MCP operations", () => {
 
   it("returns normalized discounted products through the SDK registry path", async () => {
     const paths: Array<string> = []
-    const fake = makeEnvironment({
-      request: async (request) => {
-        paths.push(request.url.pathname)
+    const fake = makeStubEnvironment((request) => {
+      paths.push(request.url.pathname)
 
-        return Either.right({ body: discountedProductsResponse, headers: {}, status: 200 })
-      }
+      return Effect.succeed({ body: discountedProductsResponse, headers: {}, status: 200 })
     })
 
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_get_discounted_products",
       { minSavingsPercent: 15, pageSize: 3, query: "milk", sort: "best-percent" },
       fake.env
@@ -443,15 +377,13 @@ describe("Voila MCP operations", () => {
 
   it("returns active shopping context through the SDK path and persists the updated session", async () => {
     const paths: Array<string> = []
-    const fake = makeEnvironment({
-      request: async (request) => {
-        paths.push(`${request.url.pathname}${request.url.search}`)
+    const fake = makeStubEnvironment((request) => {
+      paths.push(`${request.url.pathname}${request.url.search}`)
 
-        return Either.right({ body: activeShoppingContextResponse, headers: {}, status: 200 })
-      }
+      return Effect.succeed({ body: activeShoppingContextResponse, headers: {}, status: 200 })
     })
 
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_get_active_shopping_context",
       { regionId: "sanitized-region-id" },
       fake.env
@@ -473,15 +405,13 @@ describe("Voila MCP operations", () => {
   it("returns slot listings without hitting reservation endpoints", async () => {
     const slotListing = await fixture("slot-listing-available.json")
     const requests: Array<{ readonly body?: string; readonly pathname: string }> = []
-    const fake = makeEnvironment({
-      request: async (request) => {
-        requests.push({ ...("body" in request ? { body: request.body } : {}), pathname: request.url.pathname })
+    const fake = makeStubEnvironment((request) => {
+      requests.push({ ...("body" in request ? { body: request.body } : {}), pathname: request.url.pathname })
 
-        return Either.right({ body: slotListing, headers: {}, status: 200 })
-      }
+      return Effect.succeed({ body: slotListing, headers: {}, status: 200 })
     })
 
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_get_slot_listings",
       { deliveryDestinationId: "sanitized-delivery-destination-id", regionId: "sanitized-region-id" },
       fake.env
@@ -506,15 +436,13 @@ describe("Voila MCP operations", () => {
   it("reserves a slot only with explicit confirmation flags", async () => {
     const slotReservation = await fixture("slot-reservation-success.json")
     const requests: Array<{ readonly body?: string; readonly pathname: string }> = []
-    const fake = makeEnvironment({
-      request: async (request) => {
-        requests.push({ ...("body" in request ? { body: request.body } : {}), pathname: request.url.pathname })
+    const fake = makeStubEnvironment((request) => {
+      requests.push({ ...("body" in request ? { body: request.body } : {}), pathname: request.url.pathname })
 
-        return Either.right({ body: slotReservation, headers: {}, status: 200 })
-      }
+      return Effect.succeed({ body: slotReservation, headers: {}, status: 200 })
     })
 
-    const result = await runVoilaOperation(
+    const result = await runOperation(
       "voila_reserve_slot",
       {
         allowReservationOverwrite: true,
@@ -540,17 +468,16 @@ describe("Voila MCP operations", () => {
   })
 
   it("returns CLI login guidance for completed order GraphQL failures", async () => {
-    const fake = makeEnvironment({
-      request: async () =>
-        Either.right({
-          body: JSON.stringify({ errors: [{ message: "secret-account-required-detail" }] }),
-          headers: {},
-          status: 200
-        })
-    })
+    const fake = makeStubEnvironment(() =>
+      Effect.succeed({
+        body: JSON.stringify({ errors: [{ message: "secret-account-required-detail" }] }),
+        headers: {},
+        status: 200
+      })
+    )
     const env: OperationEnvironment = { ...fake.env, authGuidance: makeAuthGuidance(sessionPath) }
 
-    const result = await runVoilaOperation("voila_get_completed_orders", {}, env)
+    const result = await runOperation("voila_get_completed_orders", {}, env)
 
     expect(result.ok).toBe(false)
     expect(JSON.stringify(result)).not.toContain("secret-account-required-detail")
@@ -562,20 +489,36 @@ describe("Voila MCP operations", () => {
     }
   })
 
-  it("redacts thrown transport failures", async () => {
-    const fake = makeEnvironment({
-      request: async () => {
-        throw new Error(secretNetworkValue)
-      }
+  it("redacts transport failures and keeps their tags distinguishable", async () => {
+    const refused = makeStubEnvironment(() => Effect.fail(connectionFailure()))
+    const abandoned = makeStubEnvironment(() => Effect.fail(requestDeadlineExceeded(secretTimeoutMs)))
+
+    const refusedResult = await runOperation("voila_get_cart", {}, refused.env)
+    const abandonedResult = await runOperation("voila_get_cart", {}, abandoned.env)
+
+    expect(refusedResult.ok).toBe(false)
+    expect(abandonedResult.ok).toBe(false)
+
+    if (!refusedResult.ok && !abandonedResult.ok) {
+      expect(refusedResult.error._tag).toBe("VoilaConnectionFailure")
+      expect(abandonedResult.error._tag).toBe("VoilaRequestDeadlineExceeded")
+      // the redacted failure keeps the tag and message, and nothing else
+      expect(Object.keys(abandonedResult.error).sort()).toEqual(["_tag", "message"])
+    }
+  })
+
+  it("reports a thrown transport failure without rendering what was thrown", async () => {
+    const thrown = makeStubEnvironment(() => {
+      throw new Error(`cookie ${secretCookieValue}`)
     })
 
-    const result = await runVoilaOperation("voila_get_cart", {}, fake.env)
+    const result = await runOperation("voila_get_cart", {}, thrown.env)
 
     expect(result.ok).toBe(false)
-    expect(JSON.stringify(result)).not.toContain(secretNetworkValue)
 
     if (!result.ok) {
-      expect(result.error._tag).toBe("VoilaNetworkFailure")
+      expect(result.error._tag).toBe("VoilaOperationFailed")
+      expect(JSON.stringify(result)).not.toContain(secretCookieValue)
     }
   })
 })

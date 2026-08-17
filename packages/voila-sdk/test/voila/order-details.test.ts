@@ -1,7 +1,7 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { SessionSnapshot, VoilaTransport, VoilaTransportRequest, VoilaTransportResponse } from "../../src/index.js"
+import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   getCompletedOrderItems,
   getOrderDetails,
@@ -13,6 +13,7 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import { runWith, type StubTransport, stubTransport } from "../helpers/transport.js"
 
 const csrfToken = "csrf-token"
 const sampleMetadata = {
@@ -122,25 +123,12 @@ const response = (body: unknown): VoilaTransportResponse => ({
   status: 200
 })
 
-const makeTransport = (): {
-  readonly requests: () => ReadonlyArray<VoilaTransportRequest>
-  readonly transport: VoilaTransport
-} => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-
-        return Either.right(
-          request.url.pathname === "/graphql" ? response(completedOrdersResponse) : response(decoratedOrderResponse)
-        )
-      }
-    }
-  }
-}
+const makeTransport = (): StubTransport =>
+  stubTransport((request) =>
+    Effect.succeed(
+      request.url.pathname === "/graphql" ? response(completedOrdersResponse) : response(decoratedOrderResponse)
+    )
+  )
 
 describe("order details", () => {
   it("normalizes decorated order item groups", () => {
@@ -179,12 +167,12 @@ describe("order details", () => {
 
   it("fetches decorated order details through the active session", async () => {
     const fake = makeTransport()
-    const result = await getOrderDetails(makeSession(), { orderId: "sanitized-order-id-1" }, fake.transport)
+    const result = await runWith(getOrderDetails(makeSession(), { orderId: "sanitized-order-id-1" }), fake)
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/order/v6/orders/sanitized-order-id-1/decorated")
@@ -198,10 +186,14 @@ describe("order details", () => {
 
   it("aggregates received items from completed orders in a date range", async () => {
     const fake = makeTransport()
-    const result = await getCompletedOrderItems(
-      makeSession(),
-      { fromDate: "2026-06-01", maxOrders: 10, pageSize: 2, toDate: "2026-06-30" },
-      fake.transport
+    const result = await runWith(
+      getCompletedOrderItems(makeSession(), {
+        fromDate: "2026-06-01",
+        maxOrders: 10,
+        pageSize: 2,
+        toDate: "2026-06-30"
+      }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -223,7 +215,7 @@ describe("order details", () => {
         ordersMatched: 1,
         ordersScanned: 2
       })
-      expect(fake.requests().map((request) => request.url.pathname)).toEqual([
+      expect(fake.requests.map((request) => request.url.pathname)).toEqual([
         "/graphql",
         "/api/order/v6/orders/sanitized-order-id-1/decorated"
       ])

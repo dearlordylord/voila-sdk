@@ -2,121 +2,100 @@
 
 All examples import from the package entrypoint. They use placeholders for local paths and browser wiring; do not put cookies, CSRF tokens, account identifiers, addresses, payment data, or credentials in source files.
 
+Every operation that talks to Voila is an `Effect` requiring the `VoilaTransport` service. A program provides one transport layer and every operation inside it uses that transport. Failures stay in the typed error channel; `Effect.either` turns one into an `Either` where a caller would rather branch than short-circuit.
+
 ## Shared Transport
 
 ```ts
-import { Either } from "effect"
-import type { VoilaTransport } from "@firfi/voila-sdk"
+import { Effect, Layer } from "effect"
+import { connectionFailure, responseReadFailure, VoilaTransport } from "@firfi/voila-sdk"
 
 const responseHeadersFromFetch = (headers: Headers) => {
   const setCookie = headers.getSetCookie()
   const entries = Object.fromEntries(headers.entries())
 
-  return setCookie.length === 0
-    ? entries
-    : {
-      ...entries,
-      "set-cookie": setCookie
-    }
+  return setCookie.length === 0 ? entries : { ...entries, "set-cookie": setCookie }
 }
 
-export const fetchTransport: VoilaTransport = {
-  request: async (request) => {
-    const response = await fetch(request.url, {
-      body: request.body,
-      headers: request.headers,
-      method: request.method,
-      redirect: "manual"
-    })
-
-    return Either.right({
-      body: await response.text(),
-      headers: responseHeadersFromFetch(response.headers),
-      status: response.status
-    })
-  }
-}
+export const fetchTransportLayer = Layer.succeed(VoilaTransport, {
+  request: (request) =>
+    Effect.flatMap(
+      Effect.tryPromise({
+        catch: connectionFailure,
+        try: () =>
+          fetch(request.url, {
+            ...(request.body === undefined ? {} : { body: request.body }),
+            headers: request.headers,
+            method: request.method,
+            redirect: "manual"
+          })
+      }),
+      (response) =>
+        Effect.map(
+          Effect.tryPromise({ catch: responseReadFailure, try: () => response.text() }),
+          (body) => ({ body, headers: responseHeadersFromFetch(response.headers), status: response.status })
+        )
+    )
+})
 ```
+
+A transport reports three failures, all free of request material: `VoilaConnectionFailure`, `VoilaResponseReadFailure`, and `VoilaRequestDeadlineExceeded`.
+
+`@firfi/voila-mcp` exports `nodeVoilaTransportLayer`, the transport the MCP server and the CLI run: `@effect/platform`'s `HttpClient`, a stable browser identity, and a Clock-driven deadline that cancels the underlying request.
 
 ## Guest Search
 
 ```ts
-import { Either } from "effect"
+import { Effect } from "effect"
 import { bootstrapGuestSession, searchProducts } from "@firfi/voila-sdk"
-import { fetchTransport } from "./transport.js"
+import { fetchTransportLayer } from "./transport.js"
 
-const bootstrap = await bootstrapGuestSession(fetchTransport)
+const program = Effect.gen(function*() {
+  const bootstrap = yield* bootstrapGuestSession()
+  const search = yield* searchProducts(bootstrap.session, { pageSize: 12, query: "milk" })
 
-if (Either.isLeft(bootstrap)) {
-  throw new Error(bootstrap.left._tag)
-}
+  return search.value.products.map((product) => product.name)
+})
 
-const search = await searchProducts(
-  bootstrap.right.session,
-  {
-    pageSize: 12,
-    query: "milk"
-  },
-  fetchTransport
-)
-
-if (Either.isLeft(search)) {
-  throw new Error(search.left._tag)
-}
-
-console.log(search.right.value.products.map((product) => product.name))
+console.log(await Effect.runPromise(Effect.provide(program, fetchTransportLayer)))
 ```
 
 ## Guest Cart Add/Remove Cleanup
 
+`Effect.ensuring` runs the cleanup on every exit of the effect it wraps, including a failed or interrupted one — a cart left dirty because the read after the add failed is the thing this example exists to avoid.
+
 ```ts
-import { Either } from "effect"
-import { addCartItems, bootstrapGuestSession, removeCartItems, searchProducts } from "@firfi/voila-sdk"
-import { fetchTransport } from "./transport.js"
+import { Effect } from "effect"
+import { addCartItems, bootstrapGuestSession, getCart, removeCartItems, searchProducts } from "@firfi/voila-sdk"
+import { fetchTransportLayer } from "./transport.js"
 
-const bootstrap = await bootstrapGuestSession(fetchTransport)
+const program = Effect.gen(function*() {
+  const bootstrap = yield* bootstrapGuestSession()
+  const search = yield* searchProducts(bootstrap.session, { pageSize: 12, query: "bananas" })
+  const product = search.value.products.find((item) => item.available === true)
 
-if (Either.isLeft(bootstrap)) {
-  throw new Error(bootstrap.left._tag)
-}
-
-const search = await searchProducts(bootstrap.right.session, { pageSize: 12, query: "bananas" }, fetchTransport)
-
-if (Either.isLeft(search)) {
-  throw new Error(search.left._tag)
-}
-
-const product = search.right.value.products.find((item) => item.available === true)
-
-if (product === undefined) {
-  throw new Error("No available product found")
-}
-
-const add = await addCartItems(bootstrap.right.session, [{ productId: product.productId, quantity: 1 }], fetchTransport)
-
-if (Either.isLeft(add)) {
-  throw new Error(add.left._tag)
-}
-
-try {
-  console.log(add.right.value.totals)
-} finally {
-  const cleanup = await removeCartItems(
-    add.right.session,
-    [{ productId: product.productId, quantity: 1 }],
-    fetchTransport
-  )
-
-  if (Either.isLeft(cleanup)) {
-    throw new Error(cleanup.left._tag)
+  if (product === undefined) {
+    return yield* Effect.fail({ _tag: "NoAvailableProduct" })
   }
-}
+
+  const items = [{ productId: product.productId, quantity: 1 }]
+  const added = yield* addCartItems(bootstrap.session, items)
+
+  return yield* Effect.ensuring(
+    Effect.map(getCart(added.session), (cart) => cart.value.totals),
+    Effect.ignore(removeCartItems(added.session, items))
+  )
+})
+
+console.log(await Effect.runPromise(Effect.provide(program, fetchTransportLayer)))
 ```
 
 ## Interactive Login
 
+`loginWithBrowser` drives a caller-owned browser and needs no transport.
+
 ```ts
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 import { createInteractiveBrowserLoginPort, loginWithBrowser } from "@firfi/voila-sdk"
 
 const browserPort = createInteractiveBrowserLoginPort({
@@ -138,35 +117,27 @@ const browserPort = createInteractiveBrowserLoginPort({
   })
 })
 
-const login = await loginWithBrowser(browserPort, { timeoutMs: 120000 })
-
-if (Either.isLeft(login)) {
-  throw new Error(login.left._tag)
-}
+const login = await Effect.runPromise(loginWithBrowser(browserPort, { timeoutMs: 120000 }))
 ```
 
 See [browser-login.md](./browser-login.md) for a Playwright-shaped adapter outline. The SDK never accepts a password.
 
 ## Session Load
 
-Storage in the SDK is read-only. Capture a session with `npx -y @firfi/voila-cli auth login --session <absolute path>`.
+Storage in the SDK is read-only. Capture a session with `npx -y @firfi/voila-cli auth login --session <absolute path>`. A storage adapter owns its own read and names the failure in the SDK's vocabulary rather than leaking a platform error.
 
 ```ts
 import { readFile } from "node:fs/promises"
-import { Either } from "effect"
-import { loadSdkSessionSnapshot, type SessionStoragePort } from "@firfi/voila-sdk"
+import { Effect } from "effect"
+import { loadSdkSessionSnapshot, sessionStorageReadFailure, type SessionStoragePort } from "@firfi/voila-sdk"
 
 const sessionFile = "/absolute/path/outside/repository/voila-sdk-session.json"
 
-const storage: SessionStoragePort = {
-  read: async () => readFile(sessionFile, "utf8")
+export const storage: SessionStoragePort = {
+  read: () => Effect.tryPromise({ catch: sessionStorageReadFailure, try: () => readFile(sessionFile, "utf8") })
 }
 
-const loaded = await loadSdkSessionSnapshot(storage)
-
-if (Either.isLeft(loaded)) {
-  throw new Error(loaded.left._tag)
-}
+const snapshot = await Effect.runPromise(loadSdkSessionSnapshot(storage))
 ```
 
 The stored snapshot is sensitive. Keep it outside the repository or under an ignored local-only directory.
@@ -174,83 +145,56 @@ The stored snapshot is sensitive. Keep it outside the repository or under an ign
 ## Authenticated Cart Read
 
 ```ts
-import { readFile, writeFile } from "node:fs/promises"
-import { Either } from "effect"
-import { checkSessionHealth, getCart, loadSdkSessionSnapshot, type SessionStoragePort } from "@firfi/voila-sdk"
-import { fetchTransport } from "./transport.js"
+import { Effect } from "effect"
+import { checkSessionHealth, getCart, loadSdkSessionSnapshot } from "@firfi/voila-sdk"
+import { storage } from "./storage.js"
+import { fetchTransportLayer } from "./transport.js"
 
-const sessionFile = "/absolute/path/outside/repository/voila-sdk-session.json"
+const program = Effect.gen(function*() {
+  const snapshot = yield* loadSdkSessionSnapshot(storage)
 
-const storage: SessionStoragePort = {
-  read: async () => readFile(sessionFile, "utf8"),
-  write: async (contents) => writeFile(sessionFile, contents, { mode: 0o600 })
-}
+  if (snapshot.kind !== "authenticated") {
+    return yield* Effect.fail({ _tag: "AuthenticatedSessionRequired" })
+  }
 
-const loaded = await loadSdkSessionSnapshot(storage)
+  const health = yield* checkSessionHealth(snapshot)
 
-if (Either.isLeft(loaded)) {
-  throw new Error(loaded.left._tag)
-}
+  if (health.status !== "active") {
+    return yield* Effect.fail({ _tag: "SessionNotActive", status: health.status })
+  }
 
-if (loaded.right.kind !== "authenticated") {
-  throw new Error("authenticated-session-required")
-}
+  const cart = yield* getCart(health.session.session)
 
-const health = await checkSessionHealth(loaded.right, fetchTransport)
+  return cart.value.totals
+})
 
-if (Either.isLeft(health)) {
-  throw new Error(health.left._tag)
-}
-
-if (health.right.status !== "active") {
-  throw new Error(health.right.status)
-}
-
-const cart = await getCart(health.right.session.session, fetchTransport)
-
-if (Either.isLeft(cart)) {
-  throw new Error(cart.left._tag)
-}
-
-console.log(cart.right.value.totals)
+console.log(await Effect.runPromise(Effect.provide(program, fetchTransportLayer)))
 ```
 
 ## Checkout Review
 
 ```ts
-import { readFile } from "node:fs/promises"
-import { Either } from "effect"
+import { Effect } from "effect"
 import { decideCheckoutReadiness, getCheckoutSummary, loadSdkSessionSnapshot } from "@firfi/voila-sdk"
-import { fetchTransport } from "./transport.js"
+import { storage } from "./storage.js"
+import { fetchTransportLayer } from "./transport.js"
 
-const loaded = await loadSdkSessionSnapshot({
-  read: async () => readFile("/absolute/path/outside/repository/voila-sdk-session.json", "utf8"),
-  write: async () => undefined
+const program = Effect.gen(function*() {
+  const snapshot = yield* loadSdkSessionSnapshot(storage)
+  const summary = yield* getCheckoutSummary(snapshot.session, {})
+  const readiness = decideCheckoutReadiness(summary.value)
+
+  switch (readiness.status) {
+    case "blocked":
+      return readiness.checkoutRestrictions
+    case "needs-review":
+      return readiness.warnings
+    case "ready-for-manual-checkout":
+      return summary.value.totals
+  }
 })
 
-if (Either.isLeft(loaded)) {
-  throw new Error(loaded.left._tag)
-}
-
-const summary = await getCheckoutSummary(loaded.right.session, {}, fetchTransport)
-
-if (Either.isLeft(summary)) {
-  throw new Error(summary.left._tag)
-}
-
-const readiness = decideCheckoutReadiness(summary.right.value)
-
-switch (readiness.status) {
-  case "blocked":
-    console.log(readiness.checkoutRestrictions)
-    break
-  case "needs-review":
-    console.log(readiness.warnings)
-    break
-  case "ready-for-manual-checkout":
-    console.log(summary.right.value.totals)
-    break
-}
+console.log(await Effect.runPromise(Effect.provide(program, fetchTransportLayer)))
 ```
 
 Checkout review is read-only. The SDK does not place orders; use the latest summary only to decide what a human should review in Voila.

@@ -1,12 +1,12 @@
 import { Either, Schema } from "effect"
+import { CookieJar, Store } from "tough-cookie"
 import { describe, expect, it } from "vitest"
 
 import type {
   CookieJarPort,
   CookieJarPortError,
   SessionSnapshot,
-  VoilaTransport,
-  VoilaTransportRequest,
+  VoilaHttpRequest,
   VoilaTransportResponse
 } from "../../src/index.js"
 import {
@@ -16,6 +16,13 @@ import {
   toughCookieJarPort,
   VOILA_BASE_URL
 } from "../../src/index.js"
+import {
+  connectionFailureTransport,
+  deadlineExceededTransport,
+  respondingTransport,
+  responseReadFailureTransport,
+  runWith
+} from "../helpers/transport.js"
 
 const OkResponseSchema = Schema.Struct({ ok: Schema.Boolean })
 
@@ -59,30 +66,6 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
   return snapshot.right
 }
 
-const makeResponseTransport = (
-  response: VoilaTransportResponse
-): { readonly requests: () => ReadonlyArray<VoilaTransportRequest>; readonly transport: VoilaTransport } => {
-  const requests: Array<VoilaTransportRequest> = []
-
-  return {
-    requests: () => requests,
-    transport: {
-      request: async (request) => {
-        requests.push(request)
-        return Either.right(response)
-      }
-    }
-  }
-}
-
-const makeLeftTransport = (failure: unknown): VoilaTransport => ({ request: async () => Either.left(failure) })
-
-const makeThrowingTransport = (failure: unknown): VoilaTransport => ({
-  request: async () => {
-    throw failure
-  }
-})
-
 const failingDeserializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: () => Either.left(cookieImportFailure),
@@ -93,6 +76,17 @@ const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
   serialize: () => Either.left(cookieSerializationFailure)
+}
+
+/**
+ * A jar whose store is asynchronous: tough-cookie's synchronous read throws
+ * rather than returning, which is the defect path the pipeline must turn into
+ * a typed failure.
+ */
+const asyncStoreCookieJarPort: CookieJarPort = {
+  create: toughCookieJarPort.create,
+  deserialize: () => Either.right(new CookieJar(new Store())),
+  serialize: toughCookieJarPort.serialize
 }
 
 const getRestoredCookieString = (session: SessionSnapshot): string => {
@@ -107,23 +101,21 @@ const getRestoredCookieString = (session: SessionSnapshot): string => {
 
 describe("requestVoilaJson", () => {
   it("sends Voila headers and cookies, decodes JSON, and persists set-cookie values", async () => {
-    const fake = makeResponseTransport({
+    const fake = respondingTransport({
       body: '{"ok":true}',
       headers: { "Set-Cookie": ["fresh-cookie=after; Path=/; Secure"] },
       status: 200
     })
 
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      fake.transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
 
     if (Either.isRight(result)) {
-      const [request] = fake.requests()
+      const [request] = fake.requests
 
       expect(result.right.value).toEqual({ ok: true })
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
@@ -140,18 +132,16 @@ describe("requestVoilaJson", () => {
 
     if (Either.isRight(emptyCookieJar)) {
       const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, emptyCookieJar.right)
-      const fake = makeResponseTransport(okResponse)
+      const fake = respondingTransport(okResponse)
 
       expect(Either.isRight(session)).toBe(true)
 
       if (Either.isRight(session)) {
-        const result = await requestVoilaJson(
-          OkResponseSchema,
-          session.right,
-          { method: "GET", url: voilaUrl },
-          fake.transport
+        const result = await runWith(
+          requestVoilaJson(OkResponseSchema, session.right, { method: "GET", url: voilaUrl }),
+          fake
         )
-        const [request] = fake.requests()
+        const [request] = fake.requests
 
         expect(Either.isRight(result)).toBe(true)
         expect(request?.headers.cookie).toBeUndefined()
@@ -160,17 +150,15 @@ describe("requestVoilaJson", () => {
   })
 
   it("accepts a single set-cookie header value", async () => {
-    const fake = makeResponseTransport({
+    const fake = respondingTransport({
       body: '{"ok":true}',
       headers: { "set-cookie": "single-cookie=after; Path=/; Secure" },
       status: 200
     })
 
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "POST", url: voilaUrl },
-      fake.transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "POST", url: voilaUrl }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
@@ -181,39 +169,32 @@ describe("requestVoilaJson", () => {
   })
 
   it("forwards request bodies to the injected transport", async () => {
-    const fake = makeResponseTransport(okResponse)
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { body: '{"query":"milk"}', method: "POST", url: voilaUrl },
-      fake.transport
+    const fake = respondingTransport(okResponse)
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { body: '{"query":"milk"}', method: "POST", url: voilaUrl }),
+      fake
     )
-    const [request] = fake.requests()
+    const [request] = fake.requests
 
     expect(Either.isRight(result)).toBe(true)
     expect(request?.body).toBe('{"query":"milk"}')
   })
 
   it("ignores undefined set-cookie header values", async () => {
-    const fake = makeResponseTransport({ body: '{"ok":true}', headers: { "set-cookie": undefined }, status: 200 })
+    const fake = respondingTransport({ body: '{"ok":true}', headers: { "set-cookie": undefined }, status: 200 })
 
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      fake.transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      fake
     )
 
     expect(Either.isRight(result)).toBe(true)
   })
 
   it("returns a typed redacted error for malformed set-cookie header values", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({ body: '{"ok":true}', headers: { "set-cookie": "bad cookie value" }, status: 200 })
-        .transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({ body: '{"ok":true}', headers: { "set-cookie": "bad cookie value" }, status: 200 })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -225,16 +206,14 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error when CSRF is missing", async () => {
-    const fake = makeResponseTransport(okResponse)
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(" "),
-      { method: "GET", url: voilaUrl },
-      fake.transport
+    const fake = respondingTransport(okResponse)
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(" "), { method: "GET", url: voilaUrl }),
+      fake
     )
 
     expect(Either.isLeft(result)).toBe(true)
-    expect(fake.requests()).toHaveLength(0)
+    expect(fake.requests).toHaveLength(0)
 
     if (Either.isLeft(result)) {
       expect(result.left._tag).toBe("VoilaMissingCsrfToken")
@@ -242,11 +221,9 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error for non-Voila origins", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: new URL("https://example.com/api") },
-      makeResponseTransport(okResponse).transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: new URL("https://example.com/api") }),
+      respondingTransport(okResponse)
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -257,12 +234,14 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error for cookie jar restore failures", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport(okResponse).transport,
-      failingDeserializeCookieJarPort
+    const result = await runWith(
+      requestVoilaJson(
+        OkResponseSchema,
+        makeSession(),
+        { method: "GET", url: voilaUrl },
+        failingDeserializeCookieJarPort
+      ),
+      respondingTransport(okResponse)
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -273,13 +252,32 @@ describe("requestVoilaJson", () => {
     }
   })
 
+  it("returns a typed error when the restored jar cannot be read synchronously", async () => {
+    const transport = respondingTransport(okResponse)
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }, asyncStoreCookieJarPort),
+      transport
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("VoilaSessionPersistenceFailure")
+    }
+
+    // the failure happens before the request: nothing is sent with no cookie
+    expect(transport.requests).toEqual([])
+  })
+
   it("returns a typed error for cookie jar persistence failures", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport(okResponse).transport,
-      failingSerializeCookieJarPort
+    const result = await runWith(
+      requestVoilaJson(
+        OkResponseSchema,
+        makeSession(),
+        { method: "GET", url: voilaUrl },
+        failingSerializeCookieJarPort
+      ),
+      respondingTransport(okResponse)
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -290,46 +288,35 @@ describe("requestVoilaJson", () => {
     }
   })
 
-  it("returns a typed error when the transport throws", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeThrowingTransport(new Error("socket failed"))
-    )
-
-    expect(Either.isLeft(result)).toBe(true)
-
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(result.left.message).toBe("Voila network request failed")
-      expect(JSON.stringify(result.left)).not.toContain("socket failed")
+  it("surfaces each transport failure with its own tag and no request material", async () => {
+    const request: VoilaHttpRequest = {
+      method: "GET",
+      url: new URL("/api/orders/secret-order-id?token=secret-query", VOILA_BASE_URL)
     }
-  })
+    const cases = [
+      { expected: "VoilaConnectionFailure", transport: connectionFailureTransport() },
+      { expected: "VoilaRequestDeadlineExceeded", transport: deadlineExceededTransport() },
+      { expected: "VoilaResponseReadFailure", transport: responseReadFailureTransport() }
+    ] as const
 
-  it("returns a typed error when the transport returns a failure", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeLeftTransport("secret transport payload")
-    )
+    for (const { expected, transport } of cases) {
+      const result = await runWith(requestVoilaJson(OkResponseSchema, makeSession(), request), transport)
 
-    expect(Either.isLeft(result)).toBe(true)
+      expect(Either.isLeft(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNetworkFailure")
-      expect(result.left.message).toBe("Voila network request failed")
-      expect(JSON.stringify(result.left)).not.toContain("secret transport payload")
+      if (Either.isLeft(result)) {
+        expect(result.left._tag).toBe(expected)
+        expect(JSON.stringify(result.left)).not.toContain("secret-order-id")
+        expect(JSON.stringify(result.left)).not.toContain("secret-query")
+        expect(JSON.stringify(result.left)).not.toContain(csrfToken)
+      }
     }
   })
 
   it.each([401, 403])("returns a typed error for unauthorized status %s", async (status) => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({ body: "{}", headers: {}, status }).transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({ body: "{}", headers: {}, status })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -340,15 +327,16 @@ describe("requestVoilaJson", () => {
   })
 
   it.each([403, 503])("returns redacted WAF diagnostics for a known blocked response at status %s", async (status) => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: new URL("/api/orders/secret-order-id/decorated?token=secret-query", VOILA_BASE_URL) },
-      makeResponseTransport({
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), {
+        method: "GET",
+        url: new URL("/api/orders/secret-order-id/decorated?token=secret-query", VOILA_BASE_URL)
+      }),
+      respondingTransport({
         body: "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY><H1>403 ERROR</H1>Request blocked.</BODY></HTML>",
         headers: { "set-cookie": "secret-cookie=must-not-leak", "x-amz-cf-id": "safe-edge-request-id" },
         status
-      }).transport
+      })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -375,11 +363,9 @@ describe("requestVoilaJson", () => {
     [403, "VoilaUnauthorizedSession"],
     [503, "VoilaNon2xxResponse"]
   ])("does not classify a generic blocked phrase as a WAF response at status %s", async (status, expectedTag) => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({ body: "The request blocked a downstream operation", headers: {}, status }).transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({ body: "The request blocked a downstream operation", headers: {}, status })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -390,15 +376,13 @@ describe("requestVoilaJson", () => {
   })
 
   it("does not classify the known WAF body at an undocumented status", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({
         body: "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY>Request blocked.</BODY></HTML>",
         headers: {},
         status: 500
-      }).transport
+      })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -409,11 +393,9 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error for non-2xx responses", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({ body: "{}", headers: {}, status: 500 }).transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({ body: "{}", headers: {}, status: 500 })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -424,11 +406,9 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error for malformed JSON", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({ body: "{", headers: {}, status: 200 }).transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({ body: "{", headers: {}, status: 200 })
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -439,11 +419,9 @@ describe("requestVoilaJson", () => {
   })
 
   it("returns a typed error for schema decode failures", async () => {
-    const result = await requestVoilaJson(
-      OkResponseSchema,
-      makeSession(),
-      { method: "GET", url: voilaUrl },
-      makeResponseTransport({ body: '{"ok":"yes"}', headers: {}, status: 200 }).transport
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({ body: '{"ok":"yes"}', headers: {}, status: 200 })
     )
 
     expect(Either.isLeft(result)).toBe(true)

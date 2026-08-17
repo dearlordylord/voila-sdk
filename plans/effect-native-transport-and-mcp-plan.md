@@ -309,3 +309,117 @@ Each batch flips its operations to the final Effect signature `(session, input) 
 - **jscpd 2%**: 13 similar `Tool.make` blocks may approach the duplication threshold the same way today's 13 `registerTool` blocks do not (they pass today). If jscpd trips, factor the annotation sets and handler plumbing, not the per-tool schema wiring.
 - **`effect-tsgo --strict`** may surface inference friction in heterogeneous toolkit/handler types; budget time in 4.1.
 - **Do not** let the HTTP rewrite drop the `/health` endpoint or change default host/port/path — deployment guidance (`glama.json`, README) depends on them.
+
+## Milestone 0 Findings (spike results, 2026-08-17)
+
+Throwaway spike, run with `pnpm tsx scratch/*.ts` against `@effect/ai@0.37.0` + `@effect/platform(-node)@0.97.x` + `effect@3.22.1` (scratch deleted after capture). Server: `Toolkit.make` + `toolkit.toLayer(handlers)` + `McpServer.toolkit(...)` + `McpServer.layerHttp({ name, version, path: "/mcp" })` + `NodeHttpServer.layer(createServer, { port })`. Client: plain `fetch` JSON-RPC POSTs.
+
+**New fact learned before the probes ran**: `Tool.make` runtime-wraps `parameters` in `Schema.Struct(...)` unconditionally (`Tool.ts:1015`). Passing an already-built `Schema.Struct` crashes (`Cannot read properties of undefined (reading '_tag')`). Tools must be built as `Tool.make(name, { parameters: SomeStructSchema.fields, ... })` — `.fields` round-trips optionality (`optionalWith(..., { exact: true })`) correctly, as the Q1 output below proves. This is a Contract Delta for 4.1: `operation-schemas.ts` structs are consumed via `.fields`.
+
+### Q1 — `tools/list` inputSchema shape: FACT
+
+`@effect/ai` builds `inputSchema` via `JsonSchema.fromAST(ast, { definitions: $defs, topLevelReferenceStrategy: "skip" })` (`McpServer.js:777-787`) with **no target override — Effect's default `jsonSchema7` (draft-07)**. There is **no `$schema` marker** in the output. `additionalProperties: false` and refinement bounds survive. Empty parameters hit a hardcoded branch emitting `{ type: "object", properties: {}, required: [], additionalProperties: false }`.
+
+Captured (trimmed) for a tool with `parameters: ProductListOperationInputSchema.fields`:
+
+```json
+{"name":"ProductList","inputSchema":{
+  "type":"object",
+  "required":["query"],
+  "properties":{
+    "pageSize":{"type":"integer","description":"a number less than or equal to 24","title":"lessThanOrEqualTo(24)","minimum":1,"maximum":24},
+    "pageToken":{"type":"string","description":"a string at least 1 character(s) long","title":"minLength(1)","pattern":"^\\S[\\s\\S]*\\S$|^\\S$|^$","minLength":1},
+    "query":{"type":"string","description":"...","title":"minLength(1)","pattern":"...","minLength":1}},
+  "additionalProperties":false},
+ "annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true,"openWorldHint":true}}
+```
+
+Empty-params tool (`parameters: {}`): `"inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false}` — `properties: {}` renders exactly.
+
+Contract Delta 3 resolved: the pin on `$schema: 2020-12` **must be dropped** (no marker is emitted at all); `additionalProperties: false`, `maximum: 24`, `minimum: 1`, and `properties: {}` pins **survive verbatim**. New pins to add: refinement-derived `title`/`description` strings are emitted per constrained field (harmless, client-visible). Annotations confirm the research gotcha: all four hints are always emitted — the two existing constant annotation sets must annotate all four explicitly.
+
+### Q2 — decode failure vs typed failure: FACT
+
+Both are **normal tool results with `isError: true` at HTTP 200** — never JSON-RPC protocol errors.
+
+Schema-violating call (`pageSize: "twenty"`; out-of-bounds `99` behaves identically):
+
+```json
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text",
+  "text":"{\"module\":\"Toolkit\",\"method\":\"ProductList.handle\",\"description\":\"Failed to decode tool call parameters for tool 'ProductList' from:\\n'...'\",\"cause\":{\"_id\":\"ParseError\",\"message\":\"...Expected number, actual \\\"twenty\\\"\"},\"_tag\":\"MalformedOutput\",\"~@effect/ai/AiError\":\"~@effect/ai/AiError\"}"}],
+  "structuredContent":{"module":"Toolkit","method":"ProductList.handle","description":"...","cause":{"_id":"ParseError","message":"..."},"_tag":"MalformedOutput",...},"isError":true}}
+```
+
+So decode failures surface as an `@effect/ai` `AiError` with `_tag: "MalformedOutput"` and the Effect `ParseError` tree rendered into `cause.message`. Note: the `description` embeds the **raw arguments pretty-printed** — acceptable (arguments carry no secrets in our tools) but worth noting in ADR-0004.
+
+Handler typed failure (`Effect.fail({ code: "VoilaOperationFailed", message: "simulated failure" })` with a matching `failure` schema):
+
+```json
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text",
+  "text":"{\"code\":\"VoilaOperationFailed\",\"message\":\"simulated failure\"}"}],
+  "structuredContent":{"code":"VoilaOperationFailed","message":"simulated failure"},"isError":true}}
+```
+
+Contract Delta 1 resolved: keep the test at the tool-result layer (`HTTP 200`, `result.isError: true`) — the plan's mapping claim holds, with one correction: the text is **`JSON.stringify(error)` compact, NOT pretty-printed 2-space JSON** (source: `McpServer.js:446`, `text: JSON.stringify(error)`). Any pin expecting pretty-printed failure text must flip to compact. Success results get the same treatment (`structuredContent` only when the encoded success is an object).
+
+### Q3 — protocol negotiation: FACT
+
+`initialize` with `protocolVersion: "2025-11-25"` → server negotiates down to its latest supported (`McpServer.js:170-171,735`):
+
+```json
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18",
+  "capabilities":{"completions":{},"tools":{"listChanged":true}},
+  "serverInfo":{"name":"spike-server","version":"0.0.0"}}}
+```
+
+Subsequent `tools/call` with a **mismatched** `mcp-protocol-version: 2025-11-25` header: **accepted** (HTTP 200, normal result `"pong"`) — the header is ignored entirely. No `mcp-session-id` response header is set and none is required; `@effect/ai`'s HTTP transport is stateless per POST. Contract Delta 2 resolved: the test client should still read and echo the negotiated version (faithful-client behavior), but the server tolerates any value — and any existing test pinning `mcp-session-id` session routing is testing behavior that **no longer exists** and must be deleted (see Risks: session isolation tests move to... nothing on the wire; in-memory per-session concerns from the old server are simply gone).
+
+### Q4 — omitted `arguments`: FACT
+
+`tools/call` with `arguments` omitted entirely for a parameterless tool is **rejected**, and ungracefully — as a JSON-RPC error wrapping a **defect** (`Die`), code 0:
+
+```json
+{"jsonrpc":"2.0","id":6,"error":{"_tag":"Cause","code":0,
+  "message":"{\"_tag\":\"Die\",\"defect\":\"{ ... }\\n\u2514\u2500 [\\\"arguments\\\"]\\n   \u2514\u2500 is missing\"}",
+  "data":{"_tag":"Die","defect":"... [\"arguments\"] is missing"}}}
+```
+
+The MCP schema declares `arguments` required. **Tests and any in-repo clients must always send `arguments: {}`** for parameterless tools. Add a protocol-test pin: omitted `arguments` yields a JSON-RPC error (not an `isError` tool result) — do not assert the exact defect string (it is a defect payload, unstable by nature).
+
+### Q5 — HttpClient interruption aborts the socket: YES
+
+`node:http` server that accepts and never responds; client `client.execute(HttpClientRequest.get(url)).pipe(Effect.flatMap(res => res.text), Effect.timeoutFail({ duration: "500 millis" }))` on `NodeHttpClient.layer`. Captured timeline:
+
+```
+client: requesting http://127.0.0.1:38817/hang at 1786934480926
+SERVER: request received at 1786934480936 - never responding
+client: timed out at 1786934481455
+SERVER: req 'aborted' fired at 1786934481457
+SERVER: req 'close'  fired at 1786934481457
+RESULT: reqCloseFired=true reqAbortedFired=true
+```
+
+The Effect-level timeout both interrupted the fiber and aborted the underlying request ~2 ms later (server observed `aborted` then `close`). The plan's Milestone-1 claim ("Effect timeout cancels the request; tests drive it with TestClock") is confirmed fact. (`TestClock` was not exercised in the spike — timeout was wall-clock — but the interruption path is what mattered.)
+
+### Q6 — stdio testability: option (a), verified working
+
+`layerStdio` takes Effect types, not Node streams (`McpServer.d.ts:162-167`): `stdin: Stream<Uint8Array, ...>`, `stdout: Sink<unknown, Uint8Array | string, ...>`. `@effect/ai` ships **no MCP client** usable in tests — `McpServerClient` is the server→client (elicitation/sampling) service, not a client driver. Option (a) works out of the box with `@effect/platform-node` adapters and `PassThrough`:
+
+```ts
+const inStream = new PassThrough()   // test writes NDJSON-RPC, server reads
+const outStream = new PassThrough()  // server writes, test reads lines
+const ServerLive = McpServer.toolkit(SpikeToolkit).pipe(
+  Layer.provide(HandlersLive),
+  Layer.provide(McpServer.layerStdio({
+    name: "spike-stdio", version: "0.0.0",
+    stdin: NodeStream.fromReadable(() => inStream, () => new Error("stdin read failure")),
+    stdout: NodeSink.fromWritable(() => outStream, () => new Error("stdout write failure"))
+  }))
+)
+// Layer.build(ServerLive) inside Effect.scoped; write JSON lines to inStream,
+// split outStream 'data' on '\n' to read responses.
+```
+
+Captured over the in-process pipe: `initialize` → `protocolVersion: "2025-06-18"`, `tools/list` → the Ping tool with the empty inputSchema, `tools/call` → `{"content":[{"type":"text","text":"\"pong\""}],"isError":false}`.
+
+**Recommendation for Milestone 4**: drive `layerStdio` in-process with `PassThrough` pairs via `NodeStream.fromReadable`/`NodeSink.fromWritable`, with a tiny NDJSON line-buffer helper in the test. No child-process spawn (`tsx src/bin.ts`) needed for protocol tests; reserve spawning `bin.ts` for at most one smoke test of the real entry point if desired.

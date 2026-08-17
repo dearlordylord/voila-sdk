@@ -1,4 +1,4 @@
-import { fetchVoilaTransport, type OperationExecutionResult } from "@firfi/voila-mcp"
+import { nodeVoilaTransportLayer, type OperationExecutionResult } from "@firfi/voila-mcp"
 import {
   type BrowserLoginBrowserCookie,
   checkSessionHealth,
@@ -112,7 +112,9 @@ const validateSavedSession = async (
   path: StateFilePath,
   session: SdkSessionSnapshot
 ): Promise<OperationExecutionResult> => {
-  const health = await checkSessionHealth(session, fetchVoilaTransport)
+  const health = await Effect.runPromise(
+    Effect.either(Effect.provide(checkSessionHealth(session), nodeVoilaTransportLayer()))
+  )
 
   if (Either.isLeft(health)) {
     return failure(health.left._tag, health.left.message)

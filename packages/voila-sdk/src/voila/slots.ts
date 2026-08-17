@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Effect, Either } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -19,9 +19,10 @@ import {
   type SlotReservationSelectionInput,
   SlotReservationSelectionInputSchema
 } from "../domain/schemas/index.js"
-import type { VoilaJsonResult, VoilaSdkError, VoilaTransport } from "./http-client.js"
+import type { VoilaJsonResult, VoilaSdkError } from "./http-client.js"
 import { requestVoilaJson } from "./http-client.js"
 import type { CookieJarPort } from "./session-snapshot.js"
+import type { VoilaTransport } from "./transport.js"
 import type { SlotListingRequestError, SlotReservationRequestError } from "./slot-urls.js"
 import { makeSlotListingRequest, makeSlotReservationRequest } from "./slot-urls.js"
 
@@ -222,54 +223,26 @@ export const parseSlotReservationResponse = (
       )
   )
 
-export const getSlotListings = async (
+export const getSlotListings = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<GetSlotListingsResult, GetSlotListingsError>> => {
-  const request = makeSlotListingRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawSlotListingResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<GetSlotListingsResult, GetSlotListingsError, VoilaTransport> =>
+  Effect.flatMap(makeSlotListingRequest(input), (request) =>
+    Effect.map(requestVoilaJson(RawSlotListingResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeSlotListingResponse(result.value)
+    }))
   )
 
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeSlotListingResponse(result.value)
-  }))
-}
-
-export const reserveSlot = async (
+export const reserveSlot = (
   session: SessionSnapshot,
   input: unknown,
-  transport: VoilaTransport,
   cookieJarPort?: CookieJarPort
-): Promise<Either.Either<ReserveSlotResult, ReserveSlotError>> => {
-  const request = makeSlotReservationRequest(input)
-
-  if (Either.isLeft(request)) {
-    return Either.left(request.left)
-  }
-
-  const response = await requestVoilaJson(
-    RawSlotReservationResponseSchema,
-    session,
-    request.right,
-    transport,
-    cookieJarPort
+): Effect.Effect<ReserveSlotResult, ReserveSlotError, VoilaTransport> =>
+  Effect.flatMap(makeSlotReservationRequest(input), (request) =>
+    Effect.map(requestVoilaJson(RawSlotReservationResponseSchema, session, request, cookieJarPort), (result) => ({
+      session: result.session,
+      value: normalizeSlotReservationResponse(result.value)
+    }))
   )
-
-  return Either.map(response, (result) => ({
-    session: result.session,
-    value: normalizeSlotReservationResponse(result.value)
-  }))
-}
