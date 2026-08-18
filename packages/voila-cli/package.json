@@ -26,7 +26,7 @@
   ],
   "scripts": {
     "prepack": "pnpm build",
-    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.cjs --external:playwright --external:chromium-bidi/* && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs --external:playwright --external:chromium-bidi/* && esbuild src/bin.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' --external:playwright --external:chromium-bidi/*",
+    "build": "node ../../scripts/clean-package-dist.mjs && tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.cjs --external:playwright --external:chromium-bidi/* && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs --external:playwright --external:chromium-bidi/* && esbuild src/bin.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' --external:playwright --external:chromium-bidi/*",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "package:audit": "pnpm build && node ../../scripts/audit-package.mjs . bin",
     "test": "vitest run --config ../../vitest.config.ts",

@@ -2,6 +2,7 @@ import { createRequire } from "node:module"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
+import { register } from "tsx/esm/api"
 
 import {
   canonicalJson,
@@ -39,7 +40,8 @@ try {
 const loadBuiltPackages = async () => {
   const store = await import(join(root, "packages/voila-session-store/dist/src/index.js")).catch(() => undefined)
   const mcp = requireMcp(join(mcpRoot, "dist/index.cjs"))
-  const mcpTransport = await import(join(mcpRoot, "dist/types/node-transport.js")).catch(() => undefined)
+  const unregisterTypeScript = register({ tsconfig: false })
+  const mcpTransport = await import(join(mcpRoot, "src/node-transport.ts")).finally(unregisterTypeScript)
   let platform
   try {
     platform = requireMcp("@effect/platform")
@@ -49,7 +51,7 @@ const loadBuiltPackages = async () => {
   }
   return {
     cli: requireMcp(join(cliRoot, "dist/index.cjs")),
-    mcp: mcpTransport === undefined ? mcp : { ...mcp, voilaTransportLayer: mcpTransport.voilaTransportLayer },
+    mcp: { ...mcp, voilaTransportLayer: mcpTransport.voilaTransportLayer },
     platform,
     sdk: await import(join(sdkRoot, "dist/src/index.js")),
     store,

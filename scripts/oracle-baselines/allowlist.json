@@ -74,14 +74,14 @@
       "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
     },
     {
-      "count": 164,
-      "diffHash": "0fb7c54f6fb305e64eeded81e3cd24927d5bd3c30f85d440f63d3f9f3e8c17b9",
+      "count": 124,
+      "diffHash": "25b9aa9cc391dcf49ebdda47b63919335bfd251803e2cab8891c37db63595eac",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"
       ],
       "prefix": "$.artifacts[0].files",
-      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+      "rationale": "Reviewed the Effect 4 MCP artifact after deterministic dist cleanup; declaration-only output intentionally excludes stale unbundled JavaScript while bundled entry points and wire samples remain parity-checked."
     },
     {
       "count": 3,
@@ -114,14 +114,14 @@
       "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
     },
     {
-      "count": 7,
-      "diffHash": "08b0a244429827cf39edc2b9111fe507b75966c8d12767411a28424ad585e335",
+      "count": 70,
+      "diffHash": "26affd5ef883e026b7b8071126e2b5cf5ac771495c80b3605ef648efcb823e01",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"
       ],
       "prefix": "$.artifacts[1].files",
-      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+      "rationale": "Reviewed the Effect 4 CLI artifact after deterministic dist cleanup; declaration-only output intentionally excludes stale unbundled JavaScript while bundled entry points and wire samples remain parity-checked."
     },
     {
       "count": 1,

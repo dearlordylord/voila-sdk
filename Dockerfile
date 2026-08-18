@@ -16,6 +16,7 @@ RUN corepack enable \
 
 COPY . .
 RUN pnpm --filter @firfi/voila-sdk build \
+  && pnpm --filter @firfi/voila-session-store build \
   && pnpm --filter @firfi/voila-mcp build
 
 FROM node:24.15.0-bookworm-slim
