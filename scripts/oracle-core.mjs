@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto"
 import { readFile, writeFile } from "node:fs/promises"
+import { Schema } from "effect"
+
+import { parseJson } from "./json-boundary.mjs"
 
 export const oracleVersion = 1
 export const draft07SchemaUri = "http://json-schema.org/draft-07/schema#"
@@ -7,6 +10,35 @@ export const undefinedMarker = { $oracle: "undefined" }
 export const missingMarker = { $oracle: "missing" }
 
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
+
+const NonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
+const OracleAllowlistEntrySchema = Schema.Struct({
+  after: Schema.Json,
+  before: Schema.Json,
+  evidence: Schema.Array(NonEmptyStringSchema).pipe(Schema.check(Schema.isMinLength(1))),
+  path: NonEmptyStringSchema,
+  rationale: NonEmptyStringSchema
+})
+const OracleAllowlistGroupSchema = Schema.Struct({
+  count: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  diffHash: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/))),
+  evidence: Schema.Array(NonEmptyStringSchema).pipe(Schema.check(Schema.isMinLength(1))),
+  prefix: Schema.String.pipe(Schema.check(Schema.isPattern(/^\$\..+/))),
+  rationale: NonEmptyStringSchema
+})
+const OracleAllowlistSchema = Schema.Struct({
+  entries: Schema.Array(OracleAllowlistEntrySchema),
+  groups: Schema.optionalKey(Schema.Array(OracleAllowlistGroupSchema)),
+  version: Schema.Literal(1)
+})
+const OracleEnvelopeSchema = Schema.Record(Schema.String, Schema.Json).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (document) => document.oracleVersion === oracleVersion && typeof document.contentHash === "string",
+      { message: "Oracle envelope must have the current version and a content hash" }
+    )
+  )
+)
 
 /**
  * Convert values returned by a JavaScript seam into a JSON-safe value without
@@ -212,51 +244,7 @@ export const classifyDifferences = (before, after, allowlist = { version: 1, ent
   return { differences, invalid, stale, unclassified }
 }
 
-export const validateAllowlist = (allowlist) => {
-  if (!isRecord(allowlist) || allowlist.version !== 1 || !Array.isArray(allowlist.entries)) {
-    throw new Error("Oracle allowlist must have version 1 and an entries array")
-  }
-  for (const entry of allowlist.entries) {
-    if (
-      !isRecord(entry) ||
-      typeof entry.path !== "string" ||
-      entry.path.length === 0 ||
-      !Object.hasOwn(entry, "before") ||
-      !Object.hasOwn(entry, "after") ||
-      typeof entry.rationale !== "string" ||
-      entry.rationale.trim().length === 0 ||
-      !Array.isArray(entry.evidence) ||
-      entry.evidence.length === 0 ||
-      entry.evidence.some((item) => typeof item !== "string" || item.trim().length === 0)
-    ) {
-      throw new Error(`Oracle allowlist entry is not reviewable: ${JSON.stringify(entry)}`)
-    }
-  }
-  if (allowlist.groups !== undefined && !Array.isArray(allowlist.groups)) {
-    throw new Error("Oracle allowlist groups must be an array when provided")
-  }
-  for (const group of allowlist.groups ?? []) {
-    if (
-      !isRecord(group) ||
-      typeof group.prefix !== "string" ||
-      !/^\$\./.test(group.prefix) ||
-      group.prefix.endsWith(".") ||
-      group.prefix.endsWith("[") ||
-      !Number.isInteger(group.count) ||
-      group.count <= 0 ||
-      typeof group.diffHash !== "string" ||
-      !/^[a-f0-9]{64}$/.test(group.diffHash) ||
-      typeof group.rationale !== "string" ||
-      group.rationale.trim().length === 0 ||
-      !Array.isArray(group.evidence) ||
-      group.evidence.length === 0 ||
-      group.evidence.some((item) => typeof item !== "string" || item.trim().length === 0)
-    ) {
-      throw new Error(`Oracle allowlist group is not reviewable: ${JSON.stringify(group)}`)
-    }
-  }
-  return allowlist
-}
+export const validateAllowlist = Schema.decodeUnknownSync(OracleAllowlistSchema)
 
 export const assertReviewedParity = (before, after, allowlist) => {
   const result = classifyDifferences(before, after, allowlist)
@@ -271,18 +259,14 @@ export const assertReviewedParity = (before, after, allowlist) => {
   return result
 }
 
-const readJson = async (path) => JSON.parse(await readFile(path, "utf8"))
-
 export const readOracle = async (path) => {
-  const document = await readJson(path)
-  if (!isRecord(document) || document.oracleVersion !== oracleVersion || typeof document.contentHash !== "string") {
-    throw new Error(`Invalid oracle envelope at ${path}`)
-  }
-  const { contentHash, oracleVersion: _oracleVersion, ...content } = document
+  const document = parseJson(OracleEnvelopeSchema, await readFile(path, "utf8"))
+  const contentHash = Schema.decodeUnknownSync(Schema.String)(document.contentHash)
+  const { contentHash: _contentHash, oracleVersion: _oracleVersion, ...content } = document
   const expected = sha256(content)
   if (contentHash !== expected)
     throw new Error(`Oracle hash mismatch at ${path}: expected ${expected}, found ${contentHash}`)
-  return document
+  return { ...document, contentHash }
 }
 
 export const writeOracle = async (path, content) => {

@@ -8,6 +8,7 @@ import { artifactManifest } from "./oracle-artifacts.mjs"
 import { captureOracleCorpus } from "./oracle-probe.mjs"
 import { assertReviewedParity, readOracle, validateAllowlist, writeJson } from "./oracle-core.mjs"
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
+import { parseJsonValue } from "./json-boundary.mjs"
 
 const execFileAsync = promisify(execFile)
 const root = oracleWorkspaceRoot
@@ -43,7 +44,7 @@ export const verifySupplemental = async ({
   baselinePath = defaultSupplementalOraclePath
 } = {}) => {
   const baseline = await readOracle(baselinePath)
-  const allowlist = validateAllowlist(JSON.parse(await readFile(allowlistPath, "utf8")))
+  const allowlist = validateAllowlist(parseJsonValue(await readFile(allowlistPath, "utf8")))
   const directory = await mkdtemp(join(resolve(root), ".oracle-v2-"))
   const currentPath = join(directory, "current.json")
   try {

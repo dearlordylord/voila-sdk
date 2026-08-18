@@ -1,8 +1,12 @@
 import { expect, test } from "vitest"
 
 import * as cohort from "./verify-effect-cohort.mjs"
+import type { DependencyDescriptor } from "./verify-effect-cohort.mjs"
 
-const versionedDependency = (version: string, dependencies: Record<string, unknown> = {}) => ({ dependencies, version })
+const versionedDependency = (version: string, dependencies: Record<string, DependencyDescriptor> = {}) => ({
+  dependencies,
+  version
+})
 
 const completeProject = () => ({
   dependencies: {

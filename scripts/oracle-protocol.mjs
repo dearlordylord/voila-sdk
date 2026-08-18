@@ -2,6 +2,7 @@ import { createRequire } from "node:module"
 import { join } from "node:path"
 import { spawn } from "node:child_process"
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
+import { parseJsonValue } from "./json-boundary.mjs"
 
 const root = oracleWorkspaceRoot
 const mcpRoot = join(root, "packages/voila-mcp")
@@ -235,7 +236,7 @@ export const stdioSamples = async () => {
       const next = pending
       pending = undefined
       try {
-        next.resolve(JSON.parse(line))
+        next.resolve(parseJsonValue(line))
       } catch (error) {
         next.reject(error)
       }

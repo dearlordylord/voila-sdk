@@ -3,8 +3,15 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
+import { Schema } from "effect"
 
-import { SUPPORTED_NODE_ENGINE, collectDependencyVersions, evaluateRuntimeCohort } from "./verify-effect-cohort.mjs"
+import { parseJson } from "./json-boundary.mjs"
+import {
+  SUPPORTED_NODE_ENGINE,
+  collectDependencyVersions,
+  evaluateRuntimeCohort,
+  parseDependencyListOutput
+} from "./verify-effect-cohort.mjs"
 
 const packageDefinitions = [
   { name: "@firfi/voila-sdk", directory: "packages/voila-sdk", kind: "sdk" },
@@ -15,6 +22,10 @@ const packageDefinitions = [
 const supportedManagers = ["pnpm", "npm"]
 const processArgumentOffset = 2
 const consumerPrefix = "voila-clean-consumer-"
+const InstalledManifestSchema = Schema.Struct({
+  bin: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  engines: Schema.Struct({ node: Schema.String })
+})
 
 export const parseManagerArguments = (args) => {
   const managerArgument = args.find((argument) => argument.startsWith("--manager="))
@@ -97,13 +108,13 @@ const executablePath = (directory, name) =>
 
 const installedManifest = (directory, packageName) => {
   const path = join(directory, "node_modules", ...packageName.split("/"), "package.json")
-  return JSON.parse(readFileSync(path, "utf8"))
+  return parseJson(InstalledManifestSchema, readFileSync(path, "utf8"))
 }
 
 const assertManifest = (directory, packageName, expectedBin) => {
   const manifest = installedManifest(directory, packageName)
-  if (manifest.engines?.node !== SUPPORTED_NODE_ENGINE) {
-    throw new Error(`${packageName}: expected Node engine ${SUPPORTED_NODE_ENGINE}, found ${manifest.engines?.node}`)
+  if (manifest.engines.node !== SUPPORTED_NODE_ENGINE) {
+    throw new Error(`${packageName}: expected Node engine ${SUPPORTED_NODE_ENGINE}, found ${manifest.engines.node}`)
   }
 
   if (expectedBin !== undefined && JSON.stringify(manifest.bin) !== JSON.stringify(expectedBin)) {
@@ -112,8 +123,7 @@ const assertManifest = (directory, packageName, expectedBin) => {
 }
 
 const assertRuntimeCohort = (listOutput, manager, consumerKind) => {
-  const parsed = JSON.parse(listOutput)
-  const projects = Array.isArray(parsed) ? parsed : [parsed]
+  const projects = parseDependencyListOutput(listOutput)
   const requiredRuntimePackages = consumerKind === "sdk" ? ["effect"] : ["effect", "@effect/platform-node", "redis"]
   const failures = evaluateRuntimeCohort(collectDependencyVersions(projects), requiredRuntimePackages)
 

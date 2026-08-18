@@ -1,16 +1,19 @@
+import type { Schema } from "effect"
+
 export type DependencyVersionMap = ReadonlyMap<string, ReadonlySet<string>>
 
-export interface DependencyDescriptor {
+export interface DependencyDescriptor extends DependencyProject {
   readonly version?: string
-  readonly [key: string]: unknown
 }
 
 export interface DependencyProject {
   readonly dependencies?: Readonly<Record<string, DependencyDescriptor>>
   readonly devDependencies?: Readonly<Record<string, DependencyDescriptor>>
   readonly optionalDependencies?: Readonly<Record<string, DependencyDescriptor>>
-  readonly [key: string]: unknown
 }
+
+export declare const DependencyProjectSchema: Schema.Codec<DependencyProject>
+export declare const parseDependencyListOutput: (input: string) => ReadonlyArray<DependencyProject>
 
 export declare const EFFECT_COHORT_VERSION: "4.0.0-rc.110"
 export declare const TSGO_VERSION: "0.36.5"

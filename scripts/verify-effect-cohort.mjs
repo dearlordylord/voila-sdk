@@ -2,6 +2,9 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { Schema } from "effect"
+
+import { parseJson } from "./json-boundary.mjs"
 
 export const EFFECT_COHORT_VERSION = "4.0.0-rc.110"
 export const TSGO_VERSION = "0.36.5"
@@ -37,7 +40,23 @@ const workspacePackages = [
   "packages/voila-session-store/package.json"
 ]
 
-const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
+const WorkspaceManifestSchema = Schema.Struct({ engines: Schema.Struct({ node: Schema.String }) })
+const DependencyRecordSchema = Schema.Record(
+  Schema.String,
+  Schema.suspend(() => DependencyProjectSchema)
+)
+export const DependencyProjectSchema = Schema.Struct({
+  dependencies: Schema.optionalKey(DependencyRecordSchema),
+  devDependencies: Schema.optionalKey(DependencyRecordSchema),
+  optionalDependencies: Schema.optionalKey(DependencyRecordSchema),
+  version: Schema.optionalKey(Schema.String)
+})
+const DependencyListOutputSchema = Schema.Union([Schema.Array(DependencyProjectSchema), DependencyProjectSchema])
+
+export const parseDependencyListOutput = (input) => {
+  const parsed = parseJson(DependencyListOutputSchema, input)
+  return Array.isArray(parsed) ? parsed : [parsed]
+}
 
 const addVersion = (foundVersions, name, version) => {
   if (typeof version !== "string") return
@@ -48,15 +67,14 @@ const addVersion = (foundVersions, name, version) => {
 }
 
 const visitPackage = (entry, foundVersions, visited) => {
-  if (!isRecord(entry) || visited.has(entry)) return
+  if (visited.has(entry)) return
   visited.add(entry)
 
   for (const sectionName of ["dependencies", "devDependencies", "optionalDependencies"]) {
     const section = entry[sectionName]
-    if (!isRecord(section)) continue
+    if (section === undefined) continue
 
     for (const [name, dependency] of Object.entries(section)) {
-      if (!isRecord(dependency)) continue
       if (
         name === "effect" ||
         name === "redis" ||
@@ -159,16 +177,16 @@ export const evaluateRuntimeCohort = (foundVersions, requiredRuntimePackages = [
   return failures
 }
 
-const readWorkspaceManifest = (path) => JSON.parse(readFileSync(resolve(path), "utf8"))
+const readWorkspaceManifest = (path) => parseJson(WorkspaceManifestSchema, readFileSync(resolve(path), "utf8"))
 
 export const verifyWorkspaceEngines = () => {
   const failures = []
 
   for (const path of workspacePackages) {
     const manifest = readWorkspaceManifest(path)
-    const actual = manifest.engines?.node
+    const actual = manifest.engines.node
     if (actual !== SUPPORTED_NODE_ENGINE) {
-      failures.push(`${path}: expected engines.node ${SUPPORTED_NODE_ENGINE}, found ${actual ?? "missing"}`)
+      failures.push(`${path}: expected engines.node ${SUPPORTED_NODE_ENGINE}, found ${actual}`)
     }
   }
 
@@ -176,7 +194,9 @@ export const verifyWorkspaceEngines = () => {
 }
 
 const installedProjects = () =>
-  JSON.parse(execFileSync("pnpm", ["list", "--recursive", "--depth", "Infinity", "--json"], { encoding: "utf8" }))
+  parseDependencyListOutput(
+    execFileSync("pnpm", ["list", "--recursive", "--depth", "Infinity", "--json"], { encoding: "utf8" })
+  )
 
 const tsgoVersion = () =>
   execFileSync("pnpm", ["--silent", "exec", "effect-tsgo", "--version"], { encoding: "utf8" }).trim()

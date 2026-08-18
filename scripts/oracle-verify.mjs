@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { captureOracleCorpus } from "./oracle-probe.mjs"
 import { assertReviewedParity, readOracle, validateAllowlist, writeJson } from "./oracle-core.mjs"
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
+import { parseJsonValue } from "./json-boundary.mjs"
 
 const root = oracleWorkspaceRoot
 export const defaultOraclePath = resolve(root, "scripts/oracle-baselines/baseline.json")
@@ -18,7 +19,7 @@ const parseArgs = (args) => ({
 
 export const verify = async ({ allowlistPath = defaultAllowlistPath, baselinePath = defaultOraclePath } = {}) => {
   const baseline = await readOracle(baselinePath)
-  const allowlist = validateAllowlist(JSON.parse(await readFile(allowlistPath, "utf8")))
+  const allowlist = validateAllowlist(parseJsonValue(await readFile(allowlistPath, "utf8")))
   const directory = await mkdtemp(join(tmpdir(), "voila-oracle-"))
   const currentPath = join(directory, "current.json")
   try {

@@ -26,7 +26,8 @@ export interface VoilaMcpHttpServerOptions {
   readonly port: number
 }
 
-const healthBody = { name: mcpName, status: "ok" }
+const HealthBodySchema = Schema.Struct({ name: Schema.String, status: Schema.Literal("ok") })
+const healthBody = Schema.decodeUnknownSync(HealthBodySchema)({ name: mcpName, status: "ok" })
 
 /**
  * The two routes that are ours rather than MCP's. Deployment guidance points
@@ -40,10 +41,11 @@ const healthRoutes = Layer.mergeAll(
 
 const localOriginHosts = new Set(["127.0.0.1", "[::1]", "localhost"])
 
-const forbiddenOriginBody = {
+const ForbiddenOriginBodySchema = Schema.Struct({ error: Schema.Literal("forbidden_origin"), message: Schema.String })
+const forbiddenOriginBody = Schema.decodeUnknownSync(ForbiddenOriginBodySchema)({
   error: "forbidden_origin",
   message: "Voila MCP over HTTP accepts browser requests from local origins only"
-}
+})
 
 const isLocalOrigin = (origin: string | undefined): boolean => {
   // a non-browser client (an MCP stdio bridge, curl, a gateway) sends no
@@ -120,17 +122,59 @@ const JsonRpcNotificationSchema = Schema.Struct({
 
 type JsonRpcId = Schema.Schema.Type<typeof JsonRpcRequestSchema>["id"]
 
+const JsonRpcErrorSchema = Schema.Struct({
+  _tag: Schema.optionalKey(Schema.String),
+  code: Schema.Number.pipe(Schema.check(Schema.isInt())),
+  data: Schema.optionalKey(Schema.Json),
+  message: Schema.String
+})
+
+const JsonRpcErrorResponseSchema = Schema.Struct({
+  error: JsonRpcErrorSchema,
+  id: Schema.Union([McpSchema.RequestId, Schema.Null]),
+  jsonrpc: Schema.Literal(jsonRpcVersion)
+})
+
+const JsonRpcResultResponseSchema = Schema.Struct({
+  id: McpSchema.RequestId,
+  jsonrpc: Schema.Literal(jsonRpcVersion),
+  result: Schema.Json
+})
+
 const RequiredCallToolPayloadSchema = Schema.Struct({
   ...McpSchema.RequestMeta.fields,
   name: Schema.String,
   arguments: Schema.Record(Schema.String, Schema.Any)
 })
 
-const jsonRpcError = (id: JsonRpcId | null, code: number, message: string): HttpServerResponse.HttpServerResponse =>
-  HttpServerResponse.jsonUnsafe({ error: { code, message }, id, jsonrpc: jsonRpcVersion })
+const jsonRpcError = (
+  id: JsonRpcId | null,
+  code: number,
+  message: string,
+  options: { readonly data?: Schema.Json; readonly tag?: string } = {}
+): HttpServerResponse.HttpServerResponse =>
+  HttpServerResponse.jsonUnsafe(
+    Schema.decodeUnknownSync(JsonRpcErrorResponseSchema)({
+      error: {
+        code,
+        message,
+        ...(options.data === undefined ? {} : { data: options.data }),
+        ...(options.tag === undefined ? {} : { _tag: options.tag })
+      },
+      id,
+      jsonrpc: jsonRpcVersion
+    })
+  )
 
 const jsonRpcResult = (id: JsonRpcId, result: unknown): HttpServerResponse.HttpServerResponse =>
-  HttpServerResponse.jsonUnsafe({ id, jsonrpc: jsonRpcVersion, result })
+  HttpServerResponse.jsonUnsafe(
+    Schema.decodeUnknownSync(JsonRpcResultResponseSchema)({ id, jsonrpc: jsonRpcVersion, result })
+  )
+
+const encodeMcpResult = <S extends Schema.ConstraintEncoder<unknown>>(
+  schema: S,
+  value: Schema.Schema.Type<S>
+): Schema.Json => Schema.decodeUnknownSync(Schema.Json)(Schema.encodeUnknownSync(schema)(value))
 
 const invalidRequest = (id: JsonRpcId | null = null): HttpServerResponse.HttpServerResponse =>
   jsonRpcError(id, invalidRequestCode, "Invalid Request")
@@ -142,11 +186,7 @@ const missingArguments = (id: JsonRpcId, params: unknown): HttpServerResponse.Ht
   const decoded = Schema.decodeUnknownResult(RequiredCallToolPayloadSchema)(params)
   const defect = Result.isFailure(decoded) ? decoded.failure.message : "Missing required tool arguments"
   const die = { _tag: "Die", defect }
-  return HttpServerResponse.jsonUnsafe({
-    error: { _tag: "Cause", code: 0, message: JSON.stringify(die), data: die },
-    id,
-    jsonrpc: jsonRpcVersion
-  })
+  return jsonRpcError(id, 0, JSON.stringify(die), { data: die, tag: "Cause" })
 }
 
 const toolFor = (name: string): VoilaMcpToolRecord | undefined => voilaMcpTools.find((record) => record.name === name)
@@ -163,24 +203,36 @@ const isNotification = (value: unknown): boolean => {
   return Result.isSuccess(decoded) && decoded.success.method.startsWith("notifications/")
 }
 
-const initializeResult = (version: string, requestedProtocolVersion: string) => ({
-  capabilities: { completions: {}, tools: { listChanged: true } },
-  protocolVersion: supportedProtocolVersions.has(requestedProtocolVersion) ? requestedProtocolVersion : protocolVersion,
-  serverInfo: { name: mcpName, version }
-})
+const initializeResult = (version: string, requestedProtocolVersion: string) =>
+  McpSchema.InitializeResult.make({
+    capabilities: { completions: {}, tools: { listChanged: true } },
+    protocolVersion: supportedProtocolVersions.has(requestedProtocolVersion)
+      ? requestedProtocolVersion
+      : protocolVersion,
+    serverInfo: { name: mcpName, version }
+  })
 
 const handleInitialize = (id: JsonRpcId, params: unknown, version: string) => {
   const decoded = Schema.decodeUnknownResult(McpSchema.Initialize.payloadSchema)(params)
   return Result.isFailure(decoded)
     ? invalidParams(id)
-    : jsonRpcResult(id, initializeResult(version, decoded.success.protocolVersion))
+    : jsonRpcResult(
+        id,
+        encodeMcpResult(McpSchema.InitializeResult, initializeResult(version, decoded.success.protocolVersion))
+      )
 }
 
 const handleListTools = (id: JsonRpcId, params: unknown) => {
   const decoded = Schema.decodeUnknownResult(McpSchema.ListTools.payloadSchema)(params)
   return Result.isFailure(decoded)
     ? invalidParams(id)
-    : jsonRpcResult(id, { tools: voilaMcpTools.map((record) => record.tool) })
+    : jsonRpcResult(
+        id,
+        encodeMcpResult(
+          McpSchema.ListToolsResult,
+          new McpSchema.ListToolsResult({ tools: voilaMcpTools.map((record) => record.tool) })
+        )
+      )
 }
 
 const handleCallTool = (
@@ -199,41 +251,51 @@ const handleCallTool = (
   return tool === undefined
     ? Effect.succeed(invalidParams(id, `Tool '${decoded.success.name}' not found`))
     : Effect.map(executeVoilaTool(tool.name, decoded.success.arguments, operations), (result) =>
-        jsonRpcResult(id, result)
+        jsonRpcResult(id, encodeMcpResult(McpSchema.CallToolResult, result))
       )
 }
 
 type BaselineMethodHandler = (id: JsonRpcId, params: unknown) => HttpServerResponse.HttpServerResponse
 
-const payloadResponse = (id: JsonRpcId, valid: boolean, result: unknown): HttpServerResponse.HttpServerResponse =>
+const payloadResponse = (id: JsonRpcId, valid: boolean, result: Schema.Json): HttpServerResponse.HttpServerResponse =>
   valid ? jsonRpcResult(id, result) : invalidParams(id)
 
 const baselineMethodHandlers: ReadonlyMap<string, BaselineMethodHandler> = new Map([
   [
     "ping",
     (id, params) =>
-      payloadResponse(id, Result.isSuccess(Schema.decodeUnknownResult(McpSchema.Ping.payloadSchema)(params)), {})
+      payloadResponse(
+        id,
+        Result.isSuccess(Schema.decodeUnknownResult(McpSchema.Ping.payloadSchema)(params)),
+        encodeMcpResult(McpSchema.Ping.successSchema, {})
+      )
   ],
   [
     "completion/complete",
     (id, params) =>
-      payloadResponse(id, Result.isSuccess(Schema.decodeUnknownResult(McpSchema.Complete.payloadSchema)(params)), {
-        completion: { hasMore: false, total: 0, values: [] }
-      })
+      payloadResponse(
+        id,
+        Result.isSuccess(Schema.decodeUnknownResult(McpSchema.Complete.payloadSchema)(params)),
+        encodeMcpResult(McpSchema.CompleteResult, McpSchema.CompleteResult.empty)
+      )
   ],
   [
     "prompts/list",
     (id, params) =>
-      payloadResponse(id, Result.isSuccess(Schema.decodeUnknownResult(McpSchema.ListPrompts.payloadSchema)(params)), {
-        prompts: []
-      })
+      payloadResponse(
+        id,
+        Result.isSuccess(Schema.decodeUnknownResult(McpSchema.ListPrompts.payloadSchema)(params)),
+        encodeMcpResult(McpSchema.ListPromptsResult, new McpSchema.ListPromptsResult({ prompts: [] }))
+      )
   ],
   [
     "resources/list",
     (id, params) =>
-      payloadResponse(id, Result.isSuccess(Schema.decodeUnknownResult(McpSchema.ListResources.payloadSchema)(params)), {
-        resources: []
-      })
+      payloadResponse(
+        id,
+        Result.isSuccess(Schema.decodeUnknownResult(McpSchema.ListResources.payloadSchema)(params)),
+        encodeMcpResult(McpSchema.ListResourcesResult, new McpSchema.ListResourcesResult({ resources: [] }))
+      )
   ],
   [
     "resources/templates/list",
@@ -241,7 +303,10 @@ const baselineMethodHandlers: ReadonlyMap<string, BaselineMethodHandler> = new M
       payloadResponse(
         id,
         Result.isSuccess(Schema.decodeUnknownResult(McpSchema.ListResourceTemplates.payloadSchema)(params)),
-        { resourceTemplates: [] }
+        encodeMcpResult(
+          McpSchema.ListResourceTemplatesResult,
+          new McpSchema.ListResourceTemplatesResult({ resourceTemplates: [] })
+        )
       )
   ]
 ])

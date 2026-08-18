@@ -129,7 +129,7 @@ describe("oracle core", () => {
   test("requires evidence and rationale for every reviewed exception", () => {
     expect(validateAllowlist({ version: 1, entries: [] })).toEqual({ version: 1, entries: [] })
     expect(() => validateAllowlist({ version: 1, entries: [{ after: 1, before: 0, path: "$.value" }] })).toThrow(
-      "not reviewable"
+      "evidence"
     )
     expect(() =>
       validateAllowlist({
@@ -137,7 +137,7 @@ describe("oracle core", () => {
         entries: [],
         groups: [{ count: 1, diffHash: "bad", prefix: "$.value", rationale: "missing evidence" }]
       })
-    ).toThrow("group is not reviewable")
+    ).toThrow("diffHash")
   })
 
   test("fails closed on an unclassified difference", () => {

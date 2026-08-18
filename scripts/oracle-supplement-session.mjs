@@ -34,7 +34,8 @@ const encodeSnapshot = (effect, sdk, snapshot) =>
   JSON.stringify(effect.Schema.encodeSync(sdk.SdkSessionSnapshotSchema)(snapshot))
 
 const decodeRegion = (effect, sdk, contents) =>
-  effect.Schema.decodeUnknownSync(sdk.SdkSessionSnapshotSchema)(JSON.parse(contents)).session.metadata.regionId
+  effect.Schema.decodeUnknownSync(effect.Schema.fromJsonString(sdk.SdkSessionSnapshotSchema))(contents).session.metadata
+    .regionId
 
 const writeSnapshot = async (effect, sdk, path, snapshot) => {
   await writeFile(path, encodeSnapshot(effect, sdk, snapshot), { encoding: "utf8", mode: 0o600 })

@@ -1,13 +1,27 @@
 import { createRequire } from "node:module"
 import { readFile, readdir, stat } from "node:fs/promises"
 import { join, relative } from "node:path"
+import { Schema } from "effect"
 
 import { hashFile } from "./oracle-core.mjs"
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
+import { parseJson } from "./json-boundary.mjs"
 
 const root = oracleWorkspaceRoot
 
-const readJson = async (path) => JSON.parse(await readFile(path, "utf8"))
+const DependencyRecordSchema = Schema.Record(Schema.String, Schema.String)
+const PackageManifestSchema = Schema.Struct({
+  bin: Schema.optionalKey(Schema.Json),
+  dependencies: Schema.optionalKey(DependencyRecordSchema),
+  exports: Schema.optionalKey(Schema.Json),
+  main: Schema.optionalKey(Schema.String),
+  name: Schema.String,
+  peerDependencies: Schema.optionalKey(DependencyRecordSchema),
+  version: Schema.String
+})
+const SourceMapSchema = Schema.Struct({ sources: Schema.optionalKey(Schema.Array(Schema.String)) })
+
+const readPackageManifest = async (path) => parseJson(PackageManifestSchema, await readFile(path, "utf8"))
 
 const allFiles = async (directory) => {
   const entries = await readdir(directory, { withFileTypes: true })
@@ -27,7 +41,7 @@ const installedPackage = async (fromRoot, name) => {
     while (path !== root && path !== "/") {
       path = join(path, "..")
       try {
-        const candidate = await readJson(join(path, "package.json"))
+        const candidate = await readPackageManifest(join(path, "package.json"))
         if (candidate.name === name) return { json: candidate, root: path }
       } catch {
         // Continue walking through a package's dist directory.
@@ -83,7 +97,7 @@ const packageClosure = async (packageRoot, packageJson, seen = new Set()) => {
     const key = `${name}@${installed.json.version}`
     if (seen.has(key)) continue
     seen.add(key)
-    result.push({ name, requested: dependencies[name], version: installed.json.version ?? "unknown" })
+    result.push({ name, requested: dependencies[name], version: installed.json.version })
     if (installed.root !== undefined) result.push(...(await packageClosure(installed.root, installed.json, seen)))
   }
   return result
@@ -92,7 +106,7 @@ const packageClosure = async (packageRoot, packageJson, seen = new Set()) => {
 export const artifactManifest = async (rootPath = root) => {
   const packages = []
   for (const spec of artifactPackageSpecs(rootPath)) {
-    const packageJson = await readJson(join(spec.path, "package.json"))
+    const packageJson = await readPackageManifest(join(spec.path, "package.json"))
     const files = []
     for (const path of await allFiles(join(spec.path, "dist"))) {
       const fileStat = await stat(path)
@@ -103,7 +117,7 @@ export const artifactManifest = async (rootPath = root) => {
     const compositionStatus = {}
     for (const file of files.filter(({ path }) => path.endsWith(".cjs") || path.endsWith(".mjs"))) {
       try {
-        const map = JSON.parse(await readFile(join(spec.path, `${file.path}.map`), "utf8"))
+        const map = parseJson(SourceMapSchema, await readFile(join(spec.path, `${file.path}.map`), "utf8"))
         composition[file.path] = (map.sources ?? []).map((source) => source.replaceAll("\\", "/")).sort()
         compositionStatus[file.path] = "available"
       } catch (error) {

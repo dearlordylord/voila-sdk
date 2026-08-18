@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { chdir, cwd } from "node:process"
+import { Schema } from "effect"
 
+import { parseJson } from "./json-boundary.mjs"
 import { EFFECT_COHORT_VERSION, REDIS_VERSION, SUPPORTED_NODE_ENGINE } from "./verify-effect-cohort.mjs"
 
 const packageDirectory = process.argv[2] ?? "."
@@ -22,6 +24,15 @@ const requiredByKind = {
 }
 
 const allowedDistExtensions = [".cjs", ".d.ts", ".d.ts.map", ".js", ".js.map", ".mjs"]
+const DependenciesSchema = Schema.Record(Schema.String, Schema.String)
+const PackageManifestSchema = Schema.Struct({
+  dependencies: Schema.optionalKey(DependenciesSchema),
+  devDependencies: Schema.optionalKey(DependenciesSchema),
+  engines: Schema.Struct({ node: Schema.String })
+})
+const PackOutputSchema = Schema.Array(
+  Schema.Struct({ files: Schema.Array(Schema.Struct({ path: Schema.String })), name: Schema.String })
+).pipe(Schema.check(Schema.isMinLength(1)))
 
 if (!Object.hasOwn(requiredByKind, packageKind)) {
   throw new Error(`Unknown package audit kind: ${packageKind}`)
@@ -30,7 +41,7 @@ if (!Object.hasOwn(requiredByKind, packageKind)) {
 chdir(packageDirectory)
 
 try {
-  const manifest = JSON.parse(readFileSync("package.json", "utf8"))
+  const manifest = parseJson(PackageManifestSchema, readFileSync("package.json", "utf8"))
   const packageDependencies = { ...manifest.dependencies, ...manifest.devDependencies }
   const prohibitedDependencies = [
     "@effect/ai",
@@ -40,7 +51,7 @@ try {
     "@effect/rpc"
   ]
 
-  if (manifest.engines?.node !== SUPPORTED_NODE_ENGINE) {
+  if (manifest.engines.node !== SUPPORTED_NODE_ENGINE) {
     throw new Error(`Package declares unsupported Node engine: expected ${SUPPORTED_NODE_ENGINE}`)
   }
 
@@ -49,8 +60,8 @@ try {
   }
 
   if (
-    manifest.dependencies?.["@effect/platform-node"] === EFFECT_COHORT_VERSION &&
-    manifest.dependencies?.redis !== REDIS_VERSION
+    manifest.dependencies["@effect/platform-node"] === EFFECT_COHORT_VERSION &&
+    manifest.dependencies.redis !== REDIS_VERSION
   ) {
     throw new Error(`Package using @effect/platform-node must provide exact redis ${REDIS_VERSION}`)
   }
@@ -61,7 +72,7 @@ try {
   }
 
   const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { encoding: "utf8" })
-  const [pack] = JSON.parse(output)
+  const [pack] = parseJson(PackOutputSchema, output)
   const paths = pack.files.map((file) => file.path)
   const requiredFiles = requiredByKind[packageKind]
 

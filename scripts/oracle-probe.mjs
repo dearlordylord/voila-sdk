@@ -13,6 +13,7 @@ import {
 import { artifactManifest } from "./oracle-artifacts.mjs"
 import { makeSession, protocolSamples, stdioSamples } from "./oracle-protocol.mjs"
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
+import { parseJsonValue } from "./json-boundary.mjs"
 
 const root = oracleWorkspaceRoot
 const mcpRoot = join(root, "packages/voila-mcp")
@@ -57,11 +58,11 @@ const loadBuiltPackages = async () => {
   }
 }
 
-const readJson = async (path) => JSON.parse(await readFile(path, "utf8"))
+const readJson = async (path) => parseJsonValue(await readFile(path, "utf8"))
 const fixture = async (name) => readJson(join(sdkRoot, "test/fixtures", name))
 const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value)
 
-const either = (value) => {
+const normalizeResultAsEither = (value) => {
   if (value?._tag === "Right") return { _tag: "Right", value: value.right }
   if (value?._tag === "Left") return { _tag: "Left", value: value.left }
   if (value?._tag === "Success") return { _tag: "Right", value: value.success }
@@ -283,8 +284,8 @@ const sdkSamples = async (sdk) => {
   for (const [name, file, functionName] of fixtureCases) {
     parsed[name] =
       file === undefined
-        ? either(sdk[functionName](discountFixture, { pageSize: 2, query: "milk" }))
-        : either(sdk[functionName](await fixture(file)))
+        ? normalizeResultAsEither(sdk[functionName](discountFixture, { pageSize: 2, query: "milk" }))
+        : normalizeResultAsEither(sdk[functionName](await fixture(file)))
   }
   const session = makeSession(sdk)
   const authenticated = sdk.makeAuthenticatedSdkSessionSnapshot(session.session, "authenticated", {
@@ -294,14 +295,14 @@ const sdkSamples = async (sdk) => {
   const optionalitySchema = sdk.SearchInputSchema
   const slotInputSchema = sdk.SlotListingInputSchema
   const schemaCase = (target, value) => ({
-    decode: either(decodeUnknown(target, value)),
-    encode: either(encodeValue(target, value))
+    decode: normalizeResultAsEither(decodeUnknown(target, value)),
+    encode: normalizeResultAsEither(encodeValue(target, value))
   })
   const requests = {
     cart: toOracleValue(sdk.makeCartViewRequest()),
-    category: either(sdk.makeCategoryProductsRequest({ categoryId: "oracle-category", pageSize: 2 })),
-    search: either(sdk.makeSearchRequest({ query: "milk", pageSize: 4 })),
-    slot: either(
+    category: normalizeResultAsEither(sdk.makeCategoryProductsRequest({ categoryId: "oracle-category", pageSize: 2 })),
+    search: normalizeResultAsEither(sdk.makeSearchRequest({ query: "milk", pageSize: 4 })),
+    slot: normalizeResultAsEither(
       sdk.makeSlotListingRequest({
         deliveryDestinationId: "oracle-destination",
         regionId: "oracle-region",
@@ -311,20 +312,20 @@ const sdkSamples = async (sdk) => {
   }
   return {
     codec: {
-      authenticated: either(authenticated),
-      decodeAuthenticated: either(sdk.decodeSdkSessionSnapshot(resultValue(authenticated))),
-      decodeGuest: either(sdk.decodeSdkSessionSnapshot(session.guest)),
-      decodeSession: either(sdk.decodeSessionSnapshot(session.session)),
+      authenticated: normalizeResultAsEither(authenticated),
+      decodeAuthenticated: normalizeResultAsEither(sdk.decodeSdkSessionSnapshot(resultValue(authenticated))),
+      decodeGuest: normalizeResultAsEither(sdk.decodeSdkSessionSnapshot(session.guest)),
+      decodeSession: normalizeResultAsEither(sdk.decodeSessionSnapshot(session.session)),
       guestDiagnostic: sdk.redactSdkSessionSnapshot(session.guest),
-      invalidSession: either(sdk.decodeSessionSnapshot({ metadata: {} }))
+      invalidSession: normalizeResultAsEither(sdk.decodeSessionSnapshot({ metadata: {} }))
     },
     parsed,
     requests,
     schemaCases: {
       optionalAbsent: schemaCase(optionalitySchema, { query: "milk", pageSize: 4 }),
       optionalUndefined: schemaCase(optionalitySchema, { pageSize: 4, pageToken: undefined, query: "milk" }),
-      refinementFailure: either(decodeUnknown(optionalitySchema, { pageSize: 0, query: " milk " })),
-      slotDefault: either(
+      refinementFailure: normalizeResultAsEither(decodeUnknown(optionalitySchema, { pageSize: 0, query: " milk " })),
+      slotDefault: normalizeResultAsEither(
         decodeUnknown(slotInputSchema, {
           deliveryDestinationId: "d",
           regionId: "r",

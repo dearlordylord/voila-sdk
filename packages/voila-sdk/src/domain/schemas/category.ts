@@ -24,6 +24,9 @@ const distinctCategoryIdentifiers = (category: {
  * The nested shape spells the tree out inline, each category carrying a path
  * segment its children extend.
  */
+// Recursive codecs require an explicit self type before the schema value exists;
+// this boundary-adjacent interface is the recursion knot and the schema still
+// owns all runtime decoding and encoding.
 export interface RawCategoryShape {
   readonly categories?: ReadonlyArray<RawCategory>
   readonly categoryId: string
@@ -88,6 +91,8 @@ export const RawCategoriesSchema = Schema.Union([RawCategoryStoreSchema, RawCate
 
 export type RawCategories = Schema.Schema.Type<typeof RawCategoriesSchema>
 
+// As above, revealCodec needs the recursive shape while the schema is being
+// initialized; callers consume only the schema-derived NormalizedCategory type.
 export interface NormalizedCategoryShape {
   readonly categoryId: string
   readonly children: ReadonlyArray<NormalizedCategory>
