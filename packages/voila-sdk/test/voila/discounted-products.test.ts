@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { DiscountedProductsInput, SessionSnapshot } from "../../src/index.js"
@@ -34,17 +34,17 @@ const makeSession = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeProduct = (
@@ -94,10 +94,10 @@ describe("discounted product normalization", () => {
       requestInput
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      const [product] = result.right.products
+    if (Result.isSuccess(result)) {
+      const [product] = result.success.products
 
       expect(product?.regularPrice.amount).toBe("5.00")
       expect(product?.discountPrice.amount).toBe("4.00")
@@ -295,10 +295,10 @@ describe("discounted product normalization", () => {
       requestInput
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DiscountedProductsResponseSchemaMismatch")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DiscountedProductsResponseSchemaMismatch")
     }
   })
 
@@ -313,11 +313,11 @@ describe("discounted product normalization", () => {
       { pageSize: 1, pageToken: "start-token" }
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.pagination).toEqual({ nextPageToken: "next-token" })
-      expect(result.right.scan).toMatchObject({
+    if (Result.isSuccess(result)) {
+      expect(result.success.pagination).toEqual({ nextPageToken: "next-token" })
+      expect(result.success.scan).toMatchObject({
         exhausted: false,
         nextPageToken: "next-token",
         startedPageToken: "start-token"
@@ -334,33 +334,33 @@ describe("discounted product normalization", () => {
       retailerCategoryId: "retailer-category-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("GET")
-      expect(request.right.url.pathname).toBe("/api/product-listing-pages/v1/pages/promotions")
-      expect(request.right.url.searchParams.get("categoryId")).toBe("category-id")
-      expect(request.right.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
-      expect(request.right.url.searchParams.get("pageToken")).toBe("next-token")
-      expect(request.right.url.searchParams.has("q")).toBe(false)
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("GET")
+      expect(request.success.url.pathname).toBe("/api/product-listing-pages/v1/pages/promotions")
+      expect(request.success.url.searchParams.get("categoryId")).toBe("category-id")
+      expect(request.success.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
+      expect(request.success.url.searchParams.get("pageToken")).toBe("next-token")
+      expect(request.success.url.searchParams.has("q")).toBe(false)
     }
   })
 
   it("uses the SDK default page size when callers omit pageSize", () => {
     const request = makeDiscountedProductsRequest({})
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.url.searchParams.get("maxPageSize")).toBe("12")
-      expect(request.right.url.searchParams.get("maxProductsToDecorate")).toBe("12")
+    if (Result.isSuccess(request)) {
+      expect(request.success.url.searchParams.get("maxPageSize")).toBe("12")
+      expect(request.success.url.searchParams.get("maxProductsToDecorate")).toBe("12")
     }
   })
 
   it("rejects invalid promotions endpoint request inputs", () => {
     const request = makeDiscountedProductsRequest({ pageSize: 0 })
 
-    expect(Either.isLeft(request)).toBe(true)
+    expect(Result.isFailure(request)).toBe(true)
   })
 
   it("scans promotion pages for sparse query matches", async () => {
@@ -380,17 +380,17 @@ describe("discounted product normalization", () => {
     ])
     const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1, query: "milk" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const requests = fake.requests
 
       expect(requests).toHaveLength(2)
       expect(requests[0]?.url.searchParams.has("q")).toBe(false)
       expect(requests[1]?.url.searchParams.get("pageToken")).toBe("p2")
-      expect(result.right.value.products.map((product) => product.productId)).toEqual(["milk-id"])
-      expect(result.right.value.scan.pagesScanned).toBe(2)
-      expect(result.right.value.scan.exhausted).toBe(true)
+      expect(result.success.value.products.map((product) => product.productId)).toEqual(["milk-id"])
+      expect(result.success.value.scan.pagesScanned).toBe(2)
+      expect(result.success.value.scan.exhausted).toBe(true)
     }
   })
 
@@ -419,16 +419,16 @@ describe("discounted product normalization", () => {
     ])
     const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 2, query: "milk" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.value.products.map((product) => product.productId)).toEqual([
+    if (Result.isSuccess(result)) {
+      expect(result.success.value.products.map((product) => product.productId)).toEqual([
         "milk-id-1",
         "milk-id-2",
         "milk-id-3"
       ])
-      expect(result.right.value.pagination.nextPageToken).toBe("p3")
-      expect(result.right.value.scan).toMatchObject({ matchedProducts: 3, requestedPageSize: 2, returnedProducts: 3 })
+      expect(result.success.value.pagination.nextPageToken).toBe("p3")
+      expect(result.success.value.scan).toMatchObject({ matchedProducts: 3, requestedPageSize: 2, returnedProducts: 3 })
     }
   })
 
@@ -440,13 +440,13 @@ describe("discounted product normalization", () => {
     })
     const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1, pageToken: "start-token" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       expect(fake.requests).toHaveLength(1)
       expect(fake.requests[0]?.url.searchParams.get("pageToken")).toBe("start-token")
-      expect(result.right.value.scan.startedPageToken).toBe("start-token")
-      expect(result.right.value.scan.maxPages).toBe(1)
+      expect(result.success.value.scan.startedPageToken).toBe("start-token")
+      expect(result.success.value.scan.maxPages).toBe(1)
     }
   })
 
@@ -468,12 +468,12 @@ describe("discounted product normalization", () => {
     })
     const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1, query: "milk" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       expect(fake.requests).toHaveLength(5)
-      expect(result.right.value.products).toEqual([])
-      expect(result.right.value.scan).toMatchObject({
+      expect(result.success.value.products).toEqual([])
+      expect(result.success.value.scan).toMatchObject({
         exhausted: false,
         maxPages: 5,
         nextPageToken: "p6",
@@ -486,11 +486,11 @@ describe("discounted product normalization", () => {
     const fake = respondingTransport({ body: "{}", headers: {}, status: 200 })
     const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 0 }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toEqual([])
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DiscountedProductsInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DiscountedProductsInputInvalid")
     }
   })
 
@@ -502,12 +502,12 @@ describe("discounted product normalization", () => {
     })
     const result = await runWith(getDiscountedProducts(makeSession(), {}), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       expect(fake.requests[0]?.url.searchParams.get("maxPageSize")).toBe("12")
-      expect(result.right.value.scan.requestedPageSize).toBe(12)
-      expect(result.right.value.products.map((product) => product.productId)).toEqual(["milk-id"])
+      expect(result.success.value.scan.requestedPageSize).toBe(12)
+      expect(result.success.value.products.map((product) => product.productId)).toEqual(["milk-id"])
     }
   })
 
@@ -517,20 +517,20 @@ describe("discounted product normalization", () => {
       respondingTransport({ body: "{}", headers: {}, status: 500 })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 
   it("surfaces a refused connection with its own tag", async () => {
     const result = await runWith(getDiscountedProducts(makeSession(), { pageSize: 1 }), connectionFailureTransport())
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaConnectionFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
     }
   })
 })

@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -135,7 +135,7 @@ const makePage = (
           throw new Error(secretFailurePayload)
         }
 
-        return options.waitResultProvided === true ? options.waitResult : Either.right(undefined)
+        return options.waitResultProvided === true ? options.waitResult : Result.succeed(undefined)
       }
     }
   }
@@ -144,17 +144,17 @@ const makePage = (
 const getSessionCookieHeader = (cookieJar: Parameters<typeof toughCookieJarPort.deserialize>[0]): string => {
   const jar = toughCookieJarPort.deserialize(cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(voilaUrl)
+  return jar.success.getCookieStringSync(voilaUrl)
 }
 
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () => Either.left({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
+  serialize: () => Result.fail({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
 }
 
 describe("interactive browser login adapter", () => {
@@ -162,9 +162,9 @@ describe("interactive browser login adapter", () => {
     const fake = makePage()
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port, { timeoutMs: 120_000 })))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port, { timeoutMs: 120_000 })))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(fake.calls).toEqual([
       "open:https://voila.ca/",
       "waitForLoginCompletion",
@@ -175,10 +175,10 @@ describe("interactive browser login adapter", () => {
       "close"
     ])
 
-    if (Either.isRight(result)) {
-      expect(result.right.session.kind).toBe("authenticated")
-      expect(result.right.session.account?.emailHint).toBe(secretEmailHint)
-      expect(getSessionCookieHeader(result.right.session.session.cookieJar)).toContain(
+    if (Result.isSuccess(result)) {
+      expect(result.success.session.kind).toBe("authenticated")
+      expect(result.success.session.account?.emailHint).toBe(secretEmailHint)
+      expect(getSessionCookieHeader(result.success.session.session.cookieJar)).toContain(
         `voila-session=${secretCookieValue}`
       )
     }
@@ -186,37 +186,37 @@ describe("interactive browser login adapter", () => {
 
   it("returns a typed timeout and closes the browser page", async () => {
     const fake = makePage({
-      waitResult: Either.left({ _tag: "BrowserLoginTimedOut", message: secretFailurePayload }),
+      waitResult: Result.fail({ _tag: "BrowserLoginTimedOut", message: secretFailurePayload }),
       waitResultProvided: true
     })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginTimedOut")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginTimedOut")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
   it("returns a typed cancellation and closes the browser page", async () => {
     const fake = makePage({
-      waitResult: Either.left({ _tag: "BrowserLoginUserCancelled", message: secretFailurePayload }),
+      waitResult: Result.fail({ _tag: "BrowserLoginUserCancelled", message: secretFailurePayload }),
       waitResultProvided: true
     })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginUserCancelled")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginUserCancelled")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -224,12 +224,12 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ accountAbsent: true })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.session.account).toBeUndefined()
+    if (Result.isSuccess(result)) {
+      expect(result.success.session.account).toBeUndefined()
     }
   })
 
@@ -237,14 +237,14 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ initialStatePayload: { csrf: { token: secretCsrfToken } } })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.calls).toContain("close")
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretCsrfToken)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretCsrfToken)
     }
   })
 
@@ -252,12 +252,12 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ authenticatedPayload: false })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginNotAuthenticated")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginNotAuthenticated")
     }
   })
 
@@ -267,32 +267,32 @@ describe("interactive browser login adapter", () => {
       const fake = makePage({ waitResult, waitResultProvided: true })
       const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-      const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+      const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
       expect(fake.calls).toEqual(["open:https://voila.ca/", "waitForLoginCompletion", "close"])
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-        expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+        expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
       }
     }
   )
 
   it("redacts unknown wait failures into typed adapter failures", async () => {
     const fake = makePage({
-      waitResult: Either.left({ _tag: "UnexpectedWaitFailure", message: secretFailurePayload }),
+      waitResult: Result.fail({ _tag: "UnexpectedWaitFailure", message: secretFailurePayload }),
       waitResultProvided: true
     })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -352,14 +352,14 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ [option]: true })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.calls).toEqual(expectedCalls)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -370,13 +370,13 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ cookiesPayload })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -396,7 +396,7 @@ describe("interactive browser login adapter", () => {
       name: "wait left",
       options: {
         closeThrows: true,
-        waitResult: Either.left({ _tag: "BrowserLoginTimedOut", message: secretFailurePayload }),
+        waitResult: Result.fail({ _tag: "BrowserLoginTimedOut", message: secretFailurePayload }),
         waitResultProvided: true
       }
     },
@@ -409,14 +409,14 @@ describe("interactive browser login adapter", () => {
     const fake = makePage(options)
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.calls).toEqual(expectedCalls)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -427,13 +427,13 @@ describe("interactive browser login adapter", () => {
     const fake = makePage({ accountPayload, authenticatedPayload })
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -441,13 +441,13 @@ describe("interactive browser login adapter", () => {
     const fake = makePage()
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page }, failingSerializeCookieJarPort)
 
-    const result = await Effect.runPromise(Effect.either(loginWithBrowser(port)))
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("BrowserLoginAdapterFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 })

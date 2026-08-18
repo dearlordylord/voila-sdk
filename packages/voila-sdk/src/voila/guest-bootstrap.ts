@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import type {
   CartTotals,
@@ -99,11 +99,11 @@ type SessionSnapshotBasket = InitialState["data"]["basket"]
 const storeHomepageCookies = (
   cookieJarPort: CookieJarPort,
   response: VoilaTransportResponse
-): Either.Either<SessionSnapshot["cookieJar"], GuestBootstrapError> => {
+): Result.Result<SessionSnapshot["cookieJar"], GuestBootstrapError> => {
   const cookies = getHeaderValues(response.headers, setCookieHeader)
 
   if (cookies.length === emptyStringLength) {
-    return Either.left(missingCookies())
+    return Result.fail(missingCookies())
   }
 
   const jar = cookieJarPort.create()
@@ -112,41 +112,41 @@ const storeHomepageCookies = (
     try {
       jar.setCookieSync(cookie, homepageUrl.href)
     } catch {
-      return Either.left(cookiePersistenceFailure())
+      return Result.fail(cookiePersistenceFailure())
     }
   }
 
-  return Either.mapLeft(cookieJarPort.serialize(jar), cookiePersistenceFailure)
+  return Result.mapError(cookieJarPort.serialize(jar), cookiePersistenceFailure)
 }
 
-const decodeInitialState = (html: string): Either.Either<InitialState, GuestBootstrapError> =>
-  Either.flatMap(Either.mapLeft(extractInitialStatePayload(html), initialStateMalformed), (payload) => {
+const decodeInitialState = (html: string): Result.Result<InitialState, GuestBootstrapError> =>
+  Result.flatMap(Result.mapError(extractInitialStatePayload(html), initialStateMalformed), (payload) => {
     if (!hasCsrfToken(payload)) {
-      return Either.left(missingCsrf())
+      return Result.fail(missingCsrf())
     }
 
-    return Either.mapLeft(extractInitialState(html), initialStateMalformed)
+    return Result.mapError(extractInitialState(html), initialStateMalformed)
   })
 
 const makeGuestBootstrapResult = (
   response: VoilaTransportResponse,
   cookieJarPort: CookieJarPort
-): Either.Either<GuestBootstrapResult, GuestBootstrapError> => {
+): Result.Result<GuestBootstrapResult, GuestBootstrapError> => {
   if (!isSuccessStatus(response.status)) {
-    return Either.left(non2xxResponse(response.status))
+    return Result.fail(non2xxResponse(response.status))
   }
 
-  return Either.flatMap(storeHomepageCookies(cookieJarPort, response), (cookieJar) =>
-    Either.flatMap(decodeInitialState(response.body), (initialState) => {
+  return Result.flatMap(storeHomepageCookies(cookieJarPort, response), (cookieJar) =>
+    Result.flatMap(decodeInitialState(response.body), (initialState) => {
       if (initialState.session.csrf.token.trim().length === emptyStringLength) {
-        return Either.left(missingCsrf())
+        return Result.fail(missingCsrf())
       }
 
-      return Either.mapLeft(
+      return Result.mapError(
         makeSessionSnapshot(initialState.session.metadata, initialState.session.csrf, cookieJar),
         cookiePersistenceFailure
       ).pipe(
-        Either.map((session) => ({
+        Result.map((session) => ({
           categories: getInitialStateCategories(initialState),
           cart: makeGuestCartSummary(initialState.data.basket),
           csrf: initialState.session.csrf,
@@ -162,8 +162,8 @@ const makeGuestBootstrapResult = (
 export const bootstrapGuestSession = (
   cookieJarPort: CookieJarPort = toughCookieJarPort
 ): Effect.Effect<GuestBootstrapResult, GuestBootstrapError, VoilaTransport> =>
-  Effect.flatMap(VoilaTransport, (transport) =>
-    Effect.flatMap(transport.request({ headers: {}, method: "GET", url: homepageUrl }), (response) =>
-      makeGuestBootstrapResult(response, cookieJarPort)
-    )
-  )
+  Effect.gen(function* () {
+    const transport = yield* VoilaTransport
+    const response = yield* transport.request({ headers: {}, method: "GET", url: homepageUrl })
+    return yield* Effect.fromResult(makeGuestBootstrapResult(response, cookieJarPort))
+  })

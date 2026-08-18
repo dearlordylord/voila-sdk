@@ -26,7 +26,7 @@
   ],
   "scripts": {
     "prepack": "pnpm build",
-    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs --external:playwright --external:chromium-bidi/* && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:playwright --external:chromium-bidi/* && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' --external:playwright --external:chromium-bidi/*",
+    "build": "tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.cjs --external:playwright --external:chromium-bidi/* && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs --external:playwright --external:chromium-bidi/* && esbuild src/bin.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' --external:playwright --external:chromium-bidi/*",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "package:audit": "pnpm build && node ../../scripts/audit-package.mjs . bin",
     "test": "vitest run --config ../../vitest.config.ts",
@@ -49,7 +49,7 @@
   },
   "homepage": "https://github.com/dearlordylord/voila-sdk#readme",
   "engines": {
-    "node": ">=20"
+    "node": "^22.22.2 || ^24.15.0"
   },
   "publishConfig": {
     "access": "public"
@@ -57,7 +57,7 @@
   "dependencies": {
     "@firfi/voila-mcp": "workspace:*",
     "@firfi/voila-sdk": "workspace:*",
-    "effect": "^3.22.1",
+    "effect": "4.0.0-rc.110",
     "playwright": "^1.57.0"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -65,14 +65,14 @@ export const normalizeDeliveryDestinationsResponse = (
 
 export const parseDeliveryDestinationsResponse = (
   input: unknown
-): Either.Either<NormalizedDeliveryDestinations, DeliveryDestinationsResponseNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(
+): Result.Result<NormalizedDeliveryDestinations, DeliveryDestinationsResponseNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(
       parseUnknown(RawDeliveryDestinationsResponseSchema, input),
       deliveryDestinationsResponseSchemaMismatch
     ),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedDeliveryDestinationsSchema, normalizeDeliveryDestinationsResponse(response)),
         deliveryDestinationsResponseSchemaMismatch
       )
@@ -80,11 +80,11 @@ export const parseDeliveryDestinationsResponse = (
 
 export const parseDeliveryDestinationResponse = (
   input: unknown
-): Either.Either<DeliveryDestination, DeliveryDestinationsResponseNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(RawDeliveryDestinationSchema, input), deliveryDestinationsResponseSchemaMismatch),
+): Result.Result<DeliveryDestination, DeliveryDestinationsResponseNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(RawDeliveryDestinationSchema, input), deliveryDestinationsResponseSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(DeliveryDestinationSchema, normalizeDeliveryDestination(response)),
         deliveryDestinationsResponseSchemaMismatch
       )
@@ -113,15 +113,15 @@ export const makeDeliveryDestinationsDiagnostic = (
 
 export const parseDeliveryDestinationsDiagnostic = (
   input: unknown
-): Either.Either<DeliveryDestinationsDiagnostic, DeliveryDestinationsResponseNormalizationError> =>
-  Either.mapLeft(parseUnknown(DeliveryDestinationsDiagnosticSchema, input), deliveryDestinationsResponseSchemaMismatch)
+): Result.Result<DeliveryDestinationsDiagnostic, DeliveryDestinationsResponseNormalizationError> =>
+  Result.mapError(parseUnknown(DeliveryDestinationsDiagnosticSchema, input), deliveryDestinationsResponseSchemaMismatch)
 
 export const getDeliveryDestinations = (
   session: SessionSnapshot,
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetDeliveryDestinationsResult, GetDeliveryDestinationsError, VoilaTransport> =>
-  Effect.flatMap(makeDeliveryDestinationsRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeDeliveryDestinationsRequest(input)), (request) =>
     Effect.map(requestVoilaJson(RawDeliveryDestinationsResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeDeliveryDestinationsResponse(result.value)
@@ -133,7 +133,7 @@ export const getDeliveryDestination = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetDeliveryDestinationResult, GetDeliveryDestinationError, VoilaTransport> =>
-  Effect.flatMap(makeDeliveryDestinationRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeDeliveryDestinationRequest(input)), (request) =>
     Effect.map(requestVoilaJson(RawDeliveryDestinationSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeDeliveryDestination(result.value)

@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { CookieJar, Store } from "tough-cookie"
 import { describe, expect, it } from "vitest"
 
@@ -48,53 +48,53 @@ const makeSession = (token: string = csrfToken, authenticatedCookieValue?: strin
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const session = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const session = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return session.right
+  return session.success
 }
 
 const makeEmptyCookieSession = (): SessionSnapshot => {
   const cookieJar = serializeCookieJar(toughCookieJarPort.create())
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected empty cookie jar serialization to succeed")
   }
 
-  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected empty-cookie session snapshot creation to succeed")
   }
 
-  return session.right
+  return session.success
 }
 
 const makeGuestSnapshot = (): SdkSessionSnapshot => {
   const snapshot = makeGuestSdkSessionSnapshot(makeSession())
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected guest SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeEmptyCookieGuestSnapshot = (): SdkSessionSnapshot => {
   const snapshot = makeGuestSdkSessionSnapshot(makeEmptyCookieSession())
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected empty-cookie guest SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeAuthenticatedSnapshot = (token: string = csrfToken): SdkSessionSnapshot => {
@@ -102,11 +102,11 @@ const makeAuthenticatedSnapshot = (token: string = csrfToken): SdkSessionSnapsho
     emailHint: secretAccountHint
   })
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeAuthenticatedCookieSnapshot = (): SdkSessionSnapshot => {
@@ -114,11 +114,11 @@ const makeAuthenticatedCookieSnapshot = (): SdkSessionSnapshot => {
     emailHint: secretAccountHint
   })
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeReauthSnapshot = (): SdkSessionSnapshot => {
@@ -126,11 +126,11 @@ const makeReauthSnapshot = (): SdkSessionSnapshot => {
     emailHint: secretAccountHint
   })
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected reauth SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeResponse = (
@@ -141,7 +141,7 @@ const makeResponse = (
 
 const failingDeserializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
-  deserialize: () => Either.left({ _tag: "CookieJarSnapshotImportFailed", message: secretTransportPayload }),
+  deserialize: () => Result.fail({ _tag: "CookieJarSnapshotImportFailed", message: secretTransportPayload }),
   serialize: toughCookieJarPort.serialize
 }
 
@@ -152,14 +152,14 @@ const failingDeserializeCookieJarPort: CookieJarPort = {
  */
 const asyncStoreCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
-  deserialize: () => Either.right(new CookieJar(new Store())),
+  deserialize: () => Result.succeed(new CookieJar(new Store())),
   serialize: toughCookieJarPort.serialize
 }
 
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () => Either.left({ _tag: "CookieJarSerializationFailed", message: secretTransportPayload })
+  serialize: () => Result.fail({ _tag: "CookieJarSerializationFailed", message: secretTransportPayload })
 }
 
 const makeFailingSecondDeserializeCookieJarPort = (): CookieJarPort => {
@@ -172,7 +172,7 @@ const makeFailingSecondDeserializeCookieJarPort = (): CookieJarPort => {
 
       return deserializeCount === 1
         ? toughCookieJarPort.deserialize(snapshot)
-        : Either.left({ _tag: "CookieJarSnapshotImportFailed", message: secretTransportPayload })
+        : Result.fail({ _tag: "CookieJarSnapshotImportFailed", message: secretTransportPayload })
     },
     serialize: toughCookieJarPort.serialize
   }
@@ -181,11 +181,11 @@ const makeFailingSecondDeserializeCookieJarPort = (): CookieJarPort => {
 const getSessionCookieHeader = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected cookie jar deserialization to succeed")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("session health", () => {
@@ -198,21 +198,21 @@ describe("session health", () => {
 
     const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot()), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.href).toBe(`${VOILA_BASE_URL}/api/customersessions/v2/sessions/active`)
       expect(request?.headers.cookie).toContain(`voila-session=${secretCookieValue}`)
-      expect(result.right.status).toBe("active")
-      expect(result.right.session.kind).toBe("authenticated")
+      expect(result.success.status).toBe("active")
+      expect(result.success.session.kind).toBe("authenticated")
 
-      if (result.right.session.kind === "authenticated") {
-        expect(result.right.session.state).toBe("authenticated")
-        expect(result.right.session.account?.emailHint).toBe(secretAccountHint)
-        expect(getSessionCookieHeader(result.right.session.session)).toContain("fresh-session=after")
+      if (result.success.session.kind === "authenticated") {
+        expect(result.success.session.state).toBe("authenticated")
+        expect(result.success.session.account?.emailHint).toBe(secretAccountHint)
+        expect(getSessionCookieHeader(result.success.session.session)).toContain("fresh-session=after")
       }
     }
   })
@@ -223,11 +223,11 @@ describe("session health", () => {
       respondingTransport(makeResponse(JSON.stringify({ authenticated: false })))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("active")
-      expect(result.right.session.kind).toBe("guest")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("active")
+      expect(result.success.session.kind).toBe("guest")
     }
   })
 
@@ -235,14 +235,14 @@ describe("session health", () => {
     const fake = respondingTransport(makeResponse(JSON.stringify({ authenticated: false })))
     const result = await runWith(checkSessionHealth(makeEmptyCookieGuestSnapshot()), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.headers.cookie).toBeUndefined()
-      expect(result.right.status).toBe("active")
-      expect(result.right.session.kind).toBe("guest")
+      expect(result.success.status).toBe("active")
+      expect(result.success.session.kind).toBe("guest")
     }
   })
 
@@ -256,11 +256,11 @@ describe("session health", () => {
       respondingTransport(makeResponse(JSON.stringify(body)))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("active")
-      expect(result.right.session.kind).toBe("authenticated")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("active")
+      expect(result.success.session.kind).toBe("authenticated")
     }
   })
 
@@ -272,11 +272,11 @@ describe("session health", () => {
       )
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("active")
-      expect(result.right.session.kind).toBe("authenticated")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("active")
+      expect(result.success.session.kind).toBe("authenticated")
     }
   })
 
@@ -288,11 +288,11 @@ describe("session health", () => {
       )
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("active")
-      expect(result.right.session.kind).toBe("authenticated")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("active")
+      expect(result.success.session.kind).toBe("authenticated")
     }
   })
 
@@ -306,16 +306,16 @@ describe("session health", () => {
       )
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("reauth-required")
-      expect(result.right.session.kind).toBe("authenticated")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
+      expect(result.success.session.kind).toBe("authenticated")
 
-      if (result.right.session.kind === "authenticated") {
-        expect(result.right.session.state).toBe("reauth-required")
-        expect(result.right.session.account?.emailHint).toBe(secretAccountHint)
-        expect(getSessionCookieHeader(result.right.session.session)).toContain("reauth-session=after")
+      if (result.success.session.kind === "authenticated") {
+        expect(result.success.session.state).toBe("reauth-required")
+        expect(result.success.session.account?.emailHint).toBe(secretAccountHint)
+        expect(getSessionCookieHeader(result.success.session.session)).toContain("reauth-session=after")
       }
     }
   })
@@ -326,15 +326,15 @@ describe("session health", () => {
       respondingTransport(makeResponse("{}", 401, { "set-cookie": "unauthorized-session=after; Path=/; Secure" }))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("reauth-required")
-      expect(result.right.session.kind).toBe("authenticated")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
+      expect(result.success.session.kind).toBe("authenticated")
 
-      if (result.right.session.kind === "authenticated") {
-        expect(result.right.session.state).toBe("reauth-required")
-        expect(getSessionCookieHeader(result.right.session.session)).toContain("unauthorized-session=after")
+      if (result.success.session.kind === "authenticated") {
+        expect(result.success.session.state).toBe("reauth-required")
+        expect(getSessionCookieHeader(result.success.session.session)).toContain("unauthorized-session=after")
       }
     }
   })
@@ -345,12 +345,12 @@ describe("session health", () => {
       respondingTransport(makeResponse("{}", 403, { "set-cookie": "guest-unauthorized=after; Path=/; Secure" }))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("unauthorized")
-      expect(result.right.session.kind).toBe("guest")
-      expect(getSessionCookieHeader(result.right.session.session)).toContain("guest-unauthorized=after")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("unauthorized")
+      expect(result.success.session.kind).toBe("guest")
+      expect(getSessionCookieHeader(result.success.session.session)).toContain("guest-unauthorized=after")
     }
   })
 
@@ -369,10 +369,10 @@ describe("session health", () => {
       respondingTransport(makeResponse(body))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("schema-changed")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("schema-changed")
     }
   })
 
@@ -382,10 +382,10 @@ describe("session health", () => {
       respondingTransport(makeResponse(JSON.stringify({ authenticated: true })))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("reauth-required")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
     }
   })
 
@@ -419,13 +419,13 @@ describe("session health", () => {
       transport
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("retry")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("retry")
 
-      if (result.right.status === "retry") {
-        expect(result.right.reason).toBe(expectedReason)
+      if (result.success.status === "retry") {
+        expect(result.success.reason).toBe(expectedReason)
       }
     }
   })
@@ -434,11 +434,11 @@ describe("session health", () => {
     const fake = respondingTransport(makeResponse(JSON.stringify({ authenticated: true })))
     const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot(), asyncStoreCookieJarPort), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(fake.requests).toEqual([])
 
-    if (Either.isRight(result) && result.right.status === "retry") {
-      expect(result.right.reason).toBe("persistence")
+    if (Result.isSuccess(result) && result.success.status === "retry") {
+      expect(result.success.reason).toBe("persistence")
     }
   })
 
@@ -446,17 +446,17 @@ describe("session health", () => {
     const fake = respondingTransport(makeResponse(JSON.stringify({ authenticated: true })))
     const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot(), failingDeserializeCookieJarPort), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(fake.requests).toEqual([])
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("retry")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("retry")
 
-      if (result.right.status === "retry") {
-        expect(result.right.reason).toBe("persistence")
+      if (result.success.status === "retry") {
+        expect(result.success.reason).toBe("persistence")
       }
 
-      expect(JSON.stringify(result.right)).not.toContain(secretTransportPayload)
+      expect(JSON.stringify(result.success)).not.toContain(secretTransportPayload)
     }
   })
 
@@ -471,31 +471,31 @@ describe("session health", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(fake.requests).toHaveLength(1)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("retry")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("retry")
 
-      if (result.right.status === "retry") {
-        expect(result.right.reason).toBe("persistence")
+      if (result.success.status === "retry") {
+        expect(result.success.reason).toBe("persistence")
       }
 
-      expect(JSON.stringify(result.right)).not.toContain(secretTransportPayload)
+      expect(JSON.stringify(result.success)).not.toContain(secretTransportPayload)
     }
   })
 
   it("maps guest network failures to retry health", async () => {
     const result = await runWith(checkSessionHealth(makeGuestSnapshot()), connectionFailureTransport())
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.status).toBe("retry")
-      expect(result.right.session.kind).toBe("guest")
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("retry")
+      expect(result.success.session.kind).toBe("guest")
 
-      if (result.right.status === "retry") {
-        expect(result.right.reason).toBe("network")
+      if (result.success.status === "retry") {
+        expect(result.success.reason).toBe("network")
       }
     }
   })

@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -27,14 +27,14 @@ describe("category page request model", () => {
       retailerCategoryId: "retailer-category-id"
     })
 
-    expect(Either.isRight(first)).toBe(true)
-    expect(Either.isRight(second)).toBe(true)
+    expect(Result.isSuccess(first)).toBe(true)
+    expect(Result.isSuccess(second)).toBe(true)
 
-    if (Either.isRight(first) && Either.isRight(second)) {
-      const request = expectCategoryProductsRequest(first.right)
+    if (Result.isSuccess(first) && Result.isSuccess(second)) {
+      const request = expectCategoryProductsRequest(first.success)
 
       expect(request.method).toBe("GET")
-      expect(request.url.href).toBe(second.right.url.href)
+      expect(request.url.href).toBe(second.success.url.href)
       expect(request.url.pathname).toBe("/api/webproductpagews/v6/product-pages")
       expect(request.url.searchParams.get("categoryId")).toBe("category-id")
       expect(request.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
@@ -56,23 +56,23 @@ describe("category page request model", () => {
       retailerCategoryId: "retailer-category-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.url.searchParams.get("pageToken")).toBe("next-page-token")
-      expect(request.right.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
-      expect(request.right.url.searchParams.getAll("filter")).toEqual(["brand:fresh-farms", "dietary:organic"])
+    if (Result.isSuccess(request)) {
+      expect(request.success.url.searchParams.get("pageToken")).toBe("next-page-token")
+      expect(request.success.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
+      expect(request.success.url.searchParams.getAll("filter")).toEqual(["brand:fresh-farms", "dietary:organic"])
     }
   })
 
   it("allows category ID without retailer category ID", () => {
     const request = makeCategoryProductsRequest({ categoryId: "category-id", pageSize: 12 })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.url.searchParams.get("categoryId")).toBe("category-id")
-      expect(request.right.url.searchParams.has("retailerCategoryId")).toBe(false)
+    if (Result.isSuccess(request)) {
+      expect(request.success.url.searchParams.get("categoryId")).toBe("category-id")
+      expect(request.success.url.searchParams.has("retailerCategoryId")).toBe(false)
     }
   })
 
@@ -93,42 +93,42 @@ describe("category page request model", () => {
       },
       { filters: [{ id: "brand", value: "fresh:farms" }], pageSize: 12, retailerCategoryId: "retailer-category-id" }
     ]) {
-      expect(Either.isLeft(makeCategoryProductsRequest(input))).toBe(true)
+      expect(Result.isFailure(makeCategoryProductsRequest(input))).toBe(true)
       assertDecodeFailure(CategoryPageInputSchema, input)
     }
   })
 
   it("explains ambiguous filter separator failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(CategoryPageInputSchema)({
+    const result = Schema.decodeUnknownResult(CategoryPageInputSchema)({
       filters: [{ id: "brand:name", value: "fresh-farms" }],
       pageSize: 12,
       retailerCategoryId: "retailer-category-id"
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(String(result.left)).toContain("Category page filter values must not include ':'")
+    if (Result.isFailure(result)) {
+      expect(String(result.failure)).toContain("Category page filter values must not include ':'")
     }
   })
 
   it("returns a typed request error for invalid input", () => {
     const result = makeCategoryProductsRequest({ pageSize: 0 })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(expectCategoryProductsRequestError(result.left)._tag).toBe("CategoryPageInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(expectCategoryProductsRequestError(result.failure)._tag).toBe("CategoryPageInputInvalid")
     }
   })
 
   it("explains missing category identifier failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(CategoryPageInputSchema)({ pageSize: 12 })
+    const result = Schema.decodeUnknownResult(CategoryPageInputSchema)({ pageSize: 12 })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(String(result.left)).toContain("Category page input must include categoryId or retailerCategoryId")
+    if (Result.isFailure(result)) {
+      expect(String(result.failure)).toContain("Category page input must include categoryId or retailerCategoryId")
     }
   })
 })

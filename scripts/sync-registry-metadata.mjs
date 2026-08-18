@@ -5,14 +5,16 @@ import { join } from "node:path"
 
 import { Schema } from "effect"
 
-const NonEmptyString = Schema.String.pipe(Schema.minLength(1))
+const NonEmptyString = Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
 const ConcreteVersion = NonEmptyString.pipe(
-  Schema.filter((value) => value !== "latest" && !/^[~^>=<*]|\.x$|\.\*$/.test(value), {
-    message: () => "Expected a concrete package version"
-  })
+  Schema.check(
+    Schema.makeFilter((value) => value !== "latest" && !/^[~^>=<*]|\.x$|\.\*$/.test(value), {
+      message: "Expected a concrete package version"
+    })
+  )
 )
-const GitHubUrl = NonEmptyString.pipe(Schema.pattern(/^https:\/\/github\.com\/[^/]+\/[^/]+$/))
-const McpServerName = NonEmptyString.pipe(Schema.pattern(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/))
+const GitHubUrl = NonEmptyString.pipe(Schema.check(Schema.isPattern(/^https:\/\/github\.com\/[^/]+\/[^/]+$/)))
+const McpServerName = NonEmptyString.pipe(Schema.check(Schema.isPattern(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/)))
 
 const PackageJsonSchema = Schema.Struct({
   homepage: NonEmptyString,
@@ -24,16 +26,16 @@ const PackageJsonSchema = Schema.Struct({
 
 const EnvironmentVariableSchema = Schema.Struct({
   description: NonEmptyString,
-  format: Schema.optional(Schema.Literal("string", "number", "boolean", "filepath")),
-  isRequired: Schema.optional(Schema.Boolean),
-  isSecret: Schema.optional(Schema.Boolean),
+  format: Schema.optionalKey(Schema.Literals(["string", "number", "boolean", "filepath"])),
+  isRequired: Schema.optionalKey(Schema.Boolean),
+  isSecret: Schema.optionalKey(Schema.Boolean),
   name: NonEmptyString,
-  placeholder: Schema.optional(Schema.String),
-  value: Schema.optional(Schema.String)
+  placeholder: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.String)
 })
 
 const PackageSchema = Schema.Struct({
-  environmentVariables: Schema.optional(Schema.Array(EnvironmentVariableSchema)),
+  environmentVariables: Schema.optionalKey(Schema.Array(EnvironmentVariableSchema)),
   identifier: NonEmptyString,
   registryType: NonEmptyString,
   transport: Schema.Struct({ type: Schema.Literal("stdio") }),
@@ -42,11 +44,15 @@ const PackageSchema = Schema.Struct({
 
 const ServerJsonSchema = Schema.Struct({
   $schema: Schema.Literal("https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"),
-  description: NonEmptyString.pipe(Schema.maxLength(100)),
+  description: NonEmptyString.pipe(Schema.check(Schema.isMaxLength(100))),
   name: McpServerName,
   packages: Schema.Array(PackageSchema),
-  repository: Schema.Struct({ id: Schema.optional(NonEmptyString), source: Schema.Literal("github"), url: GitHubUrl }),
-  title: Schema.optional(NonEmptyString),
+  repository: Schema.Struct({
+    id: Schema.optionalKey(NonEmptyString),
+    source: Schema.Literal("github"),
+    url: GitHubUrl
+  }),
+  title: Schema.optionalKey(NonEmptyString),
   version: ConcreteVersion,
   websiteUrl: NonEmptyString
 })

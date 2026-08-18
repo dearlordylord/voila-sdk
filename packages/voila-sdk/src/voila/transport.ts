@@ -29,7 +29,6 @@ export interface VoilaTransportService {
   readonly request: (request: VoilaTransportRequest) => Effect.Effect<VoilaTransportResponse, VoilaTransportError>
 }
 
-export class VoilaTransport extends Context.Tag("@firfi/voila-sdk/VoilaTransport")<
-  VoilaTransport,
-  VoilaTransportService
->() {}
+export class VoilaTransport extends Context.Service<VoilaTransport, VoilaTransportService>()(
+  "@firfi/voila-sdk/VoilaTransport"
+) {}

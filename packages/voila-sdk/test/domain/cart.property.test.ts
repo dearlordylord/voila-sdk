@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import * as fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
@@ -16,12 +16,12 @@ describe("cart delta properties", () => {
       fc.property(productUuid, nonZeroQuantity, (productId, quantity) => {
         const result = makeAddToCartDelta(productId, quantity)
 
-        expect(Either.isRight(result)).toBe(true)
+        expect(Result.isSuccess(result)).toBe(true)
 
-        if (Either.isRight(result)) {
-          expect(result.right.productId).toBe(productId)
-          expect(result.right.quantity).toBeGreaterThan(0)
-          expect(result.right.quantity).toBe(Math.abs(quantity))
+        if (Result.isSuccess(result)) {
+          expect(result.success.productId).toBe(productId)
+          expect(result.success.quantity).toBeGreaterThan(0)
+          expect(result.success.quantity).toBe(Math.abs(quantity))
         }
       }),
       propertyTestParameters
@@ -33,12 +33,12 @@ describe("cart delta properties", () => {
       fc.property(productUuid, nonZeroQuantity, (productId, quantity) => {
         const result = makeRemoveFromCartDelta(productId, quantity)
 
-        expect(Either.isRight(result)).toBe(true)
+        expect(Result.isSuccess(result)).toBe(true)
 
-        if (Either.isRight(result)) {
-          expect(result.right.productId).toBe(productId)
-          expect(result.right.quantity).toBeLessThan(0)
-          expect(result.right.quantity).toBe(-Math.abs(quantity))
+        if (Result.isSuccess(result)) {
+          expect(result.success.productId).toBe(productId)
+          expect(result.success.quantity).toBeLessThan(0)
+          expect(result.success.quantity).toBe(-Math.abs(quantity))
         }
       }),
       propertyTestParameters

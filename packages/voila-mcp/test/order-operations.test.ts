@@ -7,7 +7,7 @@ import {
   toughCookieJarPort,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import { Effect, Either, type Layer } from "effect"
+import { Effect, Result, type Layer } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { OperationEnvironment } from "../src/operations.js"
@@ -67,27 +67,27 @@ const makeSessionSnapshotForTest = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization")
   }
 
-  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot")
   }
 
-  return session.right
+  return session.success
 }
 
 const makeSdkSessionForTest = (): SdkSessionSnapshot => {
   const snapshot = makeGuestSdkSessionSnapshot(makeSessionSnapshotForTest())
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected SDK session snapshot")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeEnvironment = (transport: Layer.Layer<VoilaTransport>): OperationEnvironment => {

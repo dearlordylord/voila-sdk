@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import * as fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
@@ -116,26 +116,26 @@ describe("search request properties", () => {
         const first = makeSearchRequest(input)
         const second = makeSearchRequest(input)
 
-        expect(Either.isRight(first)).toBe(true)
-        expect(Either.isRight(second)).toBe(true)
+        expect(Result.isSuccess(first)).toBe(true)
+        expect(Result.isSuccess(second)).toBe(true)
 
-        if (Either.isRight(first) && Either.isRight(second)) {
-          expect(first.right.url.href).toBe(second.right.url.href)
-          expect(first.right.url.pathname).toBe("/api/webproductpagews/v6/product-pages/search")
-          expect(first.right.url.searchParams.get("q")).toBe(input.query)
-          expect(first.right.url.searchParams.get("maxPageSize")).toBe(String(input.pageSize))
+        if (Result.isSuccess(first) && Result.isSuccess(second)) {
+          expect(first.success.url.href).toBe(second.success.url.href)
+          expect(first.success.url.pathname).toBe("/api/webproductpagews/v6/product-pages/search")
+          expect(first.success.url.searchParams.get("q")).toBe(input.query)
+          expect(first.success.url.searchParams.get("maxPageSize")).toBe(String(input.pageSize))
 
           if ("pageToken" in input) {
-            expect(first.right.url.searchParams.get("pageToken")).toBe(input.pageToken)
+            expect(first.success.url.searchParams.get("pageToken")).toBe(input.pageToken)
           }
 
           if ("categoryContext" in input) {
             if ("categoryId" in input.categoryContext) {
-              expect(first.right.url.searchParams.get("categoryId")).toBe(input.categoryContext.categoryId)
+              expect(first.success.url.searchParams.get("categoryId")).toBe(input.categoryContext.categoryId)
             }
 
             if ("retailerCategoryId" in input.categoryContext) {
-              expect(first.right.url.searchParams.get("retailerCategoryId")).toBe(
+              expect(first.success.url.searchParams.get("retailerCategoryId")).toBe(
                 input.categoryContext.retailerCategoryId
               )
             }

@@ -1,33 +1,37 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
-export const DeliveryMethodSchema = Schema.Literal("HOME_DELIVERY", "CUSTOMER_COLLECTION")
+import { withUnknownStringFields } from "./unknown-fields.js"
+
+export const DeliveryMethodSchema = Schema.Literals(["HOME_DELIVERY", "CUSTOMER_COLLECTION"])
 
 export type DeliveryMethod = Schema.Schema.Type<typeof DeliveryMethodSchema>
 
 export const DeliveryDestinationsInputSchema = Schema.Struct({
-  deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { default: () => "HOME_DELIVERY" as const })
+  deliveryMethod: DeliveryMethodSchema.pipe(
+    Schema.withDecodingDefaultType(Effect.succeed<DeliveryMethod>("HOME_DELIVERY"))
+  )
 })
 
 export type DeliveryDestinationsInput = Schema.Schema.Type<typeof DeliveryDestinationsInputSchema>
 
 export const DeliveryDestinationByIdInputSchema = Schema.Struct({
-  deliveryDestinationId: Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+  deliveryDestinationId: Schema.String.pipe(Schema.check(Schema.isTrimmed()), Schema.check(Schema.isMinLength(1)))
 })
 
 export type DeliveryDestinationByIdInput = Schema.Schema.Type<typeof DeliveryDestinationByIdInputSchema>
 
-export const RawDeliveryDestinationSchema = Schema.asSchema(
+export const RawDeliveryDestinationSchema = Schema.revealCodec(
   Schema.Struct({
-    addressId: Schema.optionalWith(Schema.String, { exact: true }),
-    deliverability: Schema.optionalWith(Schema.String, { exact: true }),
+    addressId: Schema.optionalKey(Schema.String),
+    deliverability: Schema.optionalKey(Schema.String),
     deliveryDestinationId: Schema.String,
-    deliveryInstructions: Schema.optionalWith(Schema.String, { exact: true }),
-    deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { exact: true }),
-    formattedAddress: Schema.optionalWith(Schema.String, { exact: true }),
-    name: Schema.optionalWith(Schema.String, { exact: true }),
-    regionId: Schema.optionalWith(Schema.String, { exact: true }),
-    resolvedRegionId: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(Schema.Record({ key: Schema.String, value: Schema.Unknown })))
+    deliveryInstructions: Schema.optionalKey(Schema.String),
+    deliveryMethod: Schema.optionalKey(DeliveryMethodSchema),
+    formattedAddress: Schema.optionalKey(Schema.String),
+    name: Schema.optionalKey(Schema.String),
+    regionId: Schema.optionalKey(Schema.String),
+    resolvedRegionId: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawDeliveryDestination = Schema.Schema.Type<typeof RawDeliveryDestinationSchema>
@@ -39,13 +43,13 @@ export type RawDeliveryDestinationsResponse = Schema.Schema.Type<typeof RawDeliv
 export const DeliveryDestinationSchema = Schema.Struct({
   deliveryDestinationId: Schema.String,
   deliverable: Schema.Boolean,
-  regionId: Schema.optionalWith(Schema.String, { exact: true }),
-  deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { exact: true }),
-  addressId: Schema.optionalWith(Schema.String, { exact: true }),
-  formattedAddress: Schema.optionalWith(Schema.String, { exact: true }),
-  nickname: Schema.optionalWith(Schema.String, { exact: true }),
-  deliverability: Schema.optionalWith(Schema.String, { exact: true }),
-  deliveryInstructions: Schema.optionalWith(Schema.String, { exact: true })
+  regionId: Schema.optionalKey(Schema.String),
+  deliveryMethod: Schema.optionalKey(DeliveryMethodSchema),
+  addressId: Schema.optionalKey(Schema.String),
+  formattedAddress: Schema.optionalKey(Schema.String),
+  nickname: Schema.optionalKey(Schema.String),
+  deliverability: Schema.optionalKey(Schema.String),
+  deliveryInstructions: Schema.optionalKey(Schema.String)
 })
 
 export type DeliveryDestination = Schema.Schema.Type<typeof DeliveryDestinationSchema>
@@ -57,21 +61,25 @@ export const NormalizedDeliveryDestinationsSchema = Schema.Struct({
 export type NormalizedDeliveryDestinations = Schema.Schema.Type<typeof NormalizedDeliveryDestinationsSchema>
 
 const DeliveryDestinationDiagnosticItemSchema = Schema.Struct({
-  addressId: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
-  deliverability: Schema.optionalWith(Schema.String, { exact: true }),
+  addressId: Schema.optionalKey(Schema.Literal("[redacted]")),
+  deliverability: Schema.optionalKey(Schema.String),
   deliverable: Schema.Boolean,
   deliveryDestinationId: Schema.Literal("[redacted]"),
-  deliveryInstructions: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
-  deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { exact: true }),
-  formattedAddress: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
-  nickname: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
-  regionId: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true })
+  deliveryInstructions: Schema.optionalKey(Schema.Literal("[redacted]")),
+  deliveryMethod: Schema.optionalKey(DeliveryMethodSchema),
+  formattedAddress: Schema.optionalKey(Schema.Literal("[redacted]")),
+  nickname: Schema.optionalKey(Schema.Literal("[redacted]")),
+  regionId: Schema.optionalKey(Schema.Literal("[redacted]"))
 })
 
 export type DeliveryDestinationDiagnosticItem = Schema.Schema.Type<typeof DeliveryDestinationDiagnosticItemSchema>
 
 export const DeliveryDestinationsDiagnosticSchema = Schema.Struct({
-  count: Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative()),
+  count: Schema.Number.pipe(
+    Schema.check(Schema.isFinite()),
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  ),
   destinations: Schema.Array(DeliveryDestinationDiagnosticItemSchema)
 })
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -33,17 +33,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeCategoryResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -55,11 +55,11 @@ const makeCategoryResponse = (body: string = fixtureText, status: number = 200):
 const getSessionCookies = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected session cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("getCategoryProducts", () => {
@@ -75,9 +75,9 @@ describe("getCategoryProducts", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
@@ -87,14 +87,14 @@ describe("getCategoryProducts", () => {
       expect(request?.url.searchParams.getAll("filter")).toEqual(["brand:fresh-farms"])
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
-      expect(result.right.value.category.categoryId).toBe("sanitized-category-produce")
-      expect(result.right.value.category.retailerCategoryId).toBe("retailer-category-produce")
-      expect(result.right.value.products[0]?.productId).toBe("sanitized-strawberries-product-id")
-      expect(result.right.value.products[0]?.retailerProductId).toBe("111222EA")
-      expect(result.right.value.products[0]?.price.amount).toBe("4.99")
-      expect(result.right.value.pagination.nextPageToken).toBe("sanitized-category-next-page-token")
-      expect(result.right.value.filters[0]?.id).toBe("brand")
-      expect(getSessionCookies(result.right.session)).toContain("fresh-category-cookie=after")
+      expect(result.success.value.category.categoryId).toBe("sanitized-category-produce")
+      expect(result.success.value.category.retailerCategoryId).toBe("retailer-category-produce")
+      expect(result.success.value.products[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.products[0]?.retailerProductId).toBe("111222EA")
+      expect(result.success.value.products[0]?.price.amount).toBe("4.99")
+      expect(result.success.value.pagination.nextPageToken).toBe("sanitized-category-next-page-token")
+      expect(result.success.value.filters[0]?.id).toBe("brand")
+      expect(getSessionCookies(result.success.session)).toContain("fresh-category-cookie=after")
     }
   })
 
@@ -105,9 +105,9 @@ describe("getCategoryProducts", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.url.searchParams.get("categoryId")).toBe("sanitized-category-produce")
@@ -119,11 +119,11 @@ describe("getCategoryProducts", () => {
     const fake = respondingTransport(makeCategoryResponse())
     const result = await runWith(getCategoryProducts(makeSession(), { pageSize: 0 }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CategoryPageInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CategoryPageInputInvalid")
     }
   })
 
@@ -133,10 +133,10 @@ describe("getCategoryProducts", () => {
       respondingTransport(makeCategoryResponse())
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaMissingCsrfToken")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaMissingCsrfToken")
     }
   })
 
@@ -146,10 +146,10 @@ describe("getCategoryProducts", () => {
       connectionFailureTransport()
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaConnectionFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
     }
   })
 
@@ -159,10 +159,10 @@ describe("getCategoryProducts", () => {
       deadlineExceededTransport()
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaRequestDeadlineExceeded")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaRequestDeadlineExceeded")
     }
   })
 
@@ -181,10 +181,10 @@ describe("getCategoryProducts", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
     }
   })
 
@@ -194,10 +194,10 @@ describe("getCategoryProducts", () => {
       respondingTransport(makeCategoryResponse("{}", 500))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 })

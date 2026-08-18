@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 
 import type { NormalizedCartView, NormalizedSearchProduct } from "../../src/index.js"
 import { addCartItems, bootstrapGuestSession, getCart, removeCartItems, searchProducts } from "../../src/index.js"
@@ -29,80 +29,80 @@ const isCartProductCandidate = (product: NormalizedSearchProduct): boolean =>
 const cartQuantityForProduct = (cart: NormalizedCartView, productId: string): number =>
   cart.items.filter((item) => item.productId === productId).reduce((total, item) => total + item.quantity, 0)
 
-const runSmoke = async (): Promise<Either.Either<string, LiveCartSmokeFailure>> => {
+const runSmoke = async (): Promise<Result.Result<string, LiveCartSmokeFailure>> => {
   const bootstrap = await runLive(bootstrapGuestSession())
 
-  if (Either.isLeft(bootstrap)) {
-    return Either.left({ _tag: "LiveCartSmokeBootstrapFailed", causeTag: toCauseTag(bootstrap.left) })
+  if (Result.isFailure(bootstrap)) {
+    return Result.fail({ _tag: "LiveCartSmokeBootstrapFailed", causeTag: toCauseTag(bootstrap.failure) })
   }
 
-  const search = await runLive(searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }))
+  const search = await runLive(searchProducts(bootstrap.success.session, { pageSize, query: harmlessQuery }))
 
-  if (Either.isLeft(search)) {
-    return Either.left({ _tag: "LiveCartSmokeSearchFailed", causeTag: toCauseTag(search.left) })
+  if (Result.isFailure(search)) {
+    return Result.fail({ _tag: "LiveCartSmokeSearchFailed", causeTag: toCauseTag(search.failure) })
   }
 
-  const product = search.right.value.products.find(isCartProductCandidate)
+  const product = search.success.value.products.find(isCartProductCandidate)
 
   if (product === undefined) {
-    return Either.left({ _tag: "LiveCartSmokeNoAvailableProduct" })
+    return Result.fail({ _tag: "LiveCartSmokeNoAvailableProduct" })
   }
 
-  const add = await runLive(addCartItems(search.right.session, [{ productId: product.productId, quantity: 1 }]))
+  const add = await runLive(addCartItems(search.success.session, [{ productId: product.productId, quantity: 1 }]))
 
-  if (Either.isLeft(add)) {
-    return Either.left({ _tag: "LiveCartSmokeAddFailed", causeTag: toCauseTag(add.left) })
+  if (Result.isFailure(add)) {
+    return Result.fail({ _tag: "LiveCartSmokeAddFailed", causeTag: toCauseTag(add.failure) })
   }
 
-  const read = await runLive(getCart(add.right.session))
+  const read = await runLive(getCart(add.success.session))
 
-  if (Either.isLeft(read)) {
+  if (Result.isFailure(read)) {
     const cleanupAfterReadFailure = await runLive(
-      removeCartItems(add.right.session, [{ productId: product.productId, quantity: 1 }])
+      removeCartItems(add.success.session, [{ productId: product.productId, quantity: 1 }])
     )
 
-    if (Either.isLeft(cleanupAfterReadFailure)) {
-      return Either.left({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanupAfterReadFailure.left) })
+    if (Result.isFailure(cleanupAfterReadFailure)) {
+      return Result.fail({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanupAfterReadFailure.failure) })
     }
 
-    return Either.left({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(read.left) })
+    return Result.fail({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(read.failure) })
   }
 
   if (
-    cartQuantityForProduct(read.right.value, product.productId) < 1 ||
-    read.right.value.totals.itemPriceAfterPromos.amount.length === 0
+    cartQuantityForProduct(read.success.value, product.productId) < 1 ||
+    read.success.value.totals.itemPriceAfterPromos.amount.length === 0
   ) {
     const cleanupAfterVerificationFailure = await runLive(
-      removeCartItems(read.right.session, [{ productId: product.productId, quantity: 1 }])
+      removeCartItems(read.success.session, [{ productId: product.productId, quantity: 1 }])
     )
 
-    if (Either.isLeft(cleanupAfterVerificationFailure)) {
-      return Either.left({
+    if (Result.isFailure(cleanupAfterVerificationFailure)) {
+      return Result.fail({
         _tag: "LiveCartSmokeCleanupFailed",
-        causeTag: toCauseTag(cleanupAfterVerificationFailure.left)
+        causeTag: toCauseTag(cleanupAfterVerificationFailure.failure)
       })
     }
 
-    return Either.left({ _tag: "LiveCartSmokeVerificationFailed" })
+    return Result.fail({ _tag: "LiveCartSmokeVerificationFailed" })
   }
 
-  const cleanup = await runLive(removeCartItems(read.right.session, [{ productId: product.productId, quantity: 1 }]))
+  const cleanup = await runLive(removeCartItems(read.success.session, [{ productId: product.productId, quantity: 1 }]))
 
-  if (Either.isLeft(cleanup)) {
-    return Either.left({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanup.left) })
+  if (Result.isFailure(cleanup)) {
+    return Result.fail({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanup.failure) })
   }
 
-  const cleanedCart = await runLive(getCart(cleanup.right.session))
+  const cleanedCart = await runLive(getCart(cleanup.success.session))
 
-  if (Either.isLeft(cleanedCart)) {
-    return Either.left({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(cleanedCart.left) })
+  if (Result.isFailure(cleanedCart)) {
+    return Result.fail({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(cleanedCart.failure) })
   }
 
-  if (cartQuantityForProduct(cleanedCart.right.value, product.productId) > 0) {
-    return Either.left({ _tag: "LiveCartSmokeVerificationFailed" })
+  if (cartQuantityForProduct(cleanedCart.success.value, product.productId) > 0) {
+    return Result.fail({ _tag: "LiveCartSmokeVerificationFailed" })
   }
 
-  return Either.right(product.name)
+  return Result.succeed(product.name)
 }
 
 if (process.env[liveSmokeFlag] !== enabledValue) {
@@ -111,11 +111,11 @@ if (process.env[liveSmokeFlag] !== enabledValue) {
 } else {
   const result = await runSmoke()
 
-  if (Either.isRight(result)) {
-    process.stdout.write(`Live cart smoke passed for product "${result.right}".\n`)
+  if (Result.isSuccess(result)) {
+    process.stdout.write(`Live cart smoke passed for product "${result.success}".\n`)
     process.exit(successStatus)
   } else {
-    process.stderr.write(`Live cart smoke returned typed failure: ${JSON.stringify(result.left)}\n`)
+    process.stderr.write(`Live cart smoke returned typed failure: ${JSON.stringify(result.failure)}\n`)
     process.exit(failureStatus)
   }
 }

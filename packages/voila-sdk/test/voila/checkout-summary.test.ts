@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -41,11 +41,11 @@ const sampleMetadata = {
 const readFixture = (fixtureText: string): unknown => {
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 const makeSession = (): SessionSnapshot => {
@@ -54,17 +54,17 @@ const makeSession = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeResponse = (body: string, status: number = 200): VoilaTransportResponse => ({ body, headers: {}, status })
@@ -73,43 +73,43 @@ describe("checkout summary parsing", () => {
   it("normalizes blocked checkout summaries and preserves blocking restrictions", () => {
     const result = parseCheckoutSummaryResponse(readFixture(blockedFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.basketId).toBe("sanitized-blocked-cart-id")
-      expect(result.right.canCheckout).toBe(false)
-      expect(result.right.basketAboveThreshold).toBe(false)
-      expect(result.right.checkoutRestrictions[0]?.code).toBe("EMPTY_CART")
-      expect(result.right.minimumCheckoutThreshold).toEqual({ amount: "50.00", currency: "CAD" })
-      expect(result.right.warnings.map((warning) => warning.kind)).toEqual(["checkout-restriction"])
+    if (Result.isSuccess(result)) {
+      expect(result.success.basketId).toBe("sanitized-blocked-cart-id")
+      expect(result.success.canCheckout).toBe(false)
+      expect(result.success.basketAboveThreshold).toBe(false)
+      expect(result.success.checkoutRestrictions[0]?.code).toBe("EMPTY_CART")
+      expect(result.success.minimumCheckoutThreshold).toEqual({ amount: "50.00", currency: "CAD" })
+      expect(result.success.warnings.map((warning) => warning.kind)).toEqual(["checkout-restriction"])
     }
   })
 
   it("normalizes missing-slot summaries without inventing selected slot state", () => {
     const result = parseCheckoutSummaryResponse(readFixture(missingSlotFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.canCheckout).toBe(false)
-      expect(result.right.selectedSlot).toBeUndefined()
-      expect(result.right.checkoutRestrictions[0]?.code).toBe("DELIVERY_SLOT_REQUIRED")
-      expect(result.right.fees.smallOrder).toEqual({ amount: "0.00", currency: "CAD" })
+    if (Result.isSuccess(result)) {
+      expect(result.success.canCheckout).toBe(false)
+      expect(result.success.selectedSlot).toBeUndefined()
+      expect(result.success.checkoutRestrictions[0]?.code).toBe("DELIVERY_SLOT_REQUIRED")
+      expect(result.success.fees.smallOrder).toEqual({ amount: "0.00", currency: "CAD" })
     }
   })
 
   it("preserves unavailable item, limited item, substitution, and price warnings", () => {
     const result = parseCheckoutSummaryResponse(readFixture(unavailableFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.selectedSlot?.slotId).toBe("sanitized-slot-id")
-      expect(result.right.unavailableData[0]?.productId).toBe("sanitized-unavailable-product-id")
-      expect(result.right.limitedItems[0]?.productId).toBe("sanitized-limited-product-id")
-      expect(result.right.substitutions[0]?.productId).toBe("sanitized-substitution-product-id")
-      expect(result.right.pricingNotifications[0]?.productId).toBe("sanitized-price-change-product-id")
-      expect(result.right.warnings.map((warning) => warning.kind)).toEqual([
+    if (Result.isSuccess(result)) {
+      expect(result.success.selectedSlot?.slotId).toBe("sanitized-slot-id")
+      expect(result.success.unavailableData[0]?.productId).toBe("sanitized-unavailable-product-id")
+      expect(result.success.limitedItems[0]?.productId).toBe("sanitized-limited-product-id")
+      expect(result.success.substitutions[0]?.productId).toBe("sanitized-substitution-product-id")
+      expect(result.success.pricingNotifications[0]?.productId).toBe("sanitized-price-change-product-id")
+      expect(result.success.warnings.map((warning) => warning.kind)).toEqual([
         "checkout-restriction",
         "limited-item",
         "pricing-notification",
@@ -122,29 +122,29 @@ describe("checkout summary parsing", () => {
   it("normalizes ready-to-review summaries with totals, fees, and selected slot", () => {
     const result = parseCheckoutSummaryResponse(readFixture(readyFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.canCheckout).toBe(true)
-      expect(result.right.warnings).toEqual([])
-      expect(result.right.totals?.finalPrice).toEqual({ amount: "84.09", currency: "CAD" })
-      expect(result.right.fees).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.canCheckout).toBe(true)
+      expect(result.success.warnings).toEqual([])
+      expect(result.success.totals?.finalPrice).toEqual({ amount: "84.09", currency: "CAD" })
+      expect(result.success.fees).toEqual({
         carrierBag: { amount: "0.10", currency: "CAD" },
         delivery: { amount: "3.99", currency: "CAD" },
         smallOrder: { amount: "0.00", currency: "CAD" }
       })
-      expect(result.right.selectedSlot?.expiryTime).toBe("2026-07-01T07:45:00-04:00")
+      expect(result.success.selectedSlot?.expiryTime).toBe("2026-07-01T07:45:00-04:00")
     }
   })
 
   it("keeps normalized checkout summaries under the public schema", () => {
     const result = parseCheckoutSummaryResponse(readFixture(readyFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      const decoded = assertDecodeSuccess(NormalizedCheckoutSummarySchema, result.right)
-      expect(assertEncodeSuccess(NormalizedCheckoutSummarySchema, decoded)).toEqual(result.right)
+    if (Result.isSuccess(result)) {
+      const decoded = assertDecodeSuccess(NormalizedCheckoutSummarySchema, result.success)
+      expect(assertEncodeSuccess(NormalizedCheckoutSummarySchema, decoded)).toEqual(result.success)
     }
   })
 
@@ -183,11 +183,11 @@ describe("checkout summary parsing", () => {
   it("fails at the schema boundary without leaking checkout response bodies", () => {
     const result = parseCheckoutSummaryResponse({ formattedAddress: "123 Secret Street" })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CheckoutSummarySchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("123 Secret Street")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CheckoutSummarySchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("123 Secret Street")
     }
   })
 })
@@ -203,9 +203,9 @@ describe("getCheckoutSummary", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
@@ -215,7 +215,7 @@ describe("getCheckoutSummary", () => {
       expect(request?.url.href).not.toContain("place-order")
       expect(request?.url.href).not.toContain("orders")
       expect(request?.body).toBeUndefined()
-      expect(result.right.value.canCheckout).toBe(true)
+      expect(result.success.value.canCheckout).toBe(true)
     }
   })
 
@@ -223,11 +223,11 @@ describe("getCheckoutSummary", () => {
     const fake = respondingTransport(makeResponse(readyFixtureText))
     const result = await runWith(getCheckoutSummary(makeSession(), { appliedPaymentCheckId: "" }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CheckoutSummaryInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CheckoutSummaryInputInvalid")
     }
   })
 
@@ -237,11 +237,11 @@ describe("getCheckoutSummary", () => {
       respondingTransport(makeResponse(serviceDownBody, 503))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
-      expect(JSON.stringify(result.left)).not.toContain("sanitized checkout service unavailable")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
+      expect(JSON.stringify(result.failure)).not.toContain("sanitized checkout service unavailable")
     }
   })
 })

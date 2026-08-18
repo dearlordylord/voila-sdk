@@ -9,8 +9,7 @@ import {
   toughCookieJarPort
 } from "@firfi/voila-sdk"
 import { type StateFileLocks, StateFileLocksLive, StateFilePathSchema } from "@firfi/voila-session-store"
-import { Effect, Either, Schema } from "effect"
-import type { TestServices } from "effect/TestServices"
+import { Effect, Result, Schema } from "effect"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -24,7 +23,7 @@ const secretCookieValue = "sanitized-cookie"
 const secretCsrfToken = "sanitized-csrf-token"
 
 // one fresh lock table per test, shared by any forked fibers inside it
-const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks | TestServices>): void => {
+const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks>): void => {
   it.effect(name, () => Effect.provide(self(), StateFileLocksLive))
 }
 
@@ -34,31 +33,31 @@ const makeBaseSession = (regionId: string): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization")
   }
 
   const session = makeSessionSnapshot(
     { assetVersion: "asset-version", clientRouteId: "client-route-id", pageViewId: "page-view-id", regionId },
     { token: secretCsrfToken },
-    cookieJar.right
+    cookieJar.success
   )
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot")
   }
 
-  return session.right
+  return session.success
 }
 
 const authenticated = (regionId: string): SdkSessionSnapshot => {
   const snapshot = makeAuthenticatedSdkSessionSnapshot(makeBaseSession(regionId), "authenticated")
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const encode = (snapshot: SdkSessionSnapshot): string =>

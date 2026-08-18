@@ -14,7 +14,7 @@ import {
   type StateFileLocksService,
   type StateFilePath
 } from "@firfi/voila-session-store"
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { chromium } from "playwright"
 
 import { type CapturedBrowserSession, observeVoilaBrowserTraffic, waitForAuthenticatedCapture } from "./auth-capture.js"
@@ -65,28 +65,28 @@ const makeSessionFromBrowserCapture = (
 
   const cookieJar = toughCookieJarPort.serialize(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     return failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
   }
 
   const session = makeSessionSnapshot(
     capture.material.metadata,
     { token: capture.material.csrfToken ?? readonlyCsrfFallback },
-    cookieJar.right
+    cookieJar.success
   )
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     return failure("VoilaAuthSessionCaptureInvalid", "Voila browser session could not be converted to an SDK session")
   }
 
   const sdkSession = makeAuthenticatedSdkSessionSnapshot(
-    session.right,
+    session.success,
     capture.material.csrfToken === undefined ? "unknown-expiry" : "authenticated"
   )
 
-  return Either.isLeft(sdkSession)
+  return Result.isFailure(sdkSession)
     ? failure("VoilaAuthSessionCaptureInvalid", "Voila browser session could not be converted to an SDK session")
-    : sdkSession.right
+    : sdkSession.success
 }
 
 const saveSession = async (
@@ -95,10 +95,10 @@ const saveSession = async (
   snapshot: SdkSessionSnapshot
 ): Promise<OperationExecutionResult | undefined> => {
   const saved = await Effect.runPromise(
-    Effect.either(persistLoginSession(path, snapshot).pipe(Effect.provideService(StateFileLocks, locks)))
+    Effect.result(persistLoginSession(path, snapshot).pipe(Effect.provideService(StateFileLocks, locks)))
   )
 
-  return Either.isLeft(saved) ? failure(saved.left._tag, saved.left.message) : undefined
+  return Result.isFailure(saved) ? failure(saved.failure._tag, saved.failure.message) : undefined
 }
 
 /**
@@ -113,21 +113,21 @@ const validateSavedSession = async (
   session: SdkSessionSnapshot
 ): Promise<OperationExecutionResult> => {
   const health = await Effect.runPromise(
-    Effect.either(Effect.provide(checkSessionHealth(session), nodeVoilaTransportLayer()))
+    Effect.result(Effect.provide(checkSessionHealth(session), nodeVoilaTransportLayer()))
   )
 
-  if (Either.isLeft(health)) {
-    return failure(health.left._tag, health.left.message)
+  if (Result.isFailure(health)) {
+    return failure(health.failure._tag, health.failure.message)
   }
 
-  const validated = await saveSession(locks, path, health.right.session)
+  const validated = await saveSession(locks, path, health.success.session)
 
   if (validated !== undefined) {
     return validated
   }
 
-  return health.right.status === "active"
-    ? success({ sessionPath: path, status: health.right.status })
+  return health.success.status === "active"
+    ? success({ sessionPath: path, status: health.success.status })
     : failure("VoilaAuthSessionInactive", "Saved browser session is not active")
 }
 

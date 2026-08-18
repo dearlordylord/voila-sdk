@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -65,9 +65,9 @@ export const normalizeSearchResponse = (response: ProductSearchResponse): Normal
 
 export const parseSearchResponse = (
   input: unknown
-): Either.Either<NormalizedSearchResult, SearchResponseNormalizationError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(ProductSearchResponseSchema, input), searchResponseSchemaMismatch),
+): Result.Result<NormalizedSearchResult, SearchResponseNormalizationError> =>
+  Result.map(
+    Result.mapError(parseUnknown(ProductSearchResponseSchema, input), searchResponseSchemaMismatch),
     normalizeSearchResponse
   )
 
@@ -76,7 +76,7 @@ export const searchProducts = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<SearchProductsResult, SearchProductsError, VoilaTransport> =>
-  Effect.flatMap(makeSearchRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeSearchRequest(input)), (request) =>
     Effect.map(requestVoilaJson(ProductSearchResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeSearchResponse(result.value)

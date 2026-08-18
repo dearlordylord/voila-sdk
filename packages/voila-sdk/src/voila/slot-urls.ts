@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import { type SlotListingInput, SlotListingInputSchema, SlotReservationInputSchema } from "../domain/schemas/index.js"
@@ -46,8 +46,8 @@ const makeSlotAnalyticsData = (input: SlotListingInput): Readonly<Record<string,
   }
 }
 
-export const makeSlotListingRequest = (input: unknown): Either.Either<SlotListingRequest, SlotListingRequestError> =>
-  Either.map(Either.mapLeft(parseUnknown(SlotListingInputSchema, input), slotListingInputInvalid), (slotInput) => {
+export const makeSlotListingRequest = (input: unknown): Result.Result<SlotListingRequest, SlotListingRequestError> =>
+  Result.map(Result.mapError(parseUnknown(SlotListingInputSchema, input), slotListingInputInvalid), (slotInput) => {
     const analyticsData = makeSlotAnalyticsData(slotInput)
 
     return {
@@ -66,9 +66,9 @@ export const makeSlotListingRequest = (input: unknown): Either.Either<SlotListin
 
 export const makeSlotReservationRequest = (
   input: unknown
-): Either.Either<SlotReservationRequest, SlotReservationRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(SlotReservationInputSchema, input), slotReservationInputInvalid),
+): Result.Result<SlotReservationRequest, SlotReservationRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(SlotReservationInputSchema, input), slotReservationInputInvalid),
     (slotInput) => ({
       body: JSON.stringify({
         deliveryDestinationId: slotInput.deliveryDestinationId,

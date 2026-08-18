@@ -4,11 +4,12 @@ import { readFile } from "node:fs/promises"
 import { describe, expect } from "vitest"
 
 import { mcpName, type OperationEnvironment, VoilaOperations } from "../src/index.js"
-import { getJson, jsonRpc, jsonRpcResponse, testServerLayer } from "./helpers/mcp-http.js"
+import { getJson, jsonRpc, jsonRpcResponse, jsonRpcTextResponse, testServerLayer } from "./helpers/mcp-http.js"
 import { makeStubEnvironment, unusedTransportLayer } from "./helpers/operations.js"
 
 const testSessionFailure = "Session is unavailable in this protocol test"
 const negotiatedProtocolVersion = "2025-06-18"
+const olderProtocolVersion = "2024-11-05"
 
 /**
  * An environment whose session cycle always fails. A protocol test is about
@@ -130,6 +131,93 @@ describe("Voila MCP HTTP server", () => {
         jsonrpc: "2.0",
         result: { protocolVersion: negotiatedProtocolVersion, serverInfo: { name: mcpName } }
       })
+    }).pipe(Effect.provide(ServerLive))
+  )
+
+  it.effect("retains the baseline protocol methods and version negotiation", () =>
+    Effect.gen(function* () {
+      const older = yield* jsonRpc({
+        id: 1,
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {
+          capabilities: {},
+          clientInfo: { name: "vitest", version: "0.0.0" },
+          protocolVersion: olderProtocolVersion
+        }
+      })
+      const ping = yield* jsonRpc({ id: 2, jsonrpc: "2.0", method: "ping", params: {} })
+      const resources = yield* jsonRpc({ id: 3, jsonrpc: "2.0", method: "resources/list", params: {} })
+      const templates = yield* jsonRpc({ id: 4, jsonrpc: "2.0", method: "resources/templates/list", params: {} })
+      const prompts = yield* jsonRpc({ id: 5, jsonrpc: "2.0", method: "prompts/list", params: {} })
+      const completion = yield* jsonRpc({
+        id: 6,
+        jsonrpc: "2.0",
+        method: "completion/complete",
+        params: { argument: { name: "query", value: "mil" }, ref: { name: "missing", type: "ref/prompt" } }
+      })
+      const missingPrompt = yield* jsonRpc({
+        id: 7,
+        jsonrpc: "2.0",
+        method: "prompts/get",
+        params: { name: "missing" }
+      })
+      const unsupportedLogging = yield* jsonRpc({
+        id: 8,
+        jsonrpc: "2.0",
+        method: "logging/setLevel",
+        params: { level: "info" }
+      })
+      const unknown = yield* jsonRpc({ id: 9, jsonrpc: "2.0", method: "unknown/method", params: {} })
+      const statelessPing = yield* jsonRpc(
+        { id: 10, jsonrpc: "2.0", method: "ping", params: {} },
+        { "mcp-protocol-version": olderProtocolVersion, "mcp-session-id": "ignored-effect-3-compatible-session" }
+      )
+
+      expect(older).toMatchObject({ id: 1, result: { protocolVersion: olderProtocolVersion } })
+      expect(ping).toEqual({ id: 2, jsonrpc: "2.0", result: {} })
+      expect(resources).toEqual({ id: 3, jsonrpc: "2.0", result: { resources: [] } })
+      expect(templates).toEqual({ id: 4, jsonrpc: "2.0", result: { resourceTemplates: [] } })
+      expect(prompts).toEqual({ id: 5, jsonrpc: "2.0", result: { prompts: [] } })
+      expect(completion).toEqual({
+        id: 6,
+        jsonrpc: "2.0",
+        result: { completion: { hasMore: false, total: 0, values: [] } }
+      })
+      expect(missingPrompt).toMatchObject({ error: { code: -32602 }, id: 7 })
+      expect(unsupportedLogging).toMatchObject({ error: { code: -32603, message: "Not implemented" }, id: 8 })
+      expect(unknown).toMatchObject({ error: { code: -32601 }, id: 9 })
+      expect(statelessPing).toEqual({ id: 10, jsonrpc: "2.0", result: {} })
+    }).pipe(Effect.provide(ServerLive))
+  )
+
+  it.effect("rejects JSON-RPC batches as required by the RC.110 2025-06-18 transport", () =>
+    Effect.gen(function* () {
+      const response = yield* jsonRpcTextResponse([
+        { id: 1, jsonrpc: "2.0", method: "ping", params: {} },
+        { id: 2, jsonrpc: "2.0", method: "tools/list", params: {} }
+      ])
+
+      expect(response).toEqual({ body: "", status: 400 })
+    }).pipe(Effect.provide(ServerLive))
+  )
+
+  it.effect("acknowledges notifications without a JSON-RPC response body", () =>
+    Effect.gen(function* () {
+      const response = yield* jsonRpcTextResponse({ jsonrpc: "2.0", method: "notifications/initialized", params: {} })
+
+      expect(response).toEqual({ body: "", status: 202 })
+    }).pipe(Effect.provide(ServerLive))
+  )
+
+  it.effect("rejects an Accept media type disabled by its quality value", () =>
+    Effect.gen(function* () {
+      const response = yield* jsonRpcTextResponse(
+        { id: 1, jsonrpc: "2.0", method: "tools/list", params: {} },
+        { accept: "application/json, text/event-stream;q=0" }
+      )
+
+      expect(response).toEqual({ body: "", status: 406 })
     }).pipe(Effect.provide(ServerLive))
   )
 

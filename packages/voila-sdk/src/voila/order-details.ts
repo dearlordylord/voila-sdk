@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -187,18 +187,18 @@ const datesFor = (order: RawOrderDetailOrder) =>
 export const normalizeOrderDetailsResponse = (
   response: RawDecoratedOrderResponse,
   orderId: string
-): Either.Either<NormalizedOrderDetailsResult, OrderDetailsUnavailableError> => {
+): Result.Result<NormalizedOrderDetailsResult, OrderDetailsUnavailableError> => {
   const order = response.entities.order[orderId] ?? firstRecordValue(response.entities.order)
 
   if (order === undefined) {
-    return Either.left(orderDetailsUnavailable())
+    return Result.fail(orderDetailsUnavailable())
   }
 
   const products = response.entities.product ?? {}
   const itemGroups = normalizeItemGroups(order, products)
   const items = itemGroups.flatMap((group) => group.items)
 
-  return Either.right({
+  return Result.succeed({
     ...datesFor(order),
     itemGroups,
     items,
@@ -315,9 +315,9 @@ export const getOrderDetails = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetOrderDetailsResult, GetOrderDetailsError, VoilaTransport> =>
-  Effect.flatMap(makeOrderDetailsRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeOrderDetailsRequest(input)), (request) =>
     Effect.flatMap(requestVoilaJson(RawDecoratedOrderResponseSchema, session, request, cookieJarPort), (result) =>
-      Effect.map(normalizeOrderDetailsResponse(result.value, request.orderId), (value) => ({
+      Effect.map(Effect.fromResult(normalizeOrderDetailsResponse(result.value, request.orderId)), (value) => ({
         session: result.session,
         value
       }))
@@ -347,6 +347,17 @@ interface OrderScanState {
   readonly pageToken: string | undefined
   readonly pagination: NormalizedCompletedOrderItemsResult["pagination"]
   readonly session: SessionSnapshot
+}
+
+const runOrderScan = (
+  initial: OrderScanState,
+  body: (state: OrderScanState) => Effect.Effect<OrderScanState, GetCompletedOrdersError, VoilaTransport>,
+  shouldContinue: (state: OrderScanState) => boolean
+): Effect.Effect<OrderScanState, GetCompletedOrdersError, VoilaTransport> => {
+  const loop = (state: OrderScanState): Effect.Effect<OrderScanState, GetCompletedOrdersError, VoilaTransport> =>
+    shouldContinue(state) ? Effect.flatMap(body(state), loop) : Effect.succeed(state)
+
+  return loop(initial)
 }
 
 const scanOrderPage = (
@@ -428,30 +439,35 @@ export const getCompletedOrderItems = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetCompletedOrderItemsResult, GetCompletedOrderItemsError, VoilaTransport> =>
-  Effect.flatMap(Either.mapLeft(parseUnknown(CompletedOrderItemsInputSchema, input), inputInvalid), (parsed) => {
-    const initial: OrderScanState = {
-      done: false,
-      matchingOrders: [],
-      ordersScanned: 0,
-      pageToken: parsed.pageToken,
-      pagination: { hasNextPage: false },
-      session
-    }
-
-    return Effect.flatMap(
-      Effect.iterate(initial, {
-        body: (state) => scanOrderPage(state, parsed, cookieJarPort),
-        while: (state) => !state.done
-      }),
-      (scan) => {
-        const noAggregates: ItemAggregation = { aggregates: new Map(), session: scan.session }
-
-        return Effect.map(
-          Effect.reduce(scan.matchingOrders.slice(firstOrder, parsed.maxOrders), noAggregates, (aggregation, order) =>
-            aggregateOrderItems(aggregation, order, cookieJarPort)
-          ),
-          (aggregation) => makeCompletedOrderItemsResult(scan, aggregation)
-        )
+  Effect.flatMap(
+    Effect.fromResult(Result.mapError(parseUnknown(CompletedOrderItemsInputSchema, input), inputInvalid)),
+    (parsed) => {
+      const initial: OrderScanState = {
+        done: false,
+        matchingOrders: [],
+        ordersScanned: 0,
+        pageToken: parsed.pageToken,
+        pagination: { hasNextPage: false },
+        session
       }
-    )
-  })
+
+      return Effect.flatMap(
+        runOrderScan(
+          initial,
+          (state) => scanOrderPage(state, parsed, cookieJarPort),
+          (state) => !state.done
+        ),
+        (scan) => {
+          const noAggregates: ItemAggregation = { aggregates: new Map(), session: scan.session }
+
+          return Effect.map(
+            Effect.reduce<ItemAggregation, NormalizedCompletedOrder, GetOrderDetailsError, VoilaTransport>(
+              () => noAggregates,
+              (aggregation, order) => aggregateOrderItems(aggregation, order, cookieJarPort)
+            )(scan.matchingOrders.slice(firstOrder, parsed.maxOrders)),
+            (aggregation) => makeCompletedOrderItemsResult(scan, aggregation)
+          )
+        }
+      )
+    }
+  )

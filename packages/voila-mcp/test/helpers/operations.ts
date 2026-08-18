@@ -11,7 +11,7 @@ import {
   type VoilaTransportRequest,
   type VoilaTransportResponse
 } from "@firfi/voila-sdk"
-import { Effect, Either, Layer } from "effect"
+import { Effect, Layer, Result } from "effect"
 
 import type {
   OperationEnvironment,
@@ -38,27 +38,27 @@ export const makeSessionSnapshotForTest = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization")
   }
 
-  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot")
   }
 
-  return session.right
+  return session.success
 }
 
 export const makeSdkSessionForTest = (): SdkSessionSnapshot => {
   const snapshot = makeGuestSdkSessionSnapshot(makeSessionSnapshotForTest())
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected SDK session snapshot")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 /**
@@ -119,7 +119,7 @@ export const runOperation = (
 ): Promise<OperationExecutionResult> =>
   Effect.runPromise(
     Effect.map(
-      Effect.either(runVoilaOperation(name, input, env)),
-      (executed): OperationExecutionResult => (Either.isLeft(executed) ? executed.left : executed.right)
+      Effect.result(runVoilaOperation(name, input, env)),
+      (executed): OperationExecutionResult => (Result.isFailure(executed) ? executed.failure : executed.success)
     )
   )

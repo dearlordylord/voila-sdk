@@ -71,7 +71,7 @@ const connect = Effect.flatMap(stdioClient(Layer.succeed(VoilaOperations, inertE
 )
 
 describe("Voila MCP stdio server", () => {
-  it.scoped("negotiates a supported protocol version over stdio", () =>
+  it.effect("negotiates a supported protocol version over stdio", () =>
     Effect.gen(function* () {
       const client = yield* stdioClient(Layer.succeed(VoilaOperations, inertEnvironment))
 
@@ -83,7 +83,7 @@ describe("Voila MCP stdio server", () => {
     })
   )
 
-  it.scoped("lists every tool with all four behaviour hints over stdio", () =>
+  it.effect("lists every tool with all four behaviour hints over stdio", () =>
     Effect.gen(function* () {
       const client = yield* connect
 
@@ -102,7 +102,7 @@ describe("Voila MCP stdio server", () => {
     })
   )
 
-  it.scoped("reports a failed operation as a tool result over stdio", () =>
+  it.effect("reports a failed operation as a tool result over stdio", () =>
     Effect.gen(function* () {
       const client = yield* connect
 

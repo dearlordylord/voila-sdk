@@ -1,10 +1,4 @@
-import {
-  FetchHttpClient,
-  HttpBody as Body,
-  HttpClient,
-  HttpClientRequest,
-  type HttpClientResponse
-} from "@effect/platform"
+import { NodeHttpClient } from "@effect/platform-node"
 import {
   connectionFailure,
   getHeaderValues,
@@ -16,6 +10,7 @@ import {
 } from "@firfi/voila-sdk"
 
 import { Effect, Layer } from "effect"
+import { HttpBody as Body, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 
 import topDesktopUserAgents from "top-user-agents/desktop"
 
@@ -75,7 +70,7 @@ const makeTransportResponse = (
 ): VoilaTransportResponse => ({ body, headers: response.headers, status: response.status })
 
 /**
- * The transport, over `@effect/platform`'s `HttpClient`. The body is read under
+ * The transport, over Effect's unstable `HttpClient`. The body is read under
  * the same deadline as the headers: a response whose headers arrive and whose
  * body then stalls is the same held lock as one that never answers at all.
  *
@@ -99,7 +94,10 @@ export const voilaTransportLayer = (
             )
           ),
           Effect.scoped,
-          Effect.timeoutFail({ duration: `${timeoutMs} millis`, onTimeout: () => requestDeadlineExceeded(timeoutMs) })
+          Effect.timeoutOrElse({
+            duration: `${timeoutMs} millis`,
+            orElse: () => Effect.fail(requestDeadlineExceeded(timeoutMs))
+          })
         )
     }))
   )
@@ -108,4 +106,4 @@ export const nodeVoilaTransportLayer = (
   configuredUserAgent?: string,
   timeoutMs?: number
 ): Layer.Layer<VoilaTransport> =>
-  Layer.provide(voilaTransportLayer(configuredUserAgent, timeoutMs), FetchHttpClient.layer)
+  Layer.provide(voilaTransportLayer(configuredUserAgent, timeoutMs), NodeHttpClient.layerNodeHttp)

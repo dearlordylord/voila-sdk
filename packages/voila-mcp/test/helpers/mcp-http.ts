@@ -1,6 +1,6 @@
-import { HttpBody, HttpClient, HttpClientRequest } from "@effect/platform"
 import { NodeHttpServer } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
+import { HttpBody, HttpClient, HttpClientRequest } from "effect/unstable/http"
 
 import { voilaMcpRoutesLayer } from "../../src/mcp-http-server.js"
 import type { VoilaOperations } from "../../src/mcp-server.js"
@@ -37,13 +37,33 @@ export const jsonRpcResponse = (
     client
       .execute(
         HttpClientRequest.post(mcpPath, {
-          body: HttpBody.unsafeJson(body),
+          body: HttpBody.jsonUnsafe(body),
           headers: { accept: "application/json, text/event-stream", ...headers }
         })
       )
       .pipe(
         Effect.flatMap((response) =>
           Effect.map(response.json, (parsed) => ({ body: parsed, status: response.status }))
+        ),
+        Effect.scoped
+      )
+  )
+
+export const jsonRpcTextResponse = (
+  body: unknown,
+  headers: Readonly<Record<string, string>> = {}
+): Effect.Effect<{ readonly body: string; readonly status: number }, unknown, HttpClient.HttpClient> =>
+  Effect.flatMap(HttpClient.HttpClient, (client) =>
+    client
+      .execute(
+        HttpClientRequest.post(mcpPath, {
+          body: HttpBody.jsonUnsafe(body),
+          headers: { accept: "application/json, text/event-stream", ...headers }
+        })
+      )
+      .pipe(
+        Effect.flatMap((response) =>
+          Effect.map(response.text, (bodyText) => ({ body: bodyText, status: response.status }))
         ),
         Effect.scoped
       )

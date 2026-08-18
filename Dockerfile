@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS build
+FROM node:24.15.0-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -8,6 +8,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
 COPY packages/voila-sdk/package.json packages/voila-sdk/package.json
 COPY packages/voila-mcp/package.json packages/voila-mcp/package.json
 COPY packages/voila-cli/package.json packages/voila-cli/package.json
+COPY packages/voila-session-store/package.json packages/voila-session-store/package.json
 
 RUN corepack enable \
   && corepack prepare pnpm@10.29.3 --activate \
@@ -17,7 +18,7 @@ COPY . .
 RUN pnpm --filter @firfi/voila-sdk build \
   && pnpm --filter @firfi/voila-mcp build
 
-FROM node:20-bookworm-slim
+FROM node:24.15.0-bookworm-slim
 
 WORKDIR /app
 

@@ -7,7 +7,7 @@
  * one that lets a snapshot loaded at boot land on top of a fresh interactive
  * login.
  */
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import { type SdkSessionSnapshot, SdkSessionSnapshotSchema } from "../domain/schemas/index.js"
@@ -35,16 +35,17 @@ const sessionStorageContentsInvalid = (): SessionStorageError => ({
   message: "Stored session snapshot is corrupt or stale"
 })
 
-const decodeStoredSnapshot = (contents: unknown): Either.Either<SdkSessionSnapshot, SessionStorageError> => {
+const decodeStoredSnapshot = (contents: unknown): Result.Result<SdkSessionSnapshot, SessionStorageError> => {
   if (typeof contents !== "string") {
-    return Either.left(sessionStorageContentsInvalid())
+    return Result.fail(sessionStorageContentsInvalid())
   }
 
-  return Either.flatMap(Either.mapLeft(parseJson(contents), sessionStorageContentsInvalid), (parsed) =>
-    Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, parsed), sessionStorageContentsInvalid)
+  return Result.flatMap(Result.mapError(parseJson(contents), sessionStorageContentsInvalid), (parsed) =>
+    Result.mapError(parseUnknown(SdkSessionSnapshotSchema, parsed), sessionStorageContentsInvalid)
   )
 }
 
 export const loadSdkSessionSnapshot = (
   storage: SessionStoragePort
-): Effect.Effect<SdkSessionSnapshot, SessionStorageError> => Effect.flatMap(storage.read(), decodeStoredSnapshot)
+): Effect.Effect<SdkSessionSnapshot, SessionStorageError> =>
+  Effect.flatMap(storage.read(), (contents) => Effect.fromResult(decodeStoredSnapshot(contents)))

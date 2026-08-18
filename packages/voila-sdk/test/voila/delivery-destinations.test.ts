@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -39,11 +39,11 @@ const sampleMetadata = {
 const readFixture = (): unknown => {
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 const makeSession = (token: string = csrfToken): SessionSnapshot => {
@@ -52,17 +52,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -74,22 +74,22 @@ const makeResponse = (body: string = fixtureText, status: number = 200): VoilaTr
 const getSessionCookies = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected session cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("delivery destination parsing", () => {
   it("normalizes saved home delivery destinations from a sanitized fixture", () => {
     const result = parseDeliveryDestinationsResponse(readFixture())
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.destinations).toHaveLength(2)
-      expect(result.right.destinations[0]).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.destinations).toHaveLength(2)
+      expect(result.success.destinations[0]).toEqual({
         addressId: "sanitized-address-id",
         deliverability: "DELIVERABLE",
         deliverable: true,
@@ -100,19 +100,19 @@ describe("delivery destination parsing", () => {
         nickname: "sanitized-address-nickname",
         regionId: "sanitized-region-id"
       })
-      expect(result.right.destinations[1]?.deliverable).toBe(false)
-      expect(result.right.destinations[1]?.regionId).toBe("sanitized-fallback-region-id")
+      expect(result.success.destinations[1]?.deliverable).toBe(false)
+      expect(result.success.destinations[1]?.regionId).toBe("sanitized-fallback-region-id")
     }
   })
 
   it("keeps normalized destinations under the public schema", () => {
     const parsed = parseDeliveryDestinationsResponse(readFixture())
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const decoded = assertDecodeSuccess(NormalizedDeliveryDestinationsSchema, parsed.right)
-      expect(assertEncodeSuccess(NormalizedDeliveryDestinationsSchema, decoded)).toEqual(parsed.right)
+    if (Result.isSuccess(parsed)) {
+      const decoded = assertDecodeSuccess(NormalizedDeliveryDestinationsSchema, parsed.success)
+      expect(assertEncodeSuccess(NormalizedDeliveryDestinationsSchema, decoded)).toEqual(parsed.success)
     }
   })
 
@@ -161,7 +161,7 @@ describe("delivery destination parsing", () => {
       ]
     })
     expect(assertDecodeSuccess(DeliveryDestinationsDiagnosticSchema, diagnostic)).toEqual(diagnostic)
-    expect(Either.isRight(parseDeliveryDestinationsDiagnostic(diagnostic))).toBe(true)
+    expect(Result.isSuccess(parseDeliveryDestinationsDiagnostic(diagnostic))).toBe(true)
     expect(encoded).not.toContain(secretAddress)
     expect(encoded).not.toContain(secretAccountId)
     expect(encoded).not.toContain("address-id-with-account-context")
@@ -186,11 +186,11 @@ describe("delivery destination parsing", () => {
       destinations: [{ deliverable: true, deliveryDestinationId: "raw-destination-id" }]
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryDestinationsResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("raw-destination-id")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryDestinationsResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("raw-destination-id")
     }
   })
 
@@ -203,10 +203,10 @@ describe("delivery destination parsing", () => {
       resolvedRegionId: "sanitized-region-id"
     })
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
         deliverability: "DELIVERABLE",
         deliverable: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
@@ -220,11 +220,11 @@ describe("delivery destination parsing", () => {
   it("fails single destination parsing with redacted schema errors", () => {
     const result = parseDeliveryDestinationResponse({ formattedAddress: secretAddress })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryDestinationsResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain(secretAddress)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryDestinationsResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain(secretAddress)
     }
   })
 
@@ -233,11 +233,11 @@ describe("delivery destination parsing", () => {
       { deliverability: "DELIVERABLE", formattedAddress: secretAddress }
     ])
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryDestinationsResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain(secretAddress)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryDestinationsResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain(secretAddress)
     }
   })
 })
@@ -247,9 +247,9 @@ describe("delivery destination operations", () => {
     const fake = respondingTransport(makeResponse())
     const result = await runWith(getDeliveryDestinations(makeSession(), {}), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
@@ -257,8 +257,8 @@ describe("delivery destination operations", () => {
       expect(request?.url.searchParams.get("deliveryMethod")).toBe("HOME_DELIVERY")
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
-      expect(result.right.value.destinations[0]?.deliveryDestinationId).toBe("sanitized-delivery-destination-id")
-      expect(getSessionCookies(result.right.session)).toContain("fresh-delivery-destination-cookie=after")
+      expect(result.success.value.destinations[0]?.deliveryDestinationId).toBe("sanitized-delivery-destination-id")
+      expect(getSessionCookies(result.success.session)).toContain("fresh-delivery-destination-cookie=after")
     }
   })
 
@@ -269,9 +269,9 @@ describe("delivery destination operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.url.searchParams.get("deliveryMethod")).toBe("CUSTOMER_COLLECTION")
     }
@@ -281,11 +281,11 @@ describe("delivery destination operations", () => {
     const fake = respondingTransport(makeResponse())
     const result = await runWith(getDeliveryDestinations(makeSession(), { deliveryMethod: "INVALID" }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryDestinationsInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryDestinationsInputInvalid")
     }
   })
 
@@ -306,17 +306,17 @@ describe("delivery destination operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe(
         "/api/ecomdeliverydestinations/v4/delivery-addresses/sanitized-delivery-destination-id"
       )
-      expect(result.right.value.deliverable).toBe(true)
-      expect(result.right.value.regionId).toBe("sanitized-region-id")
+      expect(result.success.value.deliverable).toBe(true)
+      expect(result.success.value.regionId).toBe("sanitized-region-id")
     }
   })
 
@@ -324,11 +324,11 @@ describe("delivery destination operations", () => {
     const fake = respondingTransport(makeResponse())
     const result = await runWith(getDeliveryDestination(makeSession(), { deliveryDestinationId: "" }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryDestinationInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryDestinationInputInvalid")
     }
   })
 
@@ -338,11 +338,11 @@ describe("delivery destination operations", () => {
       respondingTransport(makeResponse(JSON.stringify([{ formattedAddress: secretAddress }])))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretAddress)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretAddress)
     }
   })
 })

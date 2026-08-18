@@ -27,7 +27,7 @@
   ],
   "scripts": {
     "prepack": "pnpm build && pnpm verify-version",
-    "build": "PKG_VERSION=$(node -p \"require('./package.json').version\") && tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\" && esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\" && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\"",
+    "build": "PKG_VERSION=$(node -p \"require('./package.json').version\") && tsc -p tsconfig.json --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.cjs \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\" && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\" && esbuild src/bin.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/bin.cjs --banner:js='#!/usr/bin/env node' \"--define:PKG_VERSION=\\\"$PKG_VERSION\\\"\"",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
     "verify-version": "node -e \"const v=require('./package.json').version; const d=require('fs').readFileSync('dist/bin.cjs','utf8'); if(!d.includes('\\\"'+v+'\\\"'))throw new Error('dist version mismatch: expected '+v)\"",
     "package:audit": "pnpm build && pnpm verify-version && node ../../scripts/audit-package.mjs . bin",
@@ -59,19 +59,16 @@
   },
   "homepage": "https://github.com/dearlordylord/voila-sdk#readme",
   "engines": {
-    "node": ">=20"
+    "node": "^22.22.2 || ^24.15.0"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@effect/ai": "0.37.0",
-    "@effect/experimental": "^0.61.1",
-    "@effect/platform": "^0.97.1",
-    "@effect/platform-node": "^0.108.1",
-    "@effect/rpc": "^0.76.2",
+    "@effect/platform-node": "4.0.0-rc.110",
     "@firfi/voila-sdk": "workspace:*",
-    "effect": "^3.22.1",
+    "effect": "4.0.0-rc.110",
+    "redis": "6.0.0",
     "top-user-agents": "^2.1.125"
   },
   "devDependencies": {

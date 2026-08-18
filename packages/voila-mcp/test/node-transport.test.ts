@@ -1,7 +1,8 @@
-import { HttpClient, HttpClientError, HttpClientResponse } from "@effect/platform"
 import { VoilaTransport, type VoilaTransportRequest, type VoilaTransportResponse } from "@firfi/voila-sdk"
 import { it } from "@effect/vitest"
-import { Deferred, Effect, Fiber, Layer, TestClock } from "effect"
+import { Deferred, Effect, Fiber, Layer } from "effect"
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http"
+import { TestClock } from "effect/testing"
 import topDesktopUserAgents from "top-user-agents/desktop"
 import { describe, expect } from "vitest"
 
@@ -43,7 +44,11 @@ const failingClient = (): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
-      Effect.fail(new HttpClientError.RequestError({ description: secretCookie, reason: "Transport", request }))
+      Effect.fail(
+        new HttpClientError.HttpClientError({
+          reason: new HttpClientError.TransportError({ description: secretCookie, request })
+        })
+      )
     )
   )
 
@@ -62,10 +67,10 @@ const hangingClient = (
     layer: Layer.succeed(
       HttpClient.HttpClient,
       HttpClient.make(() =>
-        Effect.async(() => {
+        Effect.callback(() => {
           // the deadline starts when the request does, so a test waits for this
           // rather than for the clock to be advanced at a hopeful moment
-          Deferred.unsafeDone(started, Effect.void)
+          Deferred.doneUnsafe(started, Effect.void)
 
           return Effect.sync(() => {
             cancellations.push(true)
@@ -91,7 +96,7 @@ const stallingBodyClient = (started: Deferred.Deferred<void>): Layer.Layer<HttpC
           new Response(
             new ReadableStream({
               start: () => {
-                Deferred.unsafeDone(started, Effect.void)
+                Deferred.doneUnsafe(started, Effect.void)
               }
             }),
             { status: 200 }
@@ -188,7 +193,7 @@ describe("Effect-native Voila transport", () => {
   it.effect("abandons a response whose body stalls after its headers arrive", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()
-      const pending = yield* Effect.fork(Effect.flip(runTransport(stallingBodyClient(started), undefined, 500)))
+      const pending = yield* Effect.forkChild(Effect.flip(runTransport(stallingBodyClient(started), undefined, 500)))
 
       yield* Deferred.await(started)
       yield* TestClock.adjust("1 second")
@@ -220,7 +225,7 @@ describe("Effect-native Voila transport", () => {
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()
       const client = hangingClient(started)
-      const pending = yield* Effect.fork(Effect.flip(runTransport(client.layer, undefined, 500)))
+      const pending = yield* Effect.forkChild(Effect.flip(runTransport(client.layer, undefined, 500)))
 
       yield* Deferred.await(started)
       yield* TestClock.adjust("1 second")
@@ -237,7 +242,7 @@ describe("Effect-native Voila transport", () => {
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()
       const client = hangingClient(started)
-      const pending = yield* Effect.fork(runTransport(client.layer, undefined, defaultRequestTimeoutMs))
+      const pending = yield* Effect.forkChild(runTransport(client.layer, undefined, defaultRequestTimeoutMs))
 
       yield* Deferred.await(started)
       yield* TestClock.adjust(`${defaultRequestTimeoutMs - 1} millis`)

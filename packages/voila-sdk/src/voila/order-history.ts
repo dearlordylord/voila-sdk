@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import {
   type NormalizedCompletedOrder,
@@ -101,16 +101,16 @@ const completedOrdersUnavailable = (): CompletedOrdersUnavailableError => ({
 
 const getCompletedOrdersConnection = (
   response: RawCompletedOrdersGraphqlResponse
-): Either.Either<RawCompletedOrdersConnection, CompletedOrdersGraphqlError | CompletedOrdersUnavailableError> => {
+): Result.Result<RawCompletedOrdersConnection, CompletedOrdersGraphqlError | CompletedOrdersUnavailableError> => {
   if (response.errors !== undefined && response.errors.length > 0) {
-    return Either.left(graphqlError())
+    return Result.fail(graphqlError())
   }
 
   if (response.data === undefined || response.data === null || response.data.completedOrders === null) {
-    return Either.left(completedOrdersUnavailable())
+    return Result.fail(completedOrdersUnavailable())
   }
 
-  return Either.right(response.data.completedOrders)
+  return Result.succeed(response.data.completedOrders)
 }
 
 export const getCompletedOrders = (
@@ -118,11 +118,11 @@ export const getCompletedOrders = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetCompletedOrdersResult, GetCompletedOrdersError, VoilaTransport> =>
-  Effect.flatMap(makeCompletedOrdersRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeCompletedOrdersRequest(input)), (request) =>
     Effect.flatMap(
       requestVoilaJson(RawCompletedOrdersGraphqlResponseSchema, session, request, cookieJarPort),
       (result) =>
-        Effect.map(getCompletedOrdersConnection(result.value), (connection) => ({
+        Effect.map(Effect.fromResult(getCompletedOrdersConnection(result.value)), (connection) => ({
           session: result.session,
           value: normalizeCompletedOrdersResponse(connection)
         }))

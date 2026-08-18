@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -78,11 +78,11 @@ export const normalizeCartViewResponse = (response: AnyCartViewResponse): Normal
 
 export const parseCartViewResponse = (
   input: unknown
-): Either.Either<NormalizedCartView, CartViewResponseNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(AnyCartViewResponseSchema, input), cartViewResponseSchemaMismatch),
+): Result.Result<NormalizedCartView, CartViewResponseNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(AnyCartViewResponseSchema, input), cartViewResponseSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedCartViewSchema, normalizeCartViewResponse(response)),
         cartViewResponseSchemaMismatch
       )

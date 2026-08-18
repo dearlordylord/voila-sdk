@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -102,9 +102,9 @@ const makeVariables = (input: CompletedOrdersInput) => ({
 
 export const makeCompletedOrdersRequest = (
   input: unknown = {}
-): Either.Either<CompletedOrdersRequest, CompletedOrdersRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(CompletedOrdersInputSchema, input), completedOrdersInputInvalid),
+): Result.Result<CompletedOrdersRequest, CompletedOrdersRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(CompletedOrdersInputSchema, input), completedOrdersInputInvalid),
     (completedOrdersInput) => ({
       body: JSON.stringify({
         operationName: "GetCompletedOrders",
@@ -119,9 +119,9 @@ export const makeCompletedOrdersRequest = (
 const makeOrderDetailsUrl = (input: OrderDetailsInput): URL =>
   new URL(`${ORDER_PATH_PREFIX}${encodeURIComponent(input.orderId)}/decorated`, VOILA_BASE_URL)
 
-export const makeOrderDetailsRequest = (input: unknown): Either.Either<OrderDetailsRequest, OrderDetailsRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(OrderDetailsInputSchema, input), orderDetailsInputInvalid),
+export const makeOrderDetailsRequest = (input: unknown): Result.Result<OrderDetailsRequest, OrderDetailsRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(OrderDetailsInputSchema, input), orderDetailsInputInvalid),
     (orderDetailsInput) => ({
       method: "GET",
       orderId: orderDetailsInput.orderId,

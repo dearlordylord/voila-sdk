@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -117,11 +117,11 @@ export const normalizeCheckoutSummaryResponse = (response: RawCheckoutSummaryRes
 
 export const parseCheckoutSummaryResponse = (
   input: unknown
-): Either.Either<NormalizedCheckoutSummary, CheckoutSummaryNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(RawCheckoutSummaryResponseSchema, input), checkoutSummarySchemaMismatch),
+): Result.Result<NormalizedCheckoutSummary, CheckoutSummaryNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(RawCheckoutSummaryResponseSchema, input), checkoutSummarySchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedCheckoutSummarySchema, normalizeCheckoutSummaryResponse(response)),
         checkoutSummarySchemaMismatch
       )
@@ -132,7 +132,7 @@ export const getCheckoutSummary = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetCheckoutSummaryResult, GetCheckoutSummaryError, VoilaTransport> =>
-  Effect.flatMap(makeCheckoutSummaryRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeCheckoutSummaryRequest(input)), (request) =>
     Effect.map(requestVoilaJson(RawCheckoutSummaryResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeCheckoutSummaryResponse(result.value)

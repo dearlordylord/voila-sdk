@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import type {
@@ -49,8 +49,8 @@ const sessionHealthSnapshotInvalid = (): CheckSessionHealthError => ({
   message: "Session health could not build a typed SDK session snapshot"
 })
 
-const decodeSessionHealth = (health: unknown): Either.Either<SessionHealth, CheckSessionHealthError> =>
-  Either.mapLeft(parseUnknown(SessionHealthSchema, health), sessionHealthSnapshotInvalid)
+const decodeSessionHealth = (health: unknown): Result.Result<SessionHealth, CheckSessionHealthError> =>
+  Result.mapError(parseUnknown(SessionHealthSchema, health), sessionHealthSnapshotInvalid)
 
 const responseSaysAuthenticated = (response: ActiveCustomerSessionResponse): boolean =>
   response.authenticated === true ||
@@ -64,11 +64,11 @@ const responseSaysActiveCartSession = (response: ActiveCustomerSessionResponse):
 const sessionHasAuthenticatedCookie = (cookieJarPort: CookieJarPort, session: SessionSnapshot): boolean => {
   const jar = cookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     return false
   }
 
-  return jar.right
+  return jar.success
     .getCookiesSync(makeActiveCustomerSessionRequest().url.href)
     .some((cookie) => cookie.key === authenticatedCookieName)
 }
@@ -85,46 +85,46 @@ const responseHasAuthenticatedEvidence = (
 const makeSdkSnapshotWithSession = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot
-): Either.Either<SdkSessionSnapshot, CheckSessionHealthError> =>
+): Result.Result<SdkSessionSnapshot, CheckSessionHealthError> =>
   previous.kind === "authenticated"
-    ? Either.mapLeft(
+    ? Result.mapError(
         makeAuthenticatedSdkSessionSnapshot(session, previous.state, previous.account),
         sessionHealthSnapshotInvalid
       )
-    : Either.mapLeft(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid)
+    : Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid)
 
 const makeActiveSession = (
   cookieJarPort: CookieJarPort,
   previous: SdkSessionSnapshot,
   response: ActiveCustomerSessionResponse,
   session: SessionSnapshot
-): Either.Either<SessionHealth, CheckSessionHealthError> => {
+): Result.Result<SessionHealth, CheckSessionHealthError> => {
   if (previous.kind === "authenticated" && !responseHasAuthenticatedEvidence(cookieJarPort, response, session)) {
     return makeReauthRequired(previous, session)
   }
 
   return previous.kind === "authenticated"
-    ? Either.mapLeft(
+    ? Result.mapError(
         makeAuthenticatedSdkSessionSnapshot(session, "authenticated", previous.account),
         sessionHealthSnapshotInvalid
-      ).pipe(Either.flatMap((updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })))
-    : Either.mapLeft(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid).pipe(
-        Either.flatMap((updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" }))
+      ).pipe(Result.flatMap((updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })))
+    : Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid).pipe(
+        Result.flatMap((updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" }))
       )
 }
 
 const makeReauthRequired = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot = previous.session
-): Either.Either<SessionHealth, CheckSessionHealthError> =>
+): Result.Result<SessionHealth, CheckSessionHealthError> =>
   previous.kind === "authenticated"
-    ? Either.mapLeft(
+    ? Result.mapError(
         makeAuthenticatedSdkSessionSnapshot(session, "reauth-required", previous.account),
         sessionHealthSnapshotInvalid
-      ).pipe(Either.flatMap((session) => decodeSessionHealth({ session, status: "reauth-required" })))
-    : Either.flatMap(makeGuestSdkSessionSnapshot(session), (updatedSession) =>
+      ).pipe(Result.flatMap((session) => decodeSessionHealth({ session, status: "reauth-required" })))
+    : Result.flatMap(makeGuestSdkSessionSnapshot(session), (updatedSession) =>
         decodeSessionHealth({ session: updatedSession, status: "unauthorized" })
-      ).pipe(Either.mapLeft(sessionHealthSnapshotInvalid))
+      ).pipe(Result.mapError(sessionHealthSnapshotInvalid))
 
 const isSuccessStatus = (status: number): boolean => status >= successStatusMin && status < successStatusMax
 
@@ -134,29 +134,29 @@ const applySetCookieHeaders = (
   cookieJarPort: CookieJarPort,
   session: SessionSnapshot,
   response: VoilaTransportResponse
-): Either.Either<SessionSnapshot, "persistence"> => {
+): Result.Result<SessionSnapshot, "persistence"> => {
   const cookieHeaders = getHeaderValues(response.headers, setCookieHeader)
 
   if (cookieHeaders.length === emptyStringLength) {
-    return Either.right(session)
+    return Result.succeed(session)
   }
 
   const jar = cookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
-    return Either.left("persistence")
+  if (Result.isFailure(jar)) {
+    return Result.fail("persistence")
   }
 
   for (const cookie of cookieHeaders) {
     try {
-      jar.right.setCookieSync(cookie, makeActiveCustomerSessionRequest().url.href)
+      jar.success.setCookieSync(cookie, makeActiveCustomerSessionRequest().url.href)
     } catch {
-      return Either.left("persistence")
+      return Result.fail("persistence")
     }
   }
 
-  return Either.map(
-    Either.mapLeft(cookieJarPort.serialize(jar.right), () => "persistence" as const),
+  return Result.map(
+    Result.mapError(cookieJarPort.serialize(jar.success), (): "persistence" => "persistence"),
     (cookieJar) => ({ ...session, cookieJar })
   )
 }
@@ -164,22 +164,22 @@ const applySetCookieHeaders = (
 const makeTransportHeaders = (
   cookieJarPort: CookieJarPort,
   session: SessionSnapshot
-): Either.Either<Readonly<Record<string, string>>, "persistence"> => {
+): Result.Result<Readonly<Record<string, string>>, "persistence"> => {
   const jar = cookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
-    return Either.left("persistence")
+  if (Result.isFailure(jar)) {
+    return Result.fail("persistence")
   }
 
-  const cookieHeader = readCookieHeader(jar.right, makeActiveCustomerSessionRequest().url.href)
+  const cookieHeader = readCookieHeader(jar.success, makeActiveCustomerSessionRequest().url.href)
 
-  if (Either.isLeft(cookieHeader)) {
-    return Either.left("persistence")
+  if (Result.isFailure(cookieHeader)) {
+    return Result.fail("persistence")
   }
 
-  return Either.right({
+  return Result.succeed({
     ...makeVoilaHeaders(session.metadata, session.csrf.token),
-    ...(cookieHeader.right.length === emptyStringLength ? {} : { cookie: cookieHeader.right })
+    ...(cookieHeader.success.length === emptyStringLength ? {} : { cookie: cookieHeader.success })
   })
 }
 
@@ -190,27 +190,27 @@ const classifyActiveCustomerSession = (
 ): ActiveCustomerSessionRequestResult => {
   const updatedSession = applySetCookieHeaders(cookieJarPort, session, response)
 
-  if (Either.isLeft(updatedSession)) {
+  if (Result.isFailure(updatedSession)) {
     return { _tag: "ActiveCustomerSessionRetry", reason: "persistence", session }
   }
 
   if (isUnauthorizedStatus(response.status)) {
-    return { _tag: "ActiveCustomerSessionUnauthorized", session: updatedSession.right }
+    return { _tag: "ActiveCustomerSessionUnauthorized", session: updatedSession.success }
   }
 
   if (!isSuccessStatus(response.status)) {
-    return { _tag: "ActiveCustomerSessionRetry", reason: "server", session: updatedSession.right }
+    return { _tag: "ActiveCustomerSessionRetry", reason: "server", session: updatedSession.success }
   }
 
-  const parsed = Either.flatMap(parseJson(response.body), (payload) =>
+  const parsed = Result.flatMap(parseJson(response.body), (payload) =>
     parseUnknown(ActiveCustomerSessionResponseSchema, payload)
   )
 
-  if (Either.isLeft(parsed)) {
-    return { _tag: "ActiveCustomerSessionSchemaChanged", session: updatedSession.right }
+  if (Result.isFailure(parsed)) {
+    return { _tag: "ActiveCustomerSessionSchemaChanged", session: updatedSession.success }
   }
 
-  return { _tag: "ActiveCustomerSessionOk", session: updatedSession.right, value: parsed.right }
+  return { _tag: "ActiveCustomerSessionOk", session: updatedSession.success, value: parsed.success }
 }
 
 /**
@@ -230,38 +230,42 @@ const requestActiveCustomerSession = (
 
   const headers = makeTransportHeaders(cookieJarPort, session)
 
-  if (Either.isLeft(headers)) {
+  if (Result.isFailure(headers)) {
     return Effect.succeed({ _tag: "ActiveCustomerSessionRetry", reason: "persistence", session })
   }
 
   const request = makeActiveCustomerSessionRequest()
 
-  return Effect.flatMap(VoilaTransport, (transport) =>
-    Effect.match(transport.request({ headers: headers.right, method: request.method, url: request.url }), {
-      onFailure: (): ActiveCustomerSessionRequestResult => ({
-        _tag: "ActiveCustomerSessionRetry",
-        reason: "network",
-        session
-      }),
-      onSuccess: (response) => classifyActiveCustomerSession(session, response, cookieJarPort)
-    })
-  )
+  return Effect.gen(function* () {
+    const transport = yield* VoilaTransport
+    return yield* Effect.match(
+      transport.request({ headers: headers.success, method: request.method, url: request.url }),
+      {
+        onFailure: (): ActiveCustomerSessionRequestResult => ({
+          _tag: "ActiveCustomerSessionRetry",
+          reason: "network",
+          session
+        }),
+        onSuccess: (response) => classifyActiveCustomerSession(session, response, cookieJarPort)
+      }
+    )
+  })
 }
 
 const makeSessionHealth = (
   snapshot: SdkSessionSnapshot,
   result: ActiveCustomerSessionRequestResult,
   cookieJarPort: CookieJarPort
-): Either.Either<SessionHealth, CheckSessionHealthError> => {
+): Result.Result<SessionHealth, CheckSessionHealthError> => {
   switch (result._tag) {
     case "ActiveCustomerSessionOk":
       return makeActiveSession(cookieJarPort, snapshot, result.value, result.session)
     case "ActiveCustomerSessionRetry":
-      return Either.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
+      return Result.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
         decodeSessionHealth({ reason: result.reason, session: updatedSnapshot, status: "retry" })
       )
     case "ActiveCustomerSessionSchemaChanged":
-      return Either.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
+      return Result.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
         decodeSessionHealth({ session: updatedSnapshot, status: "schema-changed" })
       )
     case "ActiveCustomerSessionUnauthorized":
@@ -274,5 +278,5 @@ export const checkSessionHealth = (
   cookieJarPort: CookieJarPort = toughCookieJarPort
 ): Effect.Effect<SessionHealth, CheckSessionHealthError, VoilaTransport> =>
   Effect.flatMap(requestActiveCustomerSession(snapshot.session, cookieJarPort), (result) =>
-    makeSessionHealth(snapshot, result, cookieJarPort)
+    Effect.fromResult(makeSessionHealth(snapshot, result, cookieJarPort))
   )

@@ -11,7 +11,7 @@ import {
   StateFilePathSchema,
   updateSessionFileCarrying
 } from "@firfi/voila-session-store"
-import { Effect, Either, type Layer, Option, Ref, Schema } from "effect"
+import { Effect, type Layer, Option, Ref, Result, Schema, Semaphore } from "effect"
 
 import { makeAuthGuidance } from "./auth-guidance.js"
 import {
@@ -28,9 +28,9 @@ import { nodeVoilaTransportLayer } from "./node-transport.js"
 // and the write path cannot differ, because a write compared against a file
 // nobody reads guarantees nothing.
 const EnvSchema = Schema.Struct({
-  VOILA_AUTH_SESSION_PATH: Schema.optionalWith(StateFilePathSchema, { exact: true }),
-  VOILA_GUEST: Schema.optionalWith(Schema.Literal("1"), { exact: true }),
-  VOILA_USER_AGENT: Schema.optionalWith(Schema.String.pipe(Schema.trimmed(), Schema.minLength(1)), { exact: true })
+  VOILA_AUTH_SESSION_PATH: Schema.optionalKey(StateFilePathSchema),
+  VOILA_GUEST: Schema.optionalKey(Schema.Literal("1")),
+  VOILA_USER_AGENT: Schema.optionalKey(Schema.Trimmed.check(Schema.isNonEmpty()))
 })
 
 type EnvConfig = Schema.Schema.Type<typeof EnvSchema>
@@ -65,7 +65,7 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
   const guest = Effect.runSync(Ref.make(Option.none<SdkSessionSnapshot>()))
   // guards the bootstrap check-and-fetch: two concurrent fibers must not each
   // pay for a guest bootstrap
-  const guestBootstrapLock = Effect.unsafeMakeSemaphore(1)
+  const guestBootstrapLock = Semaphore.makeUnsafe(1)
   // one lock table per environment, shared by every session-file cycle in this
   // process: per-cycle tables would exclude nothing
   const locks = Effect.runSync(makeStateFileLocks())
@@ -137,8 +137,8 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
 export const makeNodeOperationEnvironment = (
   env: Readonly<Record<string, string | undefined>> = process.env,
   transport?: Layer.Layer<VoilaTransport>
-): Either.Either<OperationEnvironment, OperationFailure> =>
-  Either.map(Either.mapLeft(Schema.decodeUnknownEither(EnvSchema)(env), envInvalid), (config) => ({
+): Result.Result<OperationEnvironment, OperationFailure> =>
+  Result.map(Result.mapError(Schema.decodeUnknownResult(EnvSchema)(env), envInvalid), (config) => ({
     ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
     session: makeSessionPort(config),
     transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
@@ -147,9 +147,9 @@ export const makeNodeOperationEnvironment = (
 export const defaultNodeOperationEnvironment = (): OperationEnvironment => {
   const env = makeNodeOperationEnvironment()
 
-  if (Either.isLeft(env)) {
-    throw new Error(env.left.message)
+  if (Result.isFailure(env)) {
+    throw new Error(env.failure.message)
   }
 
-  return env.right
+  return env.success
 }

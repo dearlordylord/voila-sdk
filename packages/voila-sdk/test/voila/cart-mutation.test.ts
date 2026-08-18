@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -12,48 +12,48 @@ const readFixture = (fixtureName: string): unknown => {
   const fixtureText = readFileSync(new URL(`../fixtures/${fixtureName}`, import.meta.url), "utf8")
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 describe("cart mutation response normalization", () => {
   it("normalizes successful apply-quantity responses with server-returned totals", () => {
     const result = parseCartMutationResponse(readFixture("cart-apply-success.json"))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.itemCount).toBe(2)
-      expect(result.right.itemGroups).toHaveLength(1)
-      expect(result.right.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
-      expect(result.right.itemGroups[0]?.items[0]?.quantity).toBe(2)
-      expect(result.right.totals).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.itemCount).toBe(2)
+      expect(result.success.itemGroups).toHaveLength(1)
+      expect(result.success.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.itemGroups[0]?.items[0]?.quantity).toBe(2)
+      expect(result.success.totals).toEqual({
         itemPriceAfterPromos: { amount: "8.88", currency: "CAD" },
         itemsRetailPrice: { amount: "9.98", currency: "CAD" },
         savingsPrice: { amount: "1.10", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       })
-      expect(result.right.pricingNotifications).toEqual([
+      expect(result.success.pricingNotifications).toEqual([
         { code: "PROMO_APPLIED", message: "A promotion was applied", severity: "INFO" }
       ])
-      expect(result.right.limitedItems).toEqual([])
-      expect(result.right.limitedPromotionIds).toEqual([])
-      expect(result.right.unavailableData).toEqual([])
+      expect(result.success.limitedItems).toEqual([])
+      expect(result.success.limitedPromotionIds).toEqual([])
+      expect(result.success.unavailableData).toEqual([])
     }
   })
 
   it("preserves limited items, unavailable data, pricing notifications, and promotion IDs", () => {
     const result = parseCartMutationResponse(readFixture("cart-apply-limited-unavailable.json"))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.itemCount).toBe(1)
-      expect(result.right.totals.itemPriceAfterPromos.amount).toBe("4.99")
-      expect(result.right.limitedItems).toEqual([
+    if (Result.isSuccess(result)) {
+      expect(result.success.itemCount).toBe(1)
+      expect(result.success.totals.itemPriceAfterPromos.amount).toBe("4.99")
+      expect(result.success.limitedItems).toEqual([
         {
           code: "MAX_QUANTITY",
           message: "Only one strawberry package can be added",
@@ -63,8 +63,8 @@ describe("cart mutation response normalization", () => {
           severity: "WARNING"
         }
       ])
-      expect(result.right.limitedPromotionIds).toEqual(["sanitized-promo-id"])
-      expect(result.right.pricingNotifications).toEqual([
+      expect(result.success.limitedPromotionIds).toEqual(["sanitized-promo-id"])
+      expect(result.success.pricingNotifications).toEqual([
         {
           code: "PRICE_CHANGED",
           message: "A product price changed while applying the cart delta",
@@ -72,7 +72,7 @@ describe("cart mutation response normalization", () => {
           severity: "INFO"
         }
       ])
-      expect(result.right.unavailableData).toEqual([
+      expect(result.success.unavailableData).toEqual([
         {
           code: "UNAVAILABLE",
           message: "Blueberries are unavailable",
@@ -86,11 +86,11 @@ describe("cart mutation response normalization", () => {
   it("keeps normalized cart mutation results under the public schema", () => {
     const parsed = parseCartMutationResponse(readFixture("cart-apply-limited-unavailable.json"))
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const decoded = assertDecodeSuccess(NormalizedCartMutationResultSchema, parsed.right)
-      expect(assertEncodeSuccess(NormalizedCartMutationResultSchema, decoded)).toEqual(parsed.right)
+    if (Result.isSuccess(parsed)) {
+      const decoded = assertDecodeSuccess(NormalizedCartMutationResultSchema, parsed.success)
+      expect(assertEncodeSuccess(NormalizedCartMutationResultSchema, decoded)).toEqual(parsed.success)
     }
   })
 
@@ -123,10 +123,10 @@ describe("cart mutation response normalization", () => {
       unavailableData: []
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CartMutationResponseSchemaMismatch")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CartMutationResponseSchemaMismatch")
     }
   })
 
@@ -146,11 +146,11 @@ describe("cart mutation response normalization", () => {
       unavailableData: []
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CartMutationResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("product-id")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CartMutationResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("product-id")
     }
   })
 
@@ -172,10 +172,10 @@ describe("cart mutation response normalization", () => {
         unavailableData: []
       })
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("CartMutationResponseSchemaMismatch")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("CartMutationResponseSchemaMismatch")
       }
     }
   })
@@ -197,10 +197,10 @@ describe("cart mutation response normalization", () => {
         unavailableData: []
       })
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("CartMutationResponseSchemaMismatch")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("CartMutationResponseSchemaMismatch")
       }
     }
   })

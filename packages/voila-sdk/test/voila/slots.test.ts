@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -44,11 +44,11 @@ const sampleMetadata = {
 const readFixture = (fixtureText: string): unknown => {
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 const makeSession = (): SessionSnapshot => {
@@ -57,17 +57,17 @@ const makeSession = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeResponse = (body: string, status: number = 200): VoilaTransportResponse => ({ body, headers: {}, status })
@@ -94,17 +94,17 @@ describe("slot listing parsing", () => {
   it("normalizes available standard and on-demand slots", () => {
     const result = parseSlotListingResponse(readFixture(availableFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.availableSlotCount).toBe(2)
-      expect(result.right.carriers[0]).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.availableSlotCount).toBe(2)
+      expect(result.success.carriers[0]).toEqual({
         carrierId: "sanitized-carrier-id",
         carrierName: "Voila delivery",
         days: [{ day: "2026-07-01", slotIds: ["sanitized-slot-id"], slotListingId: "sanitized-slot-listing-id" }],
         title: "Home delivery"
       })
-      expect(result.right.slots[0]).toEqual({
+      expect(result.success.slots[0]).toEqual({
         attributes: ["AVAILABLE", "STANDARD"],
         available: true,
         carrierId: "sanitized-carrier-id",
@@ -117,29 +117,29 @@ describe("slot listing parsing", () => {
         timeZoneId: "America/Toronto",
         type: "STANDARD"
       })
-      expect(result.right.slots[1]?.onDemandProperties?.deliveryTimeInMinutes).toBe(90)
+      expect(result.success.slots[1]?.onDemandProperties?.deliveryTimeInMinutes).toBe(90)
     }
   })
 
   it("normalizes unavailable slots without marking them available", () => {
     const result = parseSlotListingResponse(readFixture(unavailableFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.availableSlotCount).toBe(0)
-      expect(result.right.slots[0]?.available).toBe(false)
-      expect(result.right.slots[0]?.attributes).toEqual(["FULL"])
+    if (Result.isSuccess(result)) {
+      expect(result.success.availableSlotCount).toBe(0)
+      expect(result.success.slots[0]?.available).toBe(false)
+      expect(result.success.slots[0]?.attributes).toEqual(["FULL"])
     }
   })
 
   it("normalizes minimal slot listings without optional carrier or slot fields", () => {
     const result = parseSlotListingResponse({ carriers: [{ gridSlots: [{ day: "2026-07-03", slots: [{}] }] }] })
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
         availableSlotCount: 0,
         carriers: [{ days: [] }],
         slots: [{ attributes: [], available: false, date: "2026-07-03" }]
@@ -150,32 +150,36 @@ describe("slot listing parsing", () => {
   it("normalizes carriers that expose days before slot grids are available", () => {
     const result = parseSlotListingResponse({ carriers: [{ daysMapping: [{ day: "2026-07-04" }] }] })
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({ availableSlotCount: 0, carriers: [{ days: [{ day: "2026-07-04" }] }], slots: [] })
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
+        availableSlotCount: 0,
+        carriers: [{ days: [{ day: "2026-07-04" }] }],
+        slots: []
+      })
     }
   })
 
   it("keeps normalized slot listings under the public schema", () => {
     const result = parseSlotListingResponse(readFixture(availableFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      const decoded = assertDecodeSuccess(NormalizedSlotListingSchema, result.right)
-      expect(assertEncodeSuccess(NormalizedSlotListingSchema, decoded)).toEqual(result.right)
+    if (Result.isSuccess(result)) {
+      const decoded = assertDecodeSuccess(NormalizedSlotListingSchema, result.success)
+      expect(assertEncodeSuccess(NormalizedSlotListingSchema, decoded)).toEqual(result.success)
     }
   })
 
   it("fails at the schema boundary with redacted errors when carriers are missing", () => {
     const result = parseSlotListingResponse({ message: "sanitized service down" })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotListingSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("sanitized service down")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotListingSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("sanitized service down")
     }
   })
 })
@@ -184,10 +188,10 @@ describe("slot reservation guardrails", () => {
   it("normalizes successful reservation responses with typed expiry data", () => {
     const result = parseSlotReservationResponse(readFixture(reservationFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
         confirmationData: {
           draftBasketId: "sanitized-draft-basket-id",
           invalidVouchers: [],
@@ -203,18 +207,18 @@ describe("slot reservation guardrails", () => {
         timeZoneId: "America/Toronto"
       })
 
-      const decoded = assertDecodeSuccess(NormalizedSlotReservationSchema, result.right)
-      expect(assertEncodeSuccess(NormalizedSlotReservationSchema, decoded)).toEqual(result.right)
+      const decoded = assertDecodeSuccess(NormalizedSlotReservationSchema, result.success)
+      expect(assertEncodeSuccess(NormalizedSlotReservationSchema, decoded)).toEqual(result.success)
     }
   })
 
   it("normalizes minimal reservation responses without optional slot details", () => {
     const result = parseSlotReservationResponse({ slot: {} })
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({ reserved: true })
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({ reserved: true })
     }
   })
 
@@ -236,10 +240,10 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T09:00:00-04:00")
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
         allowReservationOverwrite: true,
         confirmSlotReservation: true,
         deliveryDestinationId: "sanitized-delivery-destination-id",
@@ -262,10 +266,10 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T09:00:00-04:00")
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.slotId).toBe("sanitized-slot-id")
+    if (Result.isSuccess(result)) {
+      expect(result.success.slotId).toBe("sanitized-slot-id")
     }
   })
 
@@ -280,10 +284,10 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T09:00:00-04:00")
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationSelectionInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationSelectionInvalid")
     }
   })
 
@@ -299,10 +303,10 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T09:00:00-04:00")
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationSlotUnavailable")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationSlotUnavailable")
     }
   })
 
@@ -318,10 +322,10 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T09:00:00-04:00")
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationSlotIdMissing")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationSlotIdMissing")
     }
   })
 
@@ -342,10 +346,10 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T10:00:00-04:00")
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationSlotExpired")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationSlotExpired")
     }
   })
 
@@ -361,21 +365,21 @@ describe("slot reservation guardrails", () => {
       new Date("2026-07-01T09:00:00-04:00")
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationSlotEndTimeInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationSlotEndTimeInvalid")
     }
   })
 
   it("rejects malformed reservation responses with redacted schema errors", () => {
     const result = parseSlotReservationResponse({ message: "sanitized reservation response shape changed" })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("sanitized reservation response shape changed")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("sanitized reservation response shape changed")
     }
   })
 })
@@ -385,9 +389,9 @@ describe("getSlotListings", () => {
     const fake = respondingTransport(makeResponse(availableFixtureText))
     const result = await runWith(getSlotListings(makeSession(), slotListingInput), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
@@ -406,7 +410,7 @@ describe("getSlotListings", () => {
         regionId: "sanitized-region-id",
         shippingGroupType: "HOME_DELIVERY"
       })
-      expect(result.right.value.availableSlotCount).toBe(2)
+      expect(result.success.value.availableSlotCount).toBe(2)
     }
   })
 
@@ -414,11 +418,11 @@ describe("getSlotListings", () => {
     const fake = respondingTransport(makeResponse(availableFixtureText))
     const result = await runWith(getSlotListings(makeSession(), { ...slotListingInput, numberOfDays: 0 }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotListingInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotListingInputInvalid")
     }
   })
 
@@ -428,11 +432,11 @@ describe("getSlotListings", () => {
       respondingTransport(makeResponse(serviceDownBody, 503))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
-      expect(JSON.stringify(result.left)).not.toContain("sanitized service unavailable")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
+      expect(JSON.stringify(result.failure)).not.toContain("sanitized service unavailable")
     }
   })
 })
@@ -442,9 +446,9 @@ describe("reserveSlot", () => {
     const fake = respondingTransport(makeResponse(reservationFixtureText))
     const result = await runWith(reserveSlot(makeSession(), slotReservationInput), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
@@ -456,7 +460,7 @@ describe("reserveSlot", () => {
       })
       expect(JSON.parse(request?.body ?? "{}")).not.toHaveProperty("confirmSlotReservation")
       expect(JSON.parse(request?.body ?? "{}")).not.toHaveProperty("allowReservationOverwrite")
-      expect(result.right.value.expiryTime).toBe("2026-07-01T07:45:00-04:00")
+      expect(result.success.value.expiryTime).toBe("2026-07-01T07:45:00-04:00")
     }
   })
 
@@ -471,11 +475,11 @@ describe("reserveSlot", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SlotReservationInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SlotReservationInputInvalid")
     }
   })
 
@@ -485,11 +489,11 @@ describe("reserveSlot", () => {
       respondingTransport(makeResponse(reservationRejectedBody, 409))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
-      expect(JSON.stringify(result.left)).not.toContain("sanitized slot no longer available")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
+      expect(JSON.stringify(result.failure)).not.toContain("sanitized slot no longer available")
     }
   })
 })

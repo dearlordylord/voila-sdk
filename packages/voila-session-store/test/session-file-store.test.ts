@@ -8,7 +8,8 @@ import {
   serializeCookieJar,
   toughCookieJarPort
 } from "@firfi/voila-sdk"
-import { Deferred, Effect, Either, Fiber, Schema, TestClock } from "effect"
+import { Deferred, Effect, Fiber, Result, Schema } from "effect"
+import { TestClock } from "effect/testing"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -33,10 +34,9 @@ import {
   updateSessionFile,
   updateSessionFileCarrying
 } from "../src/index.js"
-import type { TestServices } from "effect/TestServices"
 
 // one fresh lock table per test, shared by any forked fibers inside it
-const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks | TestServices>): void => {
+const itLocks = <A, E>(name: string, self: () => Effect.Effect<A, E, StateFileLocks>): void => {
   it.effect(name, () => Effect.provide(self(), StateFileLocksLive))
 }
 
@@ -50,41 +50,41 @@ const makeBaseSession = (regionId: string) => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
   const session = makeSessionSnapshot(
     { assetVersion: "asset-version", clientRouteId: "client-route-id", pageViewId: "page-view-id", regionId },
     { token: secretCsrfToken },
-    cookieJar.right
+    cookieJar.success
   )
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return session.right
+  return session.success
 }
 
 const guestSnapshot = (regionId = "guest-region"): SdkSessionSnapshot => {
   const snapshot = makeGuestSdkSessionSnapshot(makeBaseSession(regionId))
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected guest SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const authenticatedSnapshot = (regionId = "authenticated-region"): SdkSessionSnapshot => {
   const snapshot = makeAuthenticatedSdkSessionSnapshot(makeBaseSession(regionId), "authenticated")
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeTempDir = Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "voila-session-store-")))
@@ -114,16 +114,16 @@ const fileExists = (file: string) =>
 
 const regionOf = (snapshot: SdkSessionSnapshot | undefined) => snapshot?.session.metadata.regionId
 
-const transformBoom = { _tag: "TransformBoom", message: "the caller's own failure" } as const
+const transformBoom: { readonly _tag: "TransformBoom"; readonly message: string } = {
+  _tag: "TransformBoom",
+  message: "the caller's own failure"
+}
 
 // A caller whose transform waits, so an independent writer can land in the
 // middle of its read-decide-write window.
 const slowUpdate =
   (entered: Deferred.Deferred<void>, next: SdkSessionSnapshot) => (): Effect.Effect<SessionFileUpdate> =>
-    Deferred.succeed(entered, undefined).pipe(
-      Effect.zipRight(Effect.sleep("1 second")),
-      Effect.as(persistSession(next))
-    )
+    Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.sleep("1 second")), Effect.as(persistSession(next)))
 
 describe("updateSessionFile: creation", () => {
   itLocks("runs the transform against absence and creates the file owner-only", () =>
@@ -162,7 +162,7 @@ describe("updateSessionFile: creation", () => {
       const theirs = authenticatedSnapshot("theirs")
 
       const entered = yield* Deferred.make<void>()
-      const fiber = yield* Effect.fork(updateSessionFile(file, slowUpdate(entered, guestSnapshot("ours"))))
+      const fiber = yield* Effect.forkChild(updateSessionFile(file, slowUpdate(entered, guestSnapshot("ours"))))
 
       yield* Deferred.await(entered)
       yield* writeSnapshot(file, theirs)
@@ -229,7 +229,7 @@ describe("updateSessionFile: update", () => {
       const fresh = authenticatedSnapshot("fresh-login")
 
       const entered = yield* Deferred.make<void>()
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         updateSessionFile(file, slowUpdate(entered, authenticatedSnapshot("background-refresh")))
       )
 
@@ -252,7 +252,7 @@ describe("updateSessionFile: update", () => {
       yield* writeSnapshot(file, authenticatedSnapshot("boot"))
 
       const entered = yield* Deferred.make<void>()
-      const fiber = yield* Effect.fork(updateSessionFile(file, slowUpdate(entered, authenticatedSnapshot("ours"))))
+      const fiber = yield* Effect.forkChild(updateSessionFile(file, slowUpdate(entered, authenticatedSnapshot("ours"))))
 
       yield* Deferred.await(entered)
       yield* Effect.promise(() => fs.rm(file))
@@ -271,9 +271,9 @@ describe("updateSessionFile: update", () => {
       const append = (current: SdkSessionSnapshot | undefined) =>
         Effect.succeed(persistSession(authenticatedSnapshot(`${regionOf(current) ?? "new"}+`)))
 
-      const first = yield* Effect.fork(updateSessionFile(file, append))
-      yield* Effect.yieldNow()
-      const second = yield* Effect.fork(updateSessionFile(file, append))
+      const first = yield* Effect.forkChild(updateSessionFile(file, append))
+      yield* Effect.yieldNow
+      const second = yield* Effect.forkChild(updateSessionFile(file, append))
 
       expect((yield* Fiber.join(first))._tag).toBe("saved")
       expect((yield* Fiber.join(second))._tag).toBe("saved")
@@ -314,11 +314,11 @@ describe("updateSessionFile: transform effects", () => {
       yield* writeRaw(marker, "set-cookie")
 
       const entered = yield* Deferred.make<void>()
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         updateSessionFile(file, () =>
           Deferred.succeed(entered, undefined).pipe(
-            Effect.zipRight(Effect.sleep("1 second")),
-            Effect.zipRight(readRaw(marker)),
+            Effect.andThen(Effect.sleep("1 second")),
+            Effect.andThen(readRaw(marker)),
             Effect.map((body) => persistSession(guestSnapshot(`rotated-${body}`)))
           )
         )
@@ -489,10 +489,10 @@ describe("updateSessionFileCarrying", () => {
       yield* writeSnapshot(file, guestSnapshot("on-disk"))
 
       const entered = yield* Deferred.make<void>()
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         updateSessionFileCarrying(file, () =>
           Deferred.succeed(entered, undefined).pipe(
-            Effect.zipRight(Effect.sleep("1 second")),
+            Effect.andThen(Effect.sleep("1 second")),
             Effect.as({ carried: "operation result", update: persistSession(guestSnapshot("stale")) })
           )
         )

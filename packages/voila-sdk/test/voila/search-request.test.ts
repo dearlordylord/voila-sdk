@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { MAX_SEARCH_PAGE_SIZE, MIN_SEARCH_PAGE_SIZE, SearchInputSchema } from "../../src/domain/schemas/index.js"
@@ -10,24 +10,24 @@ describe("search request model", () => {
     const first = makeSearchRequest({ pageSize: 24, query: "milk" })
     const second = makeSearchRequest({ pageSize: 24, query: "milk" })
 
-    expect(Either.isRight(first)).toBe(true)
-    expect(Either.isRight(second)).toBe(true)
+    expect(Result.isSuccess(first)).toBe(true)
+    expect(Result.isSuccess(second)).toBe(true)
 
-    if (Either.isRight(first) && Either.isRight(second)) {
-      expect(first.right.method).toBe("GET")
-      expect(first.right.url.href).toBe(second.right.url.href)
-      expect(first.right.url.pathname).toBe("/api/webproductpagews/v6/product-pages/search")
+    if (Result.isSuccess(first) && Result.isSuccess(second)) {
+      expect(first.success.method).toBe("GET")
+      expect(first.success.url.href).toBe(second.success.url.href)
+      expect(first.success.url.pathname).toBe("/api/webproductpagews/v6/product-pages/search")
     }
   })
 
   it("encodes search query values through URLSearchParams", () => {
     const request = makeSearchRequest({ pageSize: 12, query: "milk & eggs" })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.url.href).toContain("q=milk+%26+eggs")
-      expect(request.right.url.searchParams.get("q")).toBe("milk & eggs")
+    if (Result.isSuccess(request)) {
+      expect(request.success.url.href).toContain("q=milk+%26+eggs")
+      expect(request.success.url.searchParams.get("q")).toBe("milk & eggs")
     }
   })
 
@@ -39,12 +39,12 @@ describe("search request model", () => {
       query: "apples"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.url.searchParams.get("pageToken")).toBe("next-page-token")
-      expect(request.right.url.searchParams.get("categoryId")).toBe("category-id")
-      expect(request.right.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
+    if (Result.isSuccess(request)) {
+      expect(request.success.url.searchParams.get("pageToken")).toBe("next-page-token")
+      expect(request.success.url.searchParams.get("categoryId")).toBe("category-id")
+      expect(request.success.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
     }
   })
 
@@ -61,7 +61,7 @@ describe("search request model", () => {
       { categoryContext: { categoryId: "category", retailerCategoryId: "" }, pageSize: 12, query: "milk" },
       { categoryContext: { categoryId: "", retailerCategoryId: "retailer-category" }, pageSize: 12, query: "milk" }
     ]) {
-      expect(Either.isLeft(makeSearchRequest(input))).toBe(true)
+      expect(Result.isFailure(makeSearchRequest(input))).toBe(true)
       assertDecodeFailure(SearchInputSchema, input)
     }
   })
@@ -69,16 +69,16 @@ describe("search request model", () => {
   it("rejects invalid search input instead of exposing an unsafe URL helper", () => {
     const result = makeSearchRequest({ pageSize: 0, query: "" })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
   })
 
   it("explains empty category context failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(SearchInputSchema)({ categoryContext: {}, pageSize: 12, query: "milk" })
+    const result = Schema.decodeUnknownResult(SearchInputSchema)({ categoryContext: {}, pageSize: 12, query: "milk" })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(String(result.left)).toContain("Category context must include categoryId or retailerCategoryId")
+    if (Result.isFailure(result)) {
+      expect(String(result.failure)).toContain("Category context must include categoryId or retailerCategoryId")
     }
   })
 })

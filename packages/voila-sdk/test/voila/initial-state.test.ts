@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { extractInitialState } from "../../src/voila/initial-state.js"
@@ -41,10 +41,10 @@ const incompleteScriptHtml = `<html><body><script>window.__INITIAL_STATE__ = ${s
 const expectLeftTag = (html: string, tag: string): void => {
   const result = extractInitialState(html)
 
-  expect(Either.isLeft(result)).toBe(true)
+  expect(Result.isFailure(result)).toBe(true)
 
-  if (Either.isLeft(result)) {
-    expect(result.left._tag).toBe(tag)
+  if (Result.isFailure(result)) {
+    expect(result.failure._tag).toBe(tag)
   }
 }
 
@@ -52,22 +52,24 @@ describe("extractInitialState", () => {
   it("extracts and decodes the homepage initial state", () => {
     const result = extractInitialState(fixtureHtml)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.session.csrf.token).toBe("sanitized-csrf-token")
-      expect(result.right.data.basket.basketId).toBe("sanitized-basket-id")
-      expect(result.right.session.metadata.pageViewId).toBe("sanitized-page-view-id")
+    if (Result.isSuccess(result)) {
+      expect(result.success.session.csrf.token).toBe("sanitized-csrf-token")
+      expect(result.success.data.basket.basketId).toBe("sanitized-basket-id")
+      expect(result.success.session.metadata.pageViewId).toBe("sanitized-page-view-id")
     }
   })
 
   it("ignores semicolons and braces inside escaped JSON strings", () => {
     const result = extractInitialState(fixtureWithEscapedStringContent)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.session.metadata.assetVersion).toBe('asset with "quote" and \\ path plus { nested } markers')
+    if (Result.isSuccess(result)) {
+      expect(result.success.session.metadata.assetVersion).toBe(
+        'asset with "quote" and \\ path plus { nested } markers'
+      )
     }
   })
 

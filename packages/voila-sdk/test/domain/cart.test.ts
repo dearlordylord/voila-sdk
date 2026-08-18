@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { makeAddToCartDelta, makeCartQuantityDelta, makeRemoveFromCartDelta } from "../../src/domain/cart.js"
@@ -10,10 +10,10 @@ describe("cart deltas", () => {
   it("builds explicit quantity deltas", () => {
     const result = makeCartQuantityDelta(productUuid, 3)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({ productId: productUuid, quantity: 3 })
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({ productId: productUuid, quantity: 3 })
     }
   })
 
@@ -21,12 +21,12 @@ describe("cart deltas", () => {
     const add = makeAddToCartDelta(productUuid, -2)
     const remove = makeRemoveFromCartDelta(productUuid, 2)
 
-    expect(Either.isRight(add)).toBe(true)
-    expect(Either.isRight(remove)).toBe(true)
+    expect(Result.isSuccess(add)).toBe(true)
+    expect(Result.isSuccess(remove)).toBe(true)
 
-    if (Either.isRight(add) && Either.isRight(remove)) {
-      expect(add.right).toEqual({ productId: productUuid, quantity: 2 })
-      expect(remove.right).toEqual({ productId: productUuid, quantity: -2 })
+    if (Result.isSuccess(add) && Result.isSuccess(remove)) {
+      expect(add.success).toEqual({ productId: productUuid, quantity: 2 })
+      expect(remove.success).toEqual({ productId: productUuid, quantity: -2 })
     }
   })
 
@@ -38,21 +38,21 @@ describe("cart deltas", () => {
       makeCartQuantityDelta(productUuid, 1.5),
       makeCartQuantityDelta(productUuid, Number.POSITIVE_INFINITY)
     ]) {
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("CartQuantityDeltaInvalid")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("CartQuantityDeltaInvalid")
       }
     }
   })
 
   it("explains zero quantity failures through the schema", () => {
-    const result = Schema.decodeUnknownEither(CartQuantityDeltaSchema)({ productId: productUuid, quantity: 0 })
+    const result = Schema.decodeUnknownResult(CartQuantityDeltaSchema)({ productId: productUuid, quantity: 0 })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(String(result.left)).toContain("Cart quantity delta must not be zero")
+    if (Result.isFailure(result)) {
+      expect(String(result.failure)).toContain("Cart quantity delta must not be zero")
     }
   })
 })

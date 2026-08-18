@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -239,9 +239,9 @@ export const normalizeDiscountedProductsResponse = (
 export const parseDiscountedProductsResponse = (
   input: unknown,
   requestInput: DiscountedProductsInput
-): Either.Either<NormalizedDiscountedProductsResult, DiscountedProductsResponseNormalizationError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(PromotionProductsResponseSchema, input), discountedProductsResponseSchemaMismatch),
+): Result.Result<NormalizedDiscountedProductsResult, DiscountedProductsResponseNormalizationError> =>
+  Result.map(
+    Result.mapError(parseUnknown(PromotionProductsResponseSchema, input), discountedProductsResponseSchemaMismatch),
     (response) =>
       normalizeDiscountedProductsResponse(response, requestInput, {
         exhausted: response.nextPageToken === undefined,
@@ -290,6 +290,17 @@ interface DiscountScanState {
   readonly session: SessionSnapshot
 }
 
+const runDiscountScan = (
+  initial: DiscountScanState,
+  body: (state: DiscountScanState) => Effect.Effect<DiscountScanState, VoilaSdkError, VoilaTransport>,
+  shouldContinue: (state: DiscountScanState) => boolean
+): Effect.Effect<DiscountScanState, VoilaSdkError, VoilaTransport> => {
+  const loop = (state: DiscountScanState): Effect.Effect<DiscountScanState, VoilaSdkError, VoilaTransport> =>
+    shouldContinue(state) ? Effect.flatMap(body(state), loop) : Effect.succeed(state)
+
+  return loop(initial)
+}
+
 const discountInputInvalid = (): DiscountedProductsRequestError => ({
   _tag: "DiscountedProductsInputInvalid",
   message: "Discounted products input does not match the SDK schema"
@@ -326,28 +337,32 @@ export const getDiscountedProducts = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetDiscountedProductsResult, GetDiscountedProductsError, VoilaTransport> =>
-  Effect.flatMap(Either.mapLeft(parseUnknown(DiscountedProductsInputSchema, input), discountInputInvalid), (parsed) => {
-    const maxPages = parsed.query === undefined ? 1 : MAX_DISCOUNT_QUERY_SCAN_PAGES
-    const initial: DiscountScanState = {
-      done: false,
-      pageToken: parsed.pageToken,
-      pagesScanned: noPagesScanned,
-      response: { productGroups: [] },
-      session
-    }
+  Effect.flatMap(
+    Effect.fromResult(Result.mapError(parseUnknown(DiscountedProductsInputSchema, input), discountInputInvalid)),
+    (parsed) => {
+      const maxPages = parsed.query === undefined ? 1 : MAX_DISCOUNT_QUERY_SCAN_PAGES
+      const initial: DiscountScanState = {
+        done: false,
+        pageToken: parsed.pageToken,
+        pagesScanned: noPagesScanned,
+        response: { productGroups: [] },
+        session
+      }
 
-    return Effect.map(
-      Effect.iterate(initial, {
-        body: (state) => scanNextPage(state, parsed, cookieJarPort),
-        while: (state) => !state.done && state.pagesScanned < maxPages
-      }),
-      (state) => ({
-        session: state.session,
-        value: normalizeDiscountedProductsResponse(
-          state.response,
-          parsed,
-          makeScanMetadata(parsed, state.pagesScanned, maxPages, state.pageToken)
-        )
-      })
-    )
-  })
+      return Effect.map(
+        runDiscountScan(
+          initial,
+          (state) => scanNextPage(state, parsed, cookieJarPort),
+          (state) => !state.done && state.pagesScanned < maxPages
+        ),
+        (state) => ({
+          session: state.session,
+          value: normalizeDiscountedProductsResponse(
+            state.response,
+            parsed,
+            makeScanMetadata(parsed, state.pagesScanned, maxPages, state.pageToken)
+          )
+        })
+      )
+    }
+  )

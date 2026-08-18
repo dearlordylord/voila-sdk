@@ -2,44 +2,45 @@ import { Schema } from "effect"
 
 import { MoneySchema, UnitPriceSchema } from "./money.js"
 
-const NonNegativeIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative())
+const NonNegativeIntegerSchema = Schema.Number.pipe(
+  Schema.check(Schema.isFinite()),
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isGreaterThanOrEqualTo(0))
+)
 
-export const ProductImageSchema = Schema.Struct({
-  description: Schema.optionalWith(Schema.String, { exact: true }),
-  src: Schema.String
-})
+export const ProductImageSchema = Schema.Struct({ description: Schema.optionalKey(Schema.String), src: Schema.String })
 
 export type ProductImage = Schema.Schema.Type<typeof ProductImageSchema>
 
 export const ProductSchema = Schema.Struct({
   available: Schema.Boolean,
-  brand: Schema.optionalWith(Schema.String, { exact: true }),
-  image: Schema.optionalWith(ProductImageSchema, { exact: true }),
+  brand: Schema.optionalKey(Schema.String),
+  image: Schema.optionalKey(ProductImageSchema),
   maxQuantityReached: Schema.Boolean,
   name: Schema.String,
-  packSizeDescription: Schema.optionalWith(Schema.String, { exact: true }),
+  packSizeDescription: Schema.optionalKey(Schema.String),
   price: MoneySchema,
   productId: Schema.String,
   quantityInBasket: Schema.Number,
   retailerProductId: Schema.String,
-  unitPrice: Schema.optionalWith(UnitPriceSchema, { exact: true })
+  unitPrice: Schema.optionalKey(UnitPriceSchema)
 })
 
 export type Product = Schema.Schema.Type<typeof ProductSchema>
 
 export const ProductGroupSchema = Schema.Struct({
-  decoratedProducts: Schema.optionalWith(Schema.Array(ProductSchema), { exact: true }),
-  name: Schema.optionalWith(Schema.String, { exact: true }),
-  products: Schema.optionalWith(Schema.Array(ProductSchema), { exact: true }),
+  decoratedProducts: Schema.optionalKey(Schema.Array(ProductSchema)),
+  name: Schema.optionalKey(Schema.String),
+  products: Schema.optionalKey(Schema.Array(ProductSchema)),
   type: Schema.String
 })
 
 export type ProductGroup = Schema.Schema.Type<typeof ProductGroupSchema>
 
 export const ProductSearchResponseSchema = Schema.Struct({
-  nextPageToken: Schema.optionalWith(Schema.String, { exact: true }),
+  nextPageToken: Schema.optionalKey(Schema.String),
   productGroups: Schema.Array(ProductGroupSchema),
-  totalProducts: Schema.optionalWith(NonNegativeIntegerSchema, { exact: true })
+  totalProducts: Schema.optionalKey(NonNegativeIntegerSchema)
 })
 
 export type ProductSearchResponse = Schema.Schema.Type<typeof ProductSearchResponseSchema>

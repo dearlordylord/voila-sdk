@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -43,11 +43,11 @@ const sampleMetadata = {
 const readJsonFixture = (fixtureText: string): unknown => {
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 const makeSession = (token: string = csrfToken): SessionSnapshot => {
@@ -56,17 +56,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeResponse = (
@@ -79,24 +79,24 @@ describe("shopping context parsing", () => {
   it("normalizes delivery and collection proposition details from a sanitized fixture", () => {
     const result = parseDeliveryPropositionDetailsResponse(readJsonFixture(propositionsFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.propositions).toHaveLength(2)
-      expect(result.right.propositions[0]?.deliveryMethod).toBe("HOME_DELIVERY")
-      expect(result.right.propositions[0]?.deliveryPropositionId).toBe("sanitized-home-proposition-id")
-      expect(result.right.propositions[1]?.deliveryMethod).toBe("CUSTOMER_COLLECTION")
-      expect(result.right.propositions[1]?.deliveryPropositionId).toBe("sanitized-collection-proposition-id")
+    if (Result.isSuccess(result)) {
+      expect(result.success.propositions).toHaveLength(2)
+      expect(result.success.propositions[0]?.deliveryMethod).toBe("HOME_DELIVERY")
+      expect(result.success.propositions[0]?.deliveryPropositionId).toBe("sanitized-home-proposition-id")
+      expect(result.success.propositions[1]?.deliveryMethod).toBe("CUSTOMER_COLLECTION")
+      expect(result.success.propositions[1]?.deliveryPropositionId).toBe("sanitized-collection-proposition-id")
     }
   })
 
   it("normalizes wrapped proposition detail responses", () => {
     const result = parseDeliveryPropositionDetailsResponse({ propositions: readJsonFixture(propositionsFixtureText) })
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.propositions[0]?.deliveryMethod).toBe("HOME_DELIVERY")
+    if (Result.isSuccess(result)) {
+      expect(result.success.propositions[0]?.deliveryMethod).toBe("HOME_DELIVERY")
     }
   })
 
@@ -111,10 +111,10 @@ describe("shopping context parsing", () => {
       type: "DELIVERY"
     })
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
         cartPropositionId: "sanitized-cart-proposition-id",
         deliveryDestinationId: "sanitized-delivery-destination-id",
         deliveryMethod: "HOME_DELIVERY",
@@ -122,25 +122,25 @@ describe("shopping context parsing", () => {
         regionId: "sanitized-region-id",
         type: "DELIVERY"
       })
-      expect(JSON.stringify(result.right)).not.toContain(secretCustomerId)
+      expect(JSON.stringify(result.success)).not.toContain(secretCustomerId)
     }
   })
 
   it("surfaces cart impact warnings from proposition preview responses", () => {
     const result = parseDeliveryContextPreviewResponse(readJsonFixture(previewImpactFixtureText))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.requiresConfirmation).toBe(true)
-      expect(result.right.originCartPropositionId).toBe("sanitized-origin-cart-proposition-id")
-      expect(result.right.destinationCartPropositionId).toBe("sanitized-destination-cart-proposition-id")
-      expect(result.right.cartImpactWarnings.map((warning) => warning.kind)).toEqual([
+    if (Result.isSuccess(result)) {
+      expect(result.success.requiresConfirmation).toBe(true)
+      expect(result.success.originCartPropositionId).toBe("sanitized-origin-cart-proposition-id")
+      expect(result.success.destinationCartPropositionId).toBe("sanitized-destination-cart-proposition-id")
+      expect(result.success.cartImpactWarnings.map((warning) => warning.kind)).toEqual([
         "origin-cart-items",
         "destination-cart-items",
         "limited-cart-items"
       ])
-      expect(result.right.cartImpactWarnings[2]?.products[0]?.productId).toBe("sanitized-limited-product-id")
+      expect(result.success.cartImpactWarnings[2]?.products[0]?.productId).toBe("sanitized-limited-product-id")
     }
   })
 
@@ -172,11 +172,11 @@ describe("shopping context parsing", () => {
   it("fails preview parsing with redacted schema errors", () => {
     const result = parseDeliveryContextPreviewResponse({ formattedAddress: secretAddress })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("ShoppingContextSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain(secretAddress)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("ShoppingContextSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain(secretAddress)
     }
   })
 })
@@ -195,15 +195,15 @@ describe("shopping context operations", () => {
     ])
     const result = await runWith(getActiveShoppingContext(makeSession(), { regionId: "sanitized-region-id" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.method).toBe("GET")
       expect(request?.url.href).toBe(
         `${VOILA_BASE_URL}/api/customersessions/v2/sessions/active?regionId=sanitized-region-id`
       )
-      expect(result.right.value.deliveryMethod).toBe("HOME_DELIVERY")
+      expect(result.success.value.deliveryMethod).toBe("HOME_DELIVERY")
     }
   })
 
@@ -211,12 +211,12 @@ describe("shopping context operations", () => {
     const fake = sequenceTransport([makeResponse(JSON.stringify({ type: "DELIVERY" }))])
     const result = await runWith(getActiveShoppingContext(makeSession(), {}), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.url.search).toBe("")
-      expect(result.right.value).toEqual({ type: "DELIVERY" })
+      expect(result.success.value).toEqual({ type: "DELIVERY" })
     }
   })
 
@@ -224,11 +224,11 @@ describe("shopping context operations", () => {
     const fake = sequenceTransport([])
     const result = await runWith(getActiveShoppingContext(makeSession(), { regionId: "" }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("ActiveShoppingContextInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("ActiveShoppingContextInputInvalid")
     }
   })
 
@@ -242,15 +242,15 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/ecomdeliverydestinations/v1/propositions")
       expect(request?.url.searchParams.get("regionId")).toBe("sanitized-region-id")
       expect(request?.url.searchParams.get("deliveryDestinationId")).toBe("sanitized-delivery-destination-id")
-      expect(result.right.value.propositions[1]?.deliveryMethod).toBe("CUSTOMER_COLLECTION")
+      expect(result.success.value.propositions[1]?.deliveryMethod).toBe("CUSTOMER_COLLECTION")
     }
   })
 
@@ -261,11 +261,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryPropositionDetailsInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryPropositionDetailsInputInvalid")
     }
   })
 
@@ -279,9 +279,9 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.method).toBe("POST")
       expect(request?.url.pathname).toBe("/api/customersessions/v2/sessions/proposition")
@@ -291,8 +291,8 @@ describe("shopping context operations", () => {
           destinationRegionId: "sanitized-region-id"
         })
       )
-      expect(result.right.value.requiresConfirmation).toBe(true)
-      expect(result.right.value.cartImpactWarnings).toHaveLength(3)
+      expect(result.success.value.requiresConfirmation).toBe(true)
+      expect(result.success.value.cartImpactWarnings).toHaveLength(3)
     }
   })
 
@@ -306,11 +306,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("DeliveryContextPreviewInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("DeliveryContextPreviewInputInvalid")
     }
   })
 
@@ -334,9 +334,9 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.method).toBe("PUT")
       expect(request?.url.pathname).toBe("/api/customersessions/v2/sessions/active")
@@ -345,7 +345,7 @@ describe("shopping context operations", () => {
       expect(request?.body).toBe(
         JSON.stringify({ deliveryDestinationId: "sanitized-delivery-destination-id", regionId: "sanitized-region-id" })
       )
-      expect(JSON.stringify(result.right.value)).not.toContain(secretCustomerId)
+      expect(JSON.stringify(result.success.value)).not.toContain(secretCustomerId)
     }
   })
 
@@ -359,11 +359,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SetActiveDeliveryDestinationInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SetActiveDeliveryDestinationInputInvalid")
     }
   })
 
@@ -385,9 +385,9 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
       expect(request?.method).toBe("POST")
       expect(request?.url.pathname).toBe("/api/customersessions/v2/sessions/active")
@@ -397,7 +397,7 @@ describe("shopping context operations", () => {
           originCartPropositionId: "sanitized-origin-cart-proposition-id"
         })
       )
-      expect(result.right.value.deliveryMethod).toBe("CUSTOMER_COLLECTION")
+      expect(result.success.value.deliveryMethod).toBe("CUSTOMER_COLLECTION")
     }
   })
 
@@ -411,11 +411,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SetActiveCartPropositionInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SetActiveCartPropositionInputInvalid")
     }
   })
 
@@ -429,13 +429,13 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       expect(fake.requests).toHaveLength(1)
-      expect(result.right.value.status).toBe("requires-confirmation")
-      expect(result.right.value.applied).toBe(false)
-      expect(result.right.value.preview.cartImpactWarnings).toHaveLength(3)
+      expect(result.success.value.status).toBe("requires-confirmation")
+      expect(result.success.value.applied).toBe(false)
+      expect(result.success.value.preview.cartImpactWarnings).toHaveLength(3)
     }
   })
 
@@ -450,11 +450,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(1)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
     }
   })
 
@@ -480,20 +480,20 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [, commitRequest] = fake.requests
       expect(commitRequest?.method).toBe("POST")
       expect(commitRequest?.headers["customer-id"]).toBe(secretCustomerId)
       expect(commitRequest?.headers["visitor-id"]).toBe(secretVisitorId)
-      expect(result.right.value.status).toBe("applied")
-      if (result.right.value.status === "applied") {
-        expect(result.right.value.preview.cartImpactWarnings).toHaveLength(3)
-        expect(result.right.value.context.cartPropositionId).toBe("sanitized-destination-cart-proposition-id")
+      expect(result.success.value.status).toBe("applied")
+      if (result.success.value.status === "applied") {
+        expect(result.success.value.preview.cartImpactWarnings).toHaveLength(3)
+        expect(result.success.value.context.cartPropositionId).toBe("sanitized-destination-cart-proposition-id")
       }
-      expect(JSON.stringify(result.right.value)).not.toContain(secretCustomerId)
-      expect(JSON.stringify(result.right.value)).not.toContain(secretVisitorId)
+      expect(JSON.stringify(result.success.value)).not.toContain(secretCustomerId)
+      expect(JSON.stringify(result.success.value)).not.toContain(secretVisitorId)
     }
   })
 
@@ -511,11 +511,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(2)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 
@@ -545,15 +545,15 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [, commitRequest] = fake.requests
       expect(commitRequest?.method).toBe("PUT")
       expect(commitRequest?.body).toBe(
         JSON.stringify({ deliveryDestinationId: "sanitized-delivery-destination-id", regionId: "sanitized-region-id" })
       )
-      expect(result.right.value.status).toBe("applied")
+      expect(result.success.value.status).toBe("applied")
     }
   })
 
@@ -577,11 +577,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(2)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 
@@ -595,11 +595,11 @@ describe("shopping context operations", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("ApplyDeliveryContextChangeInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("ApplyDeliveryContextChangeInputInvalid")
     }
   })
 })

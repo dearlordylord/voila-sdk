@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect"
+import { Effect, Result, Schema } from "effect"
 
 import { type CartQuantityDeltaError, makeAddToCartDelta, makeRemoveFromCartDelta } from "../domain/cart.js"
 import { parseUnknown } from "../domain/parse.js"
@@ -61,11 +61,11 @@ export const normalizeCartMutationResponse = (response: CartUpdateResponse): Nor
 
 export const parseCartMutationResponse = (
   input: unknown
-): Either.Either<NormalizedCartMutationResult, CartMutationResponseNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(CartUpdateResponseSchema, input), cartMutationResponseSchemaMismatch),
+): Result.Result<NormalizedCartMutationResult, CartMutationResponseNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(CartUpdateResponseSchema, input), cartMutationResponseSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedCartMutationResultSchema, normalizeCartMutationResponse(response)),
         cartMutationResponseSchemaMismatch
       )
@@ -76,7 +76,7 @@ export const applyCartDeltas = (
   deltas: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<ApplyCartDeltasResult, ApplyCartDeltasError, VoilaTransport> =>
-  Effect.flatMap(makeApplyQuantityRequest(deltas), (request) =>
+  Effect.flatMap(Effect.fromResult(makeApplyQuantityRequest(deltas)), (request) =>
     Effect.map(requestVoilaJson(CartUpdateResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeCartMutationResponse(result.value)
@@ -85,26 +85,26 @@ export const applyCartDeltas = (
 
 const makeCartDeltas = (
   items: ReadonlyArray<CartItemQuantityInput>,
-  makeDelta: (productId: string, quantity: number) => Either.Either<unknown, CartQuantityDeltaError>
-): Either.Either<ReadonlyArray<unknown>, CartQuantityDeltaError> =>
-  items.reduce<Either.Either<ReadonlyArray<unknown>, CartQuantityDeltaError>>(
+  makeDelta: (productId: string, quantity: number) => Result.Result<unknown, CartQuantityDeltaError>
+): Result.Result<ReadonlyArray<unknown>, CartQuantityDeltaError> =>
+  items.reduce<Result.Result<ReadonlyArray<unknown>, CartQuantityDeltaError>>(
     (deltas, item) =>
-      Either.flatMap(deltas, (current) =>
-        Either.map(makeDelta(item.productId, item.quantity), (delta) => [...current, delta])
+      Result.flatMap(deltas, (current) =>
+        Result.map(makeDelta(item.productId, item.quantity), (delta) => [...current, delta])
       ),
-    Either.right([])
+    Result.succeed([])
   )
 
 const applyCartItemOperation = (
   session: SessionSnapshot,
   items: unknown,
-  makeDelta: (productId: string, quantity: number) => Either.Either<unknown, CartQuantityDeltaError>,
+  makeDelta: (productId: string, quantity: number) => Result.Result<unknown, CartQuantityDeltaError>,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<ApplyCartDeltasResult, CartItemsOperationError, VoilaTransport> =>
   Effect.flatMap(
-    Either.mapLeft(parseUnknown(CartItemQuantityInputArraySchema, items), cartItemsInputInvalid),
+    Effect.fromResult(Result.mapError(parseUnknown(CartItemQuantityInputArraySchema, items), cartItemsInputInvalid)),
     (parsedItems) =>
-      Effect.flatMap(makeCartDeltas(parsedItems, makeDelta), (deltas) =>
+      Effect.flatMap(Effect.fromResult(makeCartDeltas(parsedItems, makeDelta)), (deltas) =>
         applyCartDeltas(session, deltas, cookieJarPort)
       )
   )

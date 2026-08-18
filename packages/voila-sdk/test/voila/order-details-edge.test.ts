@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -29,17 +29,17 @@ const makeSession = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const okResponse = (body: unknown): VoilaTransportResponse => ({ body: JSON.stringify(body), headers: {}, status: 200 })
@@ -161,17 +161,17 @@ describe("order detail edge cases", () => {
   it("normalizes sparse decorated order details and fallback order maps", () => {
     const parsed = parseUnknown(RawDecoratedOrderResponseSchema, sparseDecoratedOrder)
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const result = normalizeOrderDetailsResponse(parsed.right, "requested-order-id")
+    if (Result.isSuccess(parsed)) {
+      const result = normalizeOrderDetailsResponse(parsed.success, "requested-order-id")
 
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
 
-      if (Either.isRight(result)) {
-        expect(result.right.dates).toEqual({ deliveryEndDate: "2026-06-10T10:00:00-04:00" })
-        expect(result.right).not.toHaveProperty("status")
-        expect(result.right.items).toEqual(
+      if (Result.isSuccess(result)) {
+        expect(result.success.dates).toEqual({ deliveryEndDate: "2026-06-10T10:00:00-04:00" })
+        expect(result.success).not.toHaveProperty("status")
+        expect(result.success.items).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               groupKind: "received",
@@ -197,23 +197,23 @@ describe("order detail edge cases", () => {
   it("returns typed failures for invalid and unavailable order details", async () => {
     const invalid = await runWith(getOrderDetails(makeSession(), {}), makeRoutingTransport())
 
-    expect(Either.isLeft(invalid)).toBe(true)
+    expect(Result.isFailure(invalid)).toBe(true)
 
-    if (Either.isLeft(invalid)) {
-      expect(invalid.left._tag).toBe("OrderDetailsInputInvalid")
+    if (Result.isFailure(invalid)) {
+      expect(invalid.failure._tag).toBe("OrderDetailsInputInvalid")
     }
 
     const parsed = parseUnknown(RawDecoratedOrderResponseSchema, { entities: { order: {} } })
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const unavailable = normalizeOrderDetailsResponse(parsed.right, "missing-order")
+    if (Result.isSuccess(parsed)) {
+      const unavailable = normalizeOrderDetailsResponse(parsed.success, "missing-order")
 
-      expect(Either.isLeft(unavailable)).toBe(true)
+      expect(Result.isFailure(unavailable)).toBe(true)
 
-      if (Either.isLeft(unavailable)) {
-        expect(unavailable.left._tag).toBe("OrderDetailsUnavailable")
+      if (Result.isFailure(unavailable)) {
+        expect(unavailable.failure._tag).toBe("OrderDetailsUnavailable")
       }
     }
   })
@@ -230,15 +230,15 @@ describe("order detail edge cases", () => {
       }
     })
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const result = normalizeOrderDetailsResponse(parsed.right, "partialSlotOrder")
+    if (Result.isSuccess(parsed)) {
+      const result = normalizeOrderDetailsResponse(parsed.success, "partialSlotOrder")
 
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
 
-      if (Either.isRight(result)) {
-        expect(result.right.dates).toEqual({
+      if (Result.isSuccess(result)) {
+        expect(result.success.dates).toEqual({
           deliveryStartDate: "2026-06-10T09:00:00-04:00",
           timeZoneId: "America/Montreal"
         })
@@ -258,10 +258,10 @@ describe("order detail edge cases", () => {
       makeRoutingTransport()
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.value.items[0]).toMatchObject({
+    if (Result.isSuccess(result)) {
+      expect(result.success.value.items[0]).toMatchObject({
         itemKey: "product-a",
         lastOrderId: "order-a",
         lastOrderedAt: "2026-06-10T10:00:00-04:00",
@@ -269,7 +269,7 @@ describe("order detail edge cases", () => {
         totalQuantity: 2,
         totalSpend: { amount: "6.00", currency: "CAD" }
       })
-      expect(result.right.value.items).toEqual(
+      expect(result.success.value.items).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ itemKey: "Name-only item", orderCount: 1, totalQuantity: 1 }),
           expect.objectContaining({
@@ -300,10 +300,10 @@ describe("order detail edge cases", () => {
       transport
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.value).toMatchObject({ itemCount: 0, items: [], ordersMatched: 0, ordersScanned: 2 })
+    if (Result.isSuccess(result)) {
+      expect(result.success.value).toMatchObject({ itemCount: 0, items: [], ordersMatched: 0, ordersScanned: 2 })
     }
   })
 
@@ -337,12 +337,12 @@ describe("order detail edge cases", () => {
       transport
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       expect(requests).toEqual([null, "page-2"])
-      expect(result.right.value).toMatchObject({ ordersMatched: 1, ordersScanned: 2 })
-      expect(result.right.value.items).toEqual(
+      expect(result.success.value).toMatchObject({ ordersMatched: 1, ordersScanned: 2 })
+      expect(result.success.value.items).toEqual(
         expect.arrayContaining([expect.objectContaining({ itemKey: "product-a" })])
       )
     }
@@ -361,7 +361,7 @@ describe("order detail edge cases", () => {
     })
     const result = await runWith(getCompletedOrderItems(makeSession(), { maxOrders: 1, pageSize: 5 }), transport)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(graphqlBodies).toHaveLength(1)
     expect(graphqlBodies[0]).toContain('"first":1')
   })
@@ -369,10 +369,10 @@ describe("order detail edge cases", () => {
   it("returns typed failures for invalid aggregate input and upstream failures", async () => {
     const invalid = await runWith(getCompletedOrderItems(makeSession(), { maxOrders: 0 }), makeRoutingTransport())
 
-    expect(Either.isLeft(invalid)).toBe(true)
+    expect(Result.isFailure(invalid)).toBe(true)
 
-    if (Either.isLeft(invalid)) {
-      expect(invalid.left._tag).toBe("CompletedOrderItemsInputInvalid")
+    if (Result.isFailure(invalid)) {
+      expect(invalid.failure._tag).toBe("CompletedOrderItemsInputInvalid")
     }
 
     const graphqlFailure = await runWith(
@@ -380,10 +380,10 @@ describe("order detail edge cases", () => {
       respondingTransport(okResponse({ errors: [{ message: "auth required" }] }))
     )
 
-    expect(Either.isLeft(graphqlFailure)).toBe(true)
+    expect(Result.isFailure(graphqlFailure)).toBe(true)
 
-    if (Either.isLeft(graphqlFailure)) {
-      expect(graphqlFailure.left._tag).toBe("CompletedOrdersGraphqlError")
+    if (Result.isFailure(graphqlFailure)) {
+      expect(graphqlFailure.failure._tag).toBe("CompletedOrdersGraphqlError")
     }
 
     const detailFailure = await runWith(
@@ -397,10 +397,10 @@ describe("order detail edge cases", () => {
       )
     )
 
-    expect(Either.isLeft(detailFailure)).toBe(true)
+    expect(Result.isFailure(detailFailure)).toBe(true)
 
-    if (Either.isLeft(detailFailure)) {
-      expect(detailFailure.left._tag).toBe("OrderDetailsUnavailable")
+    if (Result.isFailure(detailFailure)) {
+      expect(detailFailure.failure._tag).toBe("OrderDetailsUnavailable")
     }
   })
 })

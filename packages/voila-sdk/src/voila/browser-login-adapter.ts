@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -38,26 +38,26 @@ const adapterFailure = (): BrowserLoginPortError => ({
 
 const normalizeWaitFailure = (error: unknown): BrowserLoginPortError => {
   const parsedError = parseUnknown(
-    Schema.Union(
+    Schema.Union([
       Schema.Struct({ _tag: Schema.Literal("BrowserLoginTimedOut") }),
       Schema.Struct({ _tag: Schema.Literal("BrowserLoginUserCancelled") })
-    ),
+    ]),
     error
   )
 
-  if (Either.isLeft(parsedError)) {
+  if (Result.isFailure(parsedError)) {
     return adapterFailure()
   }
 
-  return parsedError.right
+  return parsedError.success
 }
 
 const parseOptionalAccountSummary = (
   input: unknown
-): Either.Either<AuthAccountSummary | undefined, BrowserLoginPortError> =>
+): Result.Result<AuthAccountSummary | undefined, BrowserLoginPortError> =>
   input === undefined
-    ? Either.right(undefined)
-    : Either.mapLeft(parseUnknown(AuthAccountSummarySchema, input), adapterFailure)
+    ? Result.succeed(undefined)
+    : Result.mapError(parseUnknown(AuthAccountSummarySchema, input), adapterFailure)
 
 const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
   const expires =
@@ -79,74 +79,74 @@ const makeCookieHeader = (cookie: BrowserLoginBrowserCookie): string => {
 const storeBrowserCookies = (
   cookies: ReadonlyArray<BrowserLoginBrowserCookie>,
   cookieJarPort: CookieJarPort
-): Either.Either<BrowserLoginCapture["session"]["cookieJar"], BrowserLoginPortError> => {
+): Result.Result<BrowserLoginCapture["session"]["cookieJar"], BrowserLoginPortError> => {
   const jar = cookieJarPort.create()
 
   for (const cookie of cookies) {
     try {
       jar.setCookieSync(makeCookieHeader(cookie), VOILA_BASE_URL)
     } catch {
-      return Either.left(adapterFailure())
+      return Result.fail(adapterFailure())
     }
   }
 
-  return Either.mapLeft(cookieJarPort.serialize(jar), adapterFailure)
+  return Result.mapError(cookieJarPort.serialize(jar), adapterFailure)
 }
 
 const closePage = async (
   page: InteractiveBrowserLoginPage
-): Promise<Either.Either<undefined, BrowserLoginPortError>> => {
+): Promise<Result.Result<undefined, BrowserLoginPortError>> => {
   try {
     await page.close()
 
-    return Either.right(undefined)
+    return Result.succeed(undefined)
   } catch {
-    return Either.left(adapterFailure())
+    return Result.fail(adapterFailure())
   }
 }
 
 const readBrowserCapture = async (
   page: InteractiveBrowserLoginPage,
   cookieJarPort: CookieJarPort
-): Promise<Either.Either<BrowserLoginCapture, BrowserLoginPortError>> => {
-  const initialState = Either.mapLeft(parseUnknown(InitialStateSchema, await page.readInitialState()), adapterFailure)
-  const cookies = Either.mapLeft(
+): Promise<Result.Result<BrowserLoginCapture, BrowserLoginPortError>> => {
+  const initialState = Result.mapError(parseUnknown(InitialStateSchema, await page.readInitialState()), adapterFailure)
+  const cookies = Result.mapError(
     parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.readCookies(VOILA_BASE_URL)),
     adapterFailure
   )
-  const authenticated = Either.mapLeft(parseUnknown(Schema.Boolean, await page.readAuthenticated()), adapterFailure)
+  const authenticated = Result.mapError(parseUnknown(Schema.Boolean, await page.readAuthenticated()), adapterFailure)
   const account = parseOptionalAccountSummary(await page.readAccountSummary())
 
-  if (Either.isLeft(initialState)) {
-    return Either.left(initialState.left)
+  if (Result.isFailure(initialState)) {
+    return Result.fail(initialState.failure)
   }
 
-  if (Either.isLeft(cookies)) {
-    return Either.left(cookies.left)
+  if (Result.isFailure(cookies)) {
+    return Result.fail(cookies.failure)
   }
 
-  if (Either.isLeft(authenticated)) {
-    return Either.left(authenticated.left)
+  if (Result.isFailure(authenticated)) {
+    return Result.fail(authenticated.failure)
   }
 
-  if (Either.isLeft(account)) {
-    return Either.left(account.left)
+  if (Result.isFailure(account)) {
+    return Result.fail(account.failure)
   }
 
-  const cookieJar = storeBrowserCookies(cookies.right, cookieJarPort)
+  const cookieJar = storeBrowserCookies(cookies.success, cookieJarPort)
 
-  if (Either.isLeft(cookieJar)) {
-    return Either.left(cookieJar.left)
+  if (Result.isFailure(cookieJar)) {
+    return Result.fail(cookieJar.failure)
   }
 
-  return Either.map(
-    Either.mapLeft(
-      makeSessionSnapshot(initialState.right.session.metadata, initialState.right.session.csrf, cookieJar.right),
+  return Result.map(
+    Result.mapError(
+      makeSessionSnapshot(initialState.success.session.metadata, initialState.success.session.csrf, cookieJar.success),
       adapterFailure
     ),
     (session) => ({
-      ...(account.right === undefined ? {} : { account: account.right }),
-      authenticated: authenticated.right,
+      ...(account.success === undefined ? {} : { account: account.success }),
+      authenticated: authenticated.success,
       session
     })
   )
@@ -162,7 +162,7 @@ export const createInteractiveBrowserLoginPort = (
     try {
       page = await driver.openPage()
     } catch {
-      return Either.left(adapterFailure())
+      return Result.fail(adapterFailure())
     }
 
     try {
@@ -170,7 +170,7 @@ export const createInteractiveBrowserLoginPort = (
     } catch {
       const closeResult = await closePage(page)
 
-      return Either.isLeft(closeResult) ? closeResult : Either.left(adapterFailure())
+      return Result.isFailure(closeResult) ? closeResult : Result.fail(adapterFailure())
     }
 
     let waitResult: unknown
@@ -180,33 +180,33 @@ export const createInteractiveBrowserLoginPort = (
     } catch {
       const closeResult = await closePage(page)
 
-      return Either.isLeft(closeResult) ? closeResult : Either.left(adapterFailure())
+      return Result.isFailure(closeResult) ? closeResult : Result.fail(adapterFailure())
     }
 
-    if (waitResult === undefined || waitResult === null || !Either.isEither(waitResult)) {
+    if (waitResult === undefined || waitResult === null || !Result.isResult(waitResult)) {
       const closeResult = await closePage(page)
 
-      return Either.isLeft(closeResult) ? closeResult : Either.left(adapterFailure())
+      return Result.isFailure(closeResult) ? closeResult : Result.fail(adapterFailure())
     }
 
-    if (Either.isLeft(waitResult)) {
+    if (Result.isFailure(waitResult)) {
       const closeResult = await closePage(page)
 
-      return Either.isLeft(closeResult) ? closeResult : Either.left(normalizeWaitFailure(waitResult.left))
+      return Result.isFailure(closeResult) ? closeResult : Result.fail(normalizeWaitFailure(waitResult.failure))
     }
 
-    let capture: Either.Either<BrowserLoginCapture, BrowserLoginPortError>
+    let capture: Result.Result<BrowserLoginCapture, BrowserLoginPortError>
 
     try {
       capture = await readBrowserCapture(page, cookieJarPort)
     } catch {
       const closeResult = await closePage(page)
 
-      return Either.isLeft(closeResult) ? closeResult : Either.left(adapterFailure())
+      return Result.isFailure(closeResult) ? closeResult : Result.fail(adapterFailure())
     }
 
     const closeResult = await closePage(page)
 
-    return Either.isLeft(closeResult) ? closeResult : capture
+    return Result.isFailure(closeResult) ? closeResult : capture
   }
 })

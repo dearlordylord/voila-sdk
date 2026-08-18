@@ -10,7 +10,7 @@ This package wraps the same same-origin JSON endpoints used by the Voila web app
 pnpm add @firfi/voila-sdk effect
 ```
 
-The package is ESM-only and supports Node.js 20+.
+The package is ESM-only and supports Node.js `^22.22.2 || ^24.15.0`.
 
 ## Quick Start
 
@@ -65,8 +65,8 @@ const program = Effect.gen(function*() {
 console.log(await Effect.runPromise(Effect.provide(program, fetchTransportLayer)))
 ```
 
-Failures stay in the typed error channel: `Effect.either` turns them into an
-`Either` where a caller would rather branch than short-circuit.
+Failures stay in the typed error channel: `Effect.result` turns them into a
+`Result` where a caller would rather branch than short-circuit.
 
 ## What It Supports
 

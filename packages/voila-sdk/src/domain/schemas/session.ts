@@ -1,11 +1,9 @@
 import { Schema } from "effect"
 
 import { CartUpdateResultSchema } from "./cart.js"
-import type { CartUpdateResult } from "./cart.js"
 import { RawCategoriesSchema } from "./category.js"
-import type { RawCategories } from "./category.js"
 
-const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
+import { withUnknownStringFields } from "./unknown-fields.js"
 
 // `clientRouteId` is optional because the server-rendered page publishes one
 // only when it has one to publish; Voila's own endpoints accept a request
@@ -13,7 +11,7 @@ const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Sch
 // using it
 export const SessionMetadataSchema = Schema.Struct({
   assetVersion: Schema.String,
-  clientRouteId: Schema.optionalWith(Schema.String, { exact: true }),
+  clientRouteId: Schema.optionalKey(Schema.String),
   pageViewId: Schema.String,
   regionId: Schema.String
 })
@@ -22,7 +20,7 @@ export type SessionMetadata = Schema.Schema.Type<typeof SessionMetadataSchema>
 
 export const SessionMetadataDiagnosticSchema = Schema.Struct({
   assetVersion: Schema.String,
-  clientRouteId: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
+  clientRouteId: Schema.optionalKey(Schema.Literal("[redacted]")),
   pageViewId: Schema.Literal("[redacted]"),
   regionId: Schema.String
 })
@@ -33,22 +31,21 @@ export const CsrfStateSchema = Schema.Struct({ token: Schema.String })
 
 export type CsrfState = Schema.Schema.Type<typeof CsrfStateSchema>
 
-export const SerializedCookieSchema = Schema.asSchema(
-  Schema.Struct({
-    key: Schema.optionalWith(Schema.String, { exact: true }),
-    value: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+export const SerializedCookieSchema = Schema.revealCodec(
+  Schema.Struct({ key: Schema.optionalKey(Schema.String), value: Schema.optionalKey(Schema.String) }).pipe(
+    withUnknownStringFields
+  )
 )
 
 export type SerializedCookie = Schema.Schema.Type<typeof SerializedCookieSchema>
 
-export const SerializedCookieJarSnapshotSchema = Schema.asSchema(
+export const SerializedCookieJarSnapshotSchema = Schema.revealCodec(
   Schema.Struct({
     cookies: Schema.Array(SerializedCookieSchema),
     rejectPublicSuffixes: Schema.Boolean,
     storeType: Schema.NullOr(Schema.String),
     version: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type SerializedCookieJarSnapshot = Schema.Schema.Type<typeof SerializedCookieJarSnapshotSchema>
@@ -61,14 +58,14 @@ export const SessionSnapshotSchema = Schema.Struct({
 
 export type SessionSnapshot = Schema.Schema.Type<typeof SessionSnapshotSchema>
 
-export const AuthSessionStateSchema = Schema.Literal("authenticated", "unknown-expiry", "reauth-required")
+export const AuthSessionStateSchema = Schema.Literals(["authenticated", "unknown-expiry", "reauth-required"])
 
 export type AuthSessionState = Schema.Schema.Type<typeof AuthSessionStateSchema>
 
 export const AuthAccountSummarySchema = Schema.Struct({
-  displayName: Schema.optionalWith(Schema.String, { exact: true }),
-  emailHint: Schema.optionalWith(Schema.String, { exact: true }),
-  stableAccountIdHash: Schema.optionalWith(Schema.String, { exact: true })
+  displayName: Schema.optionalKey(Schema.String),
+  emailHint: Schema.optionalKey(Schema.String),
+  stableAccountIdHash: Schema.optionalKey(Schema.String)
 })
 
 export type AuthAccountSummary = Schema.Schema.Type<typeof AuthAccountSummarySchema>
@@ -81,7 +78,7 @@ export const GuestSdkSessionSnapshotSchema = Schema.Struct({
 export type GuestSdkSessionSnapshot = Schema.Schema.Type<typeof GuestSdkSessionSnapshotSchema>
 
 export const AuthenticatedSdkSessionSnapshotSchema = Schema.Struct({
-  account: Schema.optionalWith(AuthAccountSummarySchema, { exact: true }),
+  account: Schema.optionalKey(AuthAccountSummarySchema),
   kind: Schema.Literal("authenticated"),
   session: SessionSnapshotSchema,
   state: AuthSessionStateSchema
@@ -89,16 +86,20 @@ export const AuthenticatedSdkSessionSnapshotSchema = Schema.Struct({
 
 export type AuthenticatedSdkSessionSnapshot = Schema.Schema.Type<typeof AuthenticatedSdkSessionSnapshotSchema>
 
-export const SdkSessionSnapshotSchema = Schema.Union(
+export const SdkSessionSnapshotSchema = Schema.Union([
   GuestSdkSessionSnapshotSchema,
   AuthenticatedSdkSessionSnapshotSchema
-)
+])
 
 export type SdkSessionSnapshot = Schema.Schema.Type<typeof SdkSessionSnapshotSchema>
 
 export const SessionSnapshotDiagnosticSchema = Schema.Struct({
   cookieJar: Schema.Struct({
-    cookieCount: Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative()),
+    cookieCount: Schema.Number.pipe(
+      Schema.check(Schema.isFinite()),
+      Schema.check(Schema.isInt()),
+      Schema.check(Schema.isGreaterThanOrEqualTo(0))
+    ),
     storeType: Schema.NullOr(Schema.String),
     version: Schema.String
   }),
@@ -109,67 +110,63 @@ export const SessionSnapshotDiagnosticSchema = Schema.Struct({
 export type SessionSnapshotDiagnostic = Schema.Schema.Type<typeof SessionSnapshotDiagnosticSchema>
 
 const RedactedAuthAccountSummarySchema = Schema.Struct({
-  displayName: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
-  emailHint: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true }),
-  stableAccountIdHash: Schema.optionalWith(Schema.Literal("[redacted]"), { exact: true })
+  displayName: Schema.optionalKey(Schema.Literal("[redacted]")),
+  emailHint: Schema.optionalKey(Schema.Literal("[redacted]")),
+  stableAccountIdHash: Schema.optionalKey(Schema.Literal("[redacted]"))
 })
 
 export const GuestSdkSessionSnapshotDiagnosticSchema = SessionSnapshotDiagnosticSchema.pipe(
-  Schema.extend(
-    Schema.Struct({
-      account: Schema.optionalWith(Schema.Never, { exact: true }),
-      kind: Schema.Literal("guest"),
-      state: Schema.Literal("guest")
-    })
-  )
+  Schema.fieldsAssign({
+    account: Schema.optionalKey(Schema.Never),
+    kind: Schema.Literal("guest"),
+    state: Schema.Literal("guest")
+  })
 )
 
 export type GuestSdkSessionSnapshotDiagnostic = Schema.Schema.Type<typeof GuestSdkSessionSnapshotDiagnosticSchema>
 
 export const AuthenticatedSdkSessionSnapshotDiagnosticSchema = SessionSnapshotDiagnosticSchema.pipe(
-  Schema.extend(
-    Schema.Struct({
-      account: Schema.optionalWith(RedactedAuthAccountSummarySchema, { exact: true }),
-      kind: Schema.Literal("authenticated"),
-      state: AuthSessionStateSchema
-    })
-  )
+  Schema.fieldsAssign({
+    account: Schema.optionalKey(RedactedAuthAccountSummarySchema),
+    kind: Schema.Literal("authenticated"),
+    state: AuthSessionStateSchema
+  })
 )
 
 export type AuthenticatedSdkSessionSnapshotDiagnostic = Schema.Schema.Type<
   typeof AuthenticatedSdkSessionSnapshotDiagnosticSchema
 >
 
-export const SdkSessionSnapshotDiagnosticSchema = Schema.Union(
+export const SdkSessionSnapshotDiagnosticSchema = Schema.Union([
   GuestSdkSessionSnapshotDiagnosticSchema,
   AuthenticatedSdkSessionSnapshotDiagnosticSchema
-)
+])
 
 export type SdkSessionSnapshotDiagnostic = Schema.Schema.Type<typeof SdkSessionSnapshotDiagnosticSchema>
 
-const ActiveCustomerSummarySchema = Schema.asSchema(
+const ActiveCustomerSummarySchema = Schema.revealCodec(
   Schema.Struct({
-    anonymous: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    authenticated: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    id: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    anonymous: Schema.optionalKey(Schema.Boolean),
+    authenticated: Schema.optionalKey(Schema.Boolean),
+    id: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
-export const ActiveCustomerSessionResponseSchema = Schema.asSchema(
+export const ActiveCustomerSessionResponseSchema = Schema.revealCodec(
   Schema.Struct({
-    authenticated: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    cartId: Schema.optionalWith(Schema.String, { exact: true }),
-    customer: Schema.optionalWith(ActiveCustomerSummarySchema, { exact: true }),
-    isAuthenticated: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    regionId: Schema.optionalWith(Schema.String, { exact: true }),
-    status: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    authenticated: Schema.optionalKey(Schema.Boolean),
+    cartId: Schema.optionalKey(Schema.String),
+    customer: Schema.optionalKey(ActiveCustomerSummarySchema),
+    isAuthenticated: Schema.optionalKey(Schema.Boolean),
+    regionId: Schema.optionalKey(Schema.String),
+    status: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type ActiveCustomerSessionResponse = Schema.Schema.Type<typeof ActiveCustomerSessionResponseSchema>
 
 export const ActiveAuthenticatedSdkSessionSnapshotSchema = Schema.Struct({
-  account: Schema.optionalWith(AuthAccountSummarySchema, { exact: true }),
+  account: Schema.optionalKey(AuthAccountSummarySchema),
   kind: Schema.Literal("authenticated"),
   session: SessionSnapshotSchema,
   state: Schema.Literal("authenticated")
@@ -180,7 +177,7 @@ export type ActiveAuthenticatedSdkSessionSnapshot = Schema.Schema.Type<
 >
 
 export const ReauthenticationRequiredSdkSessionSnapshotSchema = Schema.Struct({
-  account: Schema.optionalWith(AuthAccountSummarySchema, { exact: true }),
+  account: Schema.optionalKey(AuthAccountSummarySchema),
   kind: Schema.Literal("authenticated"),
   session: SessionSnapshotSchema,
   state: Schema.Literal("reauth-required")
@@ -190,15 +187,15 @@ export type ReauthenticationRequiredSdkSessionSnapshot = Schema.Schema.Type<
   typeof ReauthenticationRequiredSdkSessionSnapshotSchema
 >
 
-export const ActiveSessionHealthSchema = Schema.Union(
+export const ActiveSessionHealthSchema = Schema.Union([
   Schema.Struct({ session: GuestSdkSessionSnapshotSchema, status: Schema.Literal("active") }),
   Schema.Struct({ session: ActiveAuthenticatedSdkSessionSnapshotSchema, status: Schema.Literal("active") })
-)
+])
 
 export type ActiveSessionHealth = Schema.Schema.Type<typeof ActiveSessionHealthSchema>
 
 export const RetryableSessionHealthSchema = Schema.Struct({
-  reason: Schema.Literal("network", "server", "persistence"),
+  reason: Schema.Literals(["network", "server", "persistence"]),
   session: SdkSessionSnapshotSchema,
   status: Schema.Literal("retry")
 })
@@ -228,32 +225,22 @@ export const SessionSchemaChangedHealthSchema = Schema.Struct({
 
 export type SessionSchemaChangedHealth = Schema.Schema.Type<typeof SessionSchemaChangedHealthSchema>
 
-export const SessionHealthSchema = Schema.Union(
+export const SessionHealthSchema = Schema.Union([
   ActiveSessionHealthSchema,
   RetryableSessionHealthSchema,
   ReauthenticationRequiredSessionHealthSchema,
   UnauthorizedSessionHealthSchema,
   SessionSchemaChangedHealthSchema
-)
+])
 
 export type SessionHealth = Schema.Schema.Type<typeof SessionHealthSchema>
 
-interface InitialStateBasket extends CartUpdateResult {
-  readonly basketId: string
-  readonly regionId: string
-}
-
 // The CSRF token and the page metadata both live under `session`: they are what
 // the server-rendered page says about the session it just handed out.
-interface InitialStateShape {
-  readonly data: { readonly basket: InitialStateBasket; readonly categories?: RawCategories }
-  readonly session: { readonly csrf: CsrfState; readonly metadata: SessionMetadata }
-}
-
-export const InitialStateSchema: Schema.Schema<InitialStateShape> = Schema.Struct({
+export const InitialStateSchema = Schema.Struct({
   data: Schema.Struct({
-    basket: Schema.extend(CartUpdateResultSchema, Schema.Struct({ basketId: Schema.String, regionId: Schema.String })),
-    categories: Schema.optionalWith(RawCategoriesSchema, { exact: true })
+    basket: CartUpdateResultSchema.pipe(Schema.fieldsAssign({ basketId: Schema.String, regionId: Schema.String })),
+    categories: Schema.optionalKey(RawCategoriesSchema)
   }),
   session: Schema.Struct({ csrf: CsrfStateSchema, metadata: SessionMetadataSchema })
 })

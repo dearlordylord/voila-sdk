@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import type { SessionStoragePort } from "../../src/index.js"
 import {
@@ -42,77 +42,80 @@ const makeFileSessionStorage = (path: string): SessionStoragePort => ({
   read: () => Effect.tryPromise({ catch: sessionStorageReadFailure, try: () => readFile(path, "utf8") })
 })
 
-const runSmoke = async (): Promise<Either.Either<AuthReadOnlySmokeSuccess, AuthReadOnlySmokeFailure>> => {
+const runSmoke = async (): Promise<Result.Result<AuthReadOnlySmokeSuccess, AuthReadOnlySmokeFailure>> => {
   if (process.env[authSmokeFlag] !== enabledValue) {
-    return Either.left({ _tag: "AuthReadOnlySmokeOptInMissing" })
+    return Result.fail({ _tag: "AuthReadOnlySmokeOptInMissing" })
   }
 
   const sessionPath = process.env[liveSessionPathVariable]
 
   if (sessionPath === undefined || sessionPath.trim().length === 0) {
-    return Either.left({ _tag: "AuthReadOnlySmokeSessionPathMissing" })
+    return Result.fail({ _tag: "AuthReadOnlySmokeSessionPathMissing" })
   }
 
-  const snapshot = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(makeFileSessionStorage(sessionPath))))
+  const snapshot = await Effect.runPromise(Effect.result(loadSdkSessionSnapshot(makeFileSessionStorage(sessionPath))))
 
-  if (Either.isLeft(snapshot)) {
-    return Either.left({ _tag: "AuthReadOnlySmokeSessionLoadFailed", causeTag: toCauseTag(snapshot.left) })
+  if (Result.isFailure(snapshot)) {
+    return Result.fail({ _tag: "AuthReadOnlySmokeSessionLoadFailed", causeTag: toCauseTag(snapshot.failure) })
   }
 
-  if (snapshot.right.kind !== "authenticated") {
-    return Either.left({ _tag: "AuthReadOnlySmokeSessionNotAuthenticated" })
+  if (snapshot.success.kind !== "authenticated") {
+    return Result.fail({ _tag: "AuthReadOnlySmokeSessionNotAuthenticated" })
   }
 
-  const health = await runLive(checkSessionHealth(snapshot.right))
+  const health = await runLive(checkSessionHealth(snapshot.success))
 
-  if (Either.isLeft(health)) {
-    return Either.left({ _tag: "AuthReadOnlySmokeSessionHealthFailed", causeTag: toCauseTag(health.left) })
+  if (Result.isFailure(health)) {
+    return Result.fail({ _tag: "AuthReadOnlySmokeSessionHealthFailed", causeTag: toCauseTag(health.failure) })
   }
 
-  if (health.right.status !== "active") {
-    return Either.left({ _tag: "AuthReadOnlySmokeSessionNotActive", status: health.right.status })
+  if (health.success.status !== "active") {
+    return Result.fail({ _tag: "AuthReadOnlySmokeSessionNotActive", status: health.success.status })
   }
 
-  const session = health.right.session.session
+  const session = health.success.session.session
   const search = await runLive(searchProducts(session, { pageSize, query: harmlessQuery }))
 
-  if (Either.isLeft(search)) {
-    return Either.left({ _tag: "AuthReadOnlySmokeSearchFailed", causeTag: toCauseTag(search.left) })
+  if (Result.isFailure(search)) {
+    return Result.fail({ _tag: "AuthReadOnlySmokeSearchFailed", causeTag: toCauseTag(search.failure) })
   }
 
-  if (search.right.value.products.length === 0) {
-    return Either.left({ _tag: "AuthReadOnlySmokeNoProducts" })
+  if (search.success.value.products.length === 0) {
+    return Result.fail({ _tag: "AuthReadOnlySmokeNoProducts" })
   }
 
-  const cart = await runLive(getCart(search.right.session))
+  const cart = await runLive(getCart(search.success.session))
 
-  if (Either.isLeft(cart)) {
-    return Either.left({ _tag: "AuthReadOnlySmokeCartReadFailed", causeTag: toCauseTag(cart.left) })
+  if (Result.isFailure(cart)) {
+    return Result.fail({ _tag: "AuthReadOnlySmokeCartReadFailed", causeTag: toCauseTag(cart.failure) })
   }
 
-  return Either.right({ cartItemCount: cart.right.value.itemCount, productCount: search.right.value.products.length })
+  return Result.succeed({
+    cartItemCount: cart.success.value.itemCount,
+    productCount: search.success.value.products.length
+  })
 }
 
 const result = await runSmoke()
 
-if (Either.isLeft(result) && result.left._tag === "AuthReadOnlySmokeOptInMissing") {
+if (Result.isFailure(result) && result.failure._tag === "AuthReadOnlySmokeOptInMissing") {
   process.stdout.write(`${authSmokeFlag}=1 is required; skipping authenticated read-only smoke test.\n`)
   process.exit(successStatus)
 }
 
-if (Either.isLeft(result) && result.left._tag === "AuthReadOnlySmokeSessionPathMissing") {
+if (Result.isFailure(result) && result.failure._tag === "AuthReadOnlySmokeSessionPathMissing") {
   process.stdout.write(`${liveSessionPathVariable} is required; skipping authenticated read-only smoke test.\n`)
   process.exit(successStatus)
 }
 
-if (Either.isRight(result)) {
+if (Result.isSuccess(result)) {
   process.stdout.write(
-    `Authenticated read-only smoke passed with ${String(result.right.productCount)} products and ${String(
-      result.right.cartItemCount
+    `Authenticated read-only smoke passed with ${String(result.success.productCount)} products and ${String(
+      result.success.cartItemCount
     )} cart items.\n`
   )
   process.exit(successStatus)
 }
 
-process.stderr.write(`Authenticated read-only smoke returned typed failure: ${JSON.stringify(result.left)}\n`)
+process.stderr.write(`Authenticated read-only smoke returned typed failure: ${JSON.stringify(result.failure)}\n`)
 process.exit(failureStatus)

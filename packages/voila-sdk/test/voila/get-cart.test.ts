@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -34,17 +34,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeCartResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -56,11 +56,11 @@ const makeCartResponse = (body: string = fixtureText, status: number = 200): Voi
 const getSessionCookies = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected session cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("getCart", () => {
@@ -68,25 +68,25 @@ describe("getCart", () => {
     const fake = respondingTransport(makeCartResponse())
     const result = await runWith(getCart(makeSession()), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/cart/v2/carts/active/cart-view")
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
-      expect(result.right.value.basketId).toBe("sanitized-basket-id")
-      expect(result.right.value.itemCount).toBe(3)
-      expect(result.right.value.items[0]?.productId).toBe("sanitized-strawberries-product-id")
-      expect(result.right.value.items[1]?.unavailable).toBe(true)
-      expect(result.right.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
-      expect(result.right.value.checkoutRestrictions[0]?.code).toBe("DELIVERY_SLOT_REQUIRED")
-      expect(result.right.value.limitedItems[0]?.code).toBe("MAX_QUANTITY")
-      expect(result.right.value.pricingNotifications[0]?.code).toBe("PRICE_CHANGED")
-      expect(result.right.value.unavailableData[0]?.code).toBe("UNAVAILABLE")
-      expect(getSessionCookies(result.right.session)).toContain("fresh-cart-cookie=after")
+      expect(result.success.value.basketId).toBe("sanitized-basket-id")
+      expect(result.success.value.itemCount).toBe(3)
+      expect(result.success.value.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.items[1]?.unavailable).toBe(true)
+      expect(result.success.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
+      expect(result.success.value.checkoutRestrictions[0]?.code).toBe("DELIVERY_SLOT_REQUIRED")
+      expect(result.success.value.limitedItems[0]?.code).toBe("MAX_QUANTITY")
+      expect(result.success.value.pricingNotifications[0]?.code).toBe("PRICE_CHANGED")
+      expect(result.success.value.unavailableData[0]?.code).toBe("UNAVAILABLE")
+      expect(getSessionCookies(result.success.session)).toContain("fresh-cart-cookie=after")
     }
   })
 
@@ -136,15 +136,15 @@ describe("getCart", () => {
     )
     const result = await runWith(getCart(makeSession()), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.value.basketId).toBe("sanitized-current-cart-id")
-      expect(result.right.value.itemCount).toBe(2)
-      expect(result.right.value.items[0]?.groupName).toBe("Fruits & Vegetables")
-      expect(result.right.value.checkoutRestrictions[0]?.code).toBe("NOT_REACHED_THRESHOLD")
-      expect(result.right.value.checkoutRestrictions[1]?.code).toBe("MISSING_SLOT")
-      expect(result.right.value.totals.itemPriceAfterPromos.amount).toBe("9.98")
+    if (Result.isSuccess(result)) {
+      expect(result.success.value.basketId).toBe("sanitized-current-cart-id")
+      expect(result.success.value.itemCount).toBe(2)
+      expect(result.success.value.items[0]?.groupName).toBe("Fruits & Vegetables")
+      expect(result.success.value.checkoutRestrictions[0]?.code).toBe("NOT_REACHED_THRESHOLD")
+      expect(result.success.value.checkoutRestrictions[1]?.code).toBe("MISSING_SLOT")
+      expect(result.success.value.totals.itemPriceAfterPromos.amount).toBe("9.98")
     }
   })
 
@@ -166,15 +166,15 @@ describe("getCart", () => {
       )
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.value.basketId).toBe("sanitized-empty-current-cart-id")
-      expect(result.right.value.checkoutRestrictions).toEqual([])
-      expect(result.right.value.itemCount).toBe(0)
-      expect(result.right.value.items).toEqual([])
-      expect(result.right.value.pricingNotifications).toEqual([])
-      expect(result.right.value.unavailableData).toEqual([])
+    if (Result.isSuccess(result)) {
+      expect(result.success.value.basketId).toBe("sanitized-empty-current-cart-id")
+      expect(result.success.value.checkoutRestrictions).toEqual([])
+      expect(result.success.value.itemCount).toBe(0)
+      expect(result.success.value.items).toEqual([])
+      expect(result.success.value.pricingNotifications).toEqual([])
+      expect(result.success.value.unavailableData).toEqual([])
     }
   })
 
@@ -182,21 +182,21 @@ describe("getCart", () => {
     const fake = respondingTransport(makeCartResponse())
     const result = await runWith(getCart(makeSession(" ")), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaMissingCsrfToken")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaMissingCsrfToken")
     }
   })
 
   it("propagates a refused connection as its own typed recoverable error", async () => {
     const result = await runWith(getCart(makeSession()), connectionFailureTransport())
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaConnectionFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
     }
   })
 
@@ -204,8 +204,8 @@ describe("getCart", () => {
     const deadline = await runWith(getCart(makeSession()), deadlineExceededTransport())
     const unreadable = await runWith(getCart(makeSession()), responseReadFailureTransport())
 
-    expect(Either.isLeft(deadline) && deadline.left._tag).toBe("VoilaRequestDeadlineExceeded")
-    expect(Either.isLeft(unreadable) && unreadable.left._tag).toBe("VoilaResponseReadFailure")
+    expect(Result.isFailure(deadline) && deadline.failure._tag).toBe("VoilaRequestDeadlineExceeded")
+    expect(Result.isFailure(unreadable) && unreadable.failure._tag).toBe("VoilaResponseReadFailure")
   })
 
   it("propagates schema decode failures as typed recoverable errors", async () => {
@@ -214,20 +214,20 @@ describe("getCart", () => {
       respondingTransport(makeCartResponse(JSON.stringify({ basket: { basketId: "basket-id" } })))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
     }
   })
 
   it("propagates API status errors as typed recoverable errors", async () => {
     const result = await runWith(getCart(makeSession()), respondingTransport(makeCartResponse("{}", 500)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 })

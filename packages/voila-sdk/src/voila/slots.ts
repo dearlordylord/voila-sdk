@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -148,64 +148,64 @@ export const normalizeSlotReservationResponse = (response: RawSlotReservationRes
 const checkSlotEndTime = (
   input: SlotReservationSelectionInput,
   now: Date
-): Either.Either<void, SlotReservationSelectionError> => {
+): Result.Result<void, SlotReservationSelectionError> => {
   if (input.slot.endTime === undefined) {
-    return Either.right(undefined)
+    return Result.succeed(undefined)
   }
 
   const endTime = Date.parse(input.slot.endTime)
 
   if (Number.isNaN(endTime)) {
-    return Either.left(slotReservationSlotEndTimeInvalid())
+    return Result.fail(slotReservationSlotEndTimeInvalid())
   }
 
-  return endTime <= now.getTime() ? Either.left(slotReservationSlotExpired()) : Either.right(undefined)
+  return endTime <= now.getTime() ? Result.fail(slotReservationSlotExpired()) : Result.succeed(undefined)
 }
 
 export const makeSlotReservationInputFromSlot = (
   input: unknown,
   now: Date
-): Either.Either<SlotReservationInput, SlotReservationSelectionError> => {
-  const selection = Either.mapLeft(
+): Result.Result<SlotReservationInput, SlotReservationSelectionError> => {
+  const selection = Result.mapError(
     parseUnknown(SlotReservationSelectionInputSchema, input),
     slotReservationSelectionInvalid
   )
 
-  if (Either.isLeft(selection)) {
-    return Either.left(selection.left)
+  if (Result.isFailure(selection)) {
+    return Result.fail(selection.failure)
   }
 
-  if (!selection.right.slot.available) {
-    return Either.left(slotReservationSlotUnavailable())
+  if (!selection.success.slot.available) {
+    return Result.fail(slotReservationSlotUnavailable())
   }
 
-  if (selection.right.slot.slotId === undefined) {
-    return Either.left(slotReservationSlotIdMissing())
+  if (selection.success.slot.slotId === undefined) {
+    return Result.fail(slotReservationSlotIdMissing())
   }
 
-  const endTimeCheck = checkSlotEndTime(selection.right, now)
+  const endTimeCheck = checkSlotEndTime(selection.success, now)
 
-  if (Either.isLeft(endTimeCheck)) {
-    return Either.left(endTimeCheck.left)
+  if (Result.isFailure(endTimeCheck)) {
+    return Result.fail(endTimeCheck.failure)
   }
 
-  return Either.right({
+  return Result.succeed({
     allowReservationOverwrite: true,
     confirmSlotReservation: true,
-    deliveryDestinationId: selection.right.deliveryDestinationId,
-    ...(selection.right.externalAddress === undefined ? {} : { externalAddress: selection.right.externalAddress }),
-    regionId: selection.right.regionId,
-    slotId: selection.right.slot.slotId
+    deliveryDestinationId: selection.success.deliveryDestinationId,
+    ...(selection.success.externalAddress === undefined ? {} : { externalAddress: selection.success.externalAddress }),
+    regionId: selection.success.regionId,
+    slotId: selection.success.slot.slotId
   })
 }
 
 export const parseSlotListingResponse = (
   input: unknown
-): Either.Either<NormalizedSlotListing, SlotListingNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(RawSlotListingResponseSchema, input), slotListingSchemaMismatch),
+): Result.Result<NormalizedSlotListing, SlotListingNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(RawSlotListingResponseSchema, input), slotListingSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedSlotListingSchema, normalizeSlotListingResponse(response)),
         slotListingSchemaMismatch
       )
@@ -213,11 +213,11 @@ export const parseSlotListingResponse = (
 
 export const parseSlotReservationResponse = (
   input: unknown
-): Either.Either<NormalizedSlotReservation, SlotReservationNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(RawSlotReservationResponseSchema, input), slotReservationSchemaMismatch),
+): Result.Result<NormalizedSlotReservation, SlotReservationNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(RawSlotReservationResponseSchema, input), slotReservationSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedSlotReservationSchema, normalizeSlotReservationResponse(response)),
         slotReservationSchemaMismatch
       )
@@ -228,7 +228,7 @@ export const getSlotListings = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetSlotListingsResult, GetSlotListingsError, VoilaTransport> =>
-  Effect.flatMap(makeSlotListingRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeSlotListingRequest(input)), (request) =>
     Effect.map(requestVoilaJson(RawSlotListingResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeSlotListingResponse(result.value)
@@ -240,7 +240,7 @@ export const reserveSlot = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<ReserveSlotResult, ReserveSlotError, VoilaTransport> =>
-  Effect.flatMap(makeSlotReservationRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeSlotReservationRequest(input)), (request) =>
     Effect.map(requestVoilaJson(RawSlotReservationResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeSlotReservationResponse(result.value)

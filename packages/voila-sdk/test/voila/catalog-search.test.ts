@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -11,26 +11,26 @@ const fixtureText = readFileSync(new URL("../fixtures/search-response-milk.json"
 const readFixture = (): unknown => {
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 describe("catalog search normalization", () => {
   it("normalizes PRD-required product fields from a sanitized search response", () => {
     const result = parseSearchResponse(readFixture())
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.pagination.nextPageToken).toBe("sanitized-next-page-token")
-      expect(result.right.pagination.totalProducts).toBe(42)
-      expect(result.right.products).toHaveLength(2)
-      expect(result.right).not.toHaveProperty("productGroups")
+    if (Result.isSuccess(result)) {
+      expect(result.success.pagination.nextPageToken).toBe("sanitized-next-page-token")
+      expect(result.success.pagination.totalProducts).toBe(42)
+      expect(result.success.products).toHaveLength(2)
+      expect(result.success).not.toHaveProperty("productGroups")
 
-      const [milk, lactoseFree] = result.right.products
+      const [milk, lactoseFree] = result.success.products
 
       expect(milk?.productId).toBe("b952bad2-3d09-4b7f-831a-87ad31eaad3f")
       expect(milk?.retailerProductId).toBe("243255EA")
@@ -102,10 +102,10 @@ describe("catalog search normalization", () => {
     for (const totalProducts of [-1, 1.5]) {
       const result = parseSearchResponse({ productGroups: [], totalProducts })
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("SearchResponseSchemaMismatch")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("SearchResponseSchemaMismatch")
       }
     }
   })
@@ -129,11 +129,11 @@ describe("catalog search normalization", () => {
       ]
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SearchResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("Broken product")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SearchResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("Broken product")
     }
   })
 })

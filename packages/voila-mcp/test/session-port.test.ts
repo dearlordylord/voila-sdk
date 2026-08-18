@@ -9,9 +9,10 @@ import {
   toughCookieJarPort,
   VoilaTransport
 } from "@firfi/voila-sdk"
-import { HttpClient } from "@effect/platform"
 import { it as effectIt } from "@effect/vitest"
-import { Deferred, Effect, Either, Fiber, Layer, Schema, TestClock } from "effect"
+import { Deferred, Effect, Fiber, Layer, Result, Schema } from "effect"
+import { HttpClient } from "effect/unstable/http"
+import { TestClock } from "effect/testing"
 import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -31,41 +32,41 @@ const makeBaseSession = (regionId: string): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization")
   }
 
   const session = makeSessionSnapshot(
     { assetVersion: "asset-version", clientRouteId: "client-route-id", pageViewId: "page-view-id", regionId },
     { token: secretCsrfToken },
-    cookieJar.right
+    cookieJar.success
   )
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot")
   }
 
-  return session.right
+  return session.success
 }
 
 const authenticated = (regionId: string): SdkSessionSnapshot => {
   const snapshot = makeAuthenticatedSdkSessionSnapshot(makeBaseSession(regionId), "authenticated")
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const guest = (regionId: string): SdkSessionSnapshot => {
   const snapshot = makeGuestSdkSessionSnapshot(makeBaseSession(regionId))
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected guest SDK session snapshot")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const encode = (snapshot: SdkSessionSnapshot): string =>
@@ -101,11 +102,11 @@ const bootstrapTransport = (page: string): Layer.Layer<VoilaTransport> =>
 const environmentFor = (file: string, transport: Layer.Layer<VoilaTransport>): OperationEnvironment => {
   const env = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: file }, transport)
 
-  if (Either.isLeft(env)) {
+  if (Result.isFailure(env)) {
     throw new Error("Expected a valid MCP operation environment")
   }
 
-  return env.right
+  return env.success
 }
 
 // an operation that only reports the region of the session it was handed
@@ -133,11 +134,11 @@ const hangingRequestLayer = (
     Layer.succeed(
       HttpClient.HttpClient,
       HttpClient.make(() =>
-        Effect.async(() => {
+        Effect.callback(() => {
           // the deadline is only running once the request is in flight, so the
           // test waits for this rather than for a number of milliseconds it
           // hopes are enough to get through the session file read
-          Deferred.unsafeDone(started, Effect.void)
+          Deferred.doneUnsafe(started, Effect.void)
 
           return Effect.sync(() => {
             cancellations.push(true)
@@ -214,15 +215,17 @@ describe("MCP session port", () => {
       const started = yield* Deferred.make<void>()
       const env = environmentFor(file, hangingRequestLayer(cancellations, started, timeoutMs))
       const seen: Array<string> = []
-      const pending = yield* Effect.fork(Effect.either(Effect.provide(env.session.withSession(request), env.transport)))
+      const pending = yield* Effect.forkChild(
+        Effect.result(Effect.provide(env.session.withSession(request), env.transport))
+      )
 
       yield* Deferred.await(started)
       yield* TestClock.adjust(`${timeoutMs + 1} millis`)
 
       const timedOut = yield* Fiber.join(pending)
 
-      expect(Either.isLeft(timedOut)).toBe(true)
-      expect(Either.isLeft(timedOut) ? timedOut.left._tag : undefined).toBe("VoilaRequestDeadlineExceeded")
+      expect(Result.isFailure(timedOut)).toBe(true)
+      expect(Result.isFailure(timedOut) ? timedOut.failure._tag : undefined).toBe("VoilaRequestDeadlineExceeded")
       // the request itself was cancelled, not merely the fiber waiting on it
       expect(cancellations).toEqual([true])
       // the failed cycle released the file's permit: a leaked one would hang here

@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseUnknown } from "../../src/domain/parse.js"
@@ -58,13 +58,13 @@ describe("Voila response schemas", () => {
   it("parses a product search response", () => {
     const result = parseUnknown(ProductSearchResponseSchema, sampleSearchResponse)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
   })
 
   it("parses a cart update response", () => {
     const result = parseUnknown(CartUpdateResponseSchema, sampleCartUpdateResponse)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
   })
 
   it("rejects malformed cart responses", () => {
@@ -72,6 +72,6 @@ describe("Voila response schemas", () => {
       basketUpdateResult: { totals: { itemPriceAfterPromos: "5.69" } }
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
   })
 })

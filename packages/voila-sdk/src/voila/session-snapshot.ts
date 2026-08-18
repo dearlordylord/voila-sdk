@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { CookieJar } from "tough-cookie"
 
 import { parseUnknown } from "../domain/parse.js"
@@ -31,8 +31,8 @@ export type CookieJarPortError =
 
 export interface CookieJarPort {
   readonly create: () => CookieJar
-  readonly deserialize: (snapshot: SerializedCookieJarSnapshot) => Either.Either<CookieJar, CookieJarPortError>
-  readonly serialize: (jar: SerializableCookieJar) => Either.Either<SerializedCookieJarSnapshot, CookieJarPortError>
+  readonly deserialize: (snapshot: SerializedCookieJarSnapshot) => Result.Result<CookieJar, CookieJarPortError>
+  readonly serialize: (jar: SerializableCookieJar) => Result.Result<SerializedCookieJarSnapshot, CookieJarPortError>
 }
 
 export interface SerializableCookieJar {
@@ -69,29 +69,29 @@ export const createCookieJar = (): CookieJar => new CookieJar()
 
 export const serializeCookieJar = (
   jar: SerializableCookieJar
-): Either.Either<SerializedCookieJarSnapshot, CookieJarPortError> => {
+): Result.Result<SerializedCookieJarSnapshot, CookieJarPortError> => {
   let snapshot: unknown
 
   try {
     snapshot = jar.serializeSync()
   } catch (error) {
-    return Either.left(cookieJarSerializationFailed(error))
+    return Result.fail(cookieJarSerializationFailed(error))
   }
 
   if (snapshot === undefined) {
-    return Either.left(cookieJarSerializationUnsupported())
+    return Result.fail(cookieJarSerializationUnsupported())
   }
 
-  return Either.mapLeft(parseUnknown(SerializedCookieJarSnapshotSchema, snapshot), cookieJarSnapshotSchemaMismatch)
+  return Result.mapError(parseUnknown(SerializedCookieJarSnapshotSchema, snapshot), cookieJarSnapshotSchemaMismatch)
 }
 
 export const deserializeCookieJar = (
   snapshot: SerializedCookieJarSnapshot
-): Either.Either<CookieJar, CookieJarPortError> => {
+): Result.Result<CookieJar, CookieJarPortError> => {
   try {
-    return Either.right(CookieJar.deserializeSync(JSON.stringify(snapshot)))
+    return Result.succeed(CookieJar.deserializeSync(JSON.stringify(snapshot)))
   } catch (error) {
-    return Either.left(cookieJarSnapshotImportFailed(error))
+    return Result.fail(cookieJarSnapshotImportFailed(error))
   }
 }
 
@@ -106,11 +106,11 @@ const cookieHeaderReadFailed = (_cause: unknown): CookieJarPortError => ({
  * every other jar operation does — a thrown cookie error would otherwise reach
  * a caller as a defect carrying cookie material.
  */
-export const readCookieHeader = (jar: CookieJar, url: string): Either.Either<string, CookieJarPortError> => {
+export const readCookieHeader = (jar: CookieJar, url: string): Result.Result<string, CookieJarPortError> => {
   try {
-    return Either.right(jar.getCookieStringSync(url))
+    return Result.succeed(jar.getCookieStringSync(url))
   } catch (error) {
-    return Either.left(cookieHeaderReadFailed(error))
+    return Result.fail(cookieHeaderReadFailed(error))
   }
 }
 
@@ -120,29 +120,32 @@ export const toughCookieJarPort: CookieJarPort = {
   serialize: serializeCookieJar
 }
 
-export const decodeSessionSnapshot = (input: unknown): Either.Either<SessionSnapshot, SessionSnapshotError> =>
-  Either.mapLeft(parseUnknown(SessionSnapshotSchema, input), sessionSnapshotSchemaMismatch)
+export const decodeSessionSnapshot = (input: unknown): Result.Result<SessionSnapshot, SessionSnapshotError> =>
+  Result.mapError(parseUnknown(SessionSnapshotSchema, input), sessionSnapshotSchemaMismatch)
 
-export const decodeSdkSessionSnapshot = (input: unknown): Either.Either<SdkSessionSnapshot, SessionSnapshotError> =>
-  Either.mapLeft(parseUnknown(SdkSessionSnapshotSchema, input), sessionSnapshotSchemaMismatch)
+export const decodeSdkSessionSnapshot = (input: unknown): Result.Result<SdkSessionSnapshot, SessionSnapshotError> =>
+  Result.mapError(parseUnknown(SdkSessionSnapshotSchema, input), sessionSnapshotSchemaMismatch)
 
 export const makeSessionSnapshot = (
   metadata: SessionMetadata,
   csrf: CsrfState,
   cookieJar: SerializedCookieJarSnapshot
-): Either.Either<SessionSnapshot, SessionSnapshotError> => decodeSessionSnapshot({ cookieJar, csrf, metadata })
+): Result.Result<SessionSnapshot, SessionSnapshotError> => decodeSessionSnapshot({ cookieJar, csrf, metadata })
 
 export const makeGuestSdkSessionSnapshot = (
   session: SessionSnapshot
-): Either.Either<GuestSdkSessionSnapshot, SessionSnapshotError> =>
-  Either.mapLeft(parseUnknown(GuestSdkSessionSnapshotSchema, { kind: "guest", session }), sessionSnapshotSchemaMismatch)
+): Result.Result<GuestSdkSessionSnapshot, SessionSnapshotError> =>
+  Result.mapError(
+    parseUnknown(GuestSdkSessionSnapshotSchema, { kind: "guest", session }),
+    sessionSnapshotSchemaMismatch
+  )
 
 export const makeAuthenticatedSdkSessionSnapshot = (
   session: SessionSnapshot,
   state: AuthenticatedSdkSessionSnapshot["state"],
   account?: AuthAccountSummary
-): Either.Either<AuthenticatedSdkSessionSnapshot, SessionSnapshotError> =>
-  Either.mapLeft(
+): Result.Result<AuthenticatedSdkSessionSnapshot, SessionSnapshotError> =>
+  Result.mapError(
     parseUnknown(AuthenticatedSdkSessionSnapshotSchema, {
       ...(account === undefined ? {} : { account }),
       kind: "authenticated",
@@ -154,13 +157,13 @@ export const makeAuthenticatedSdkSessionSnapshot = (
 
 const redactSessionMetadata = (metadata: SessionMetadata): SessionMetadataDiagnostic => ({
   assetVersion: metadata.assetVersion,
-  ...(metadata.clientRouteId === undefined ? {} : { clientRouteId: "[redacted]" as const }),
+  ...(metadata.clientRouteId === undefined ? {} : { clientRouteId: "[redacted]" }),
   pageViewId: "[redacted]",
   regionId: metadata.regionId
 })
 
 export const redactSessionSnapshot = (snapshot: SessionSnapshot): SessionSnapshotDiagnostic =>
-  Either.getOrThrow(
+  Result.getOrThrow(
     parseUnknown(SessionSnapshotDiagnosticSchema, {
       cookieJar: {
         cookieCount: snapshot.cookieJar.cookies.length,
@@ -179,13 +182,13 @@ const redactAccountSummary = (account: AuthAccountSummary | undefined): SdkSessi
   account === undefined
     ? undefined
     : {
-        ...(account.displayName === undefined ? {} : { displayName: "[redacted]" as const }),
-        ...(account.emailHint === undefined ? {} : { emailHint: "[redacted]" as const }),
-        ...(account.stableAccountIdHash === undefined ? {} : { stableAccountIdHash: "[redacted]" as const })
+        ...(account.displayName === undefined ? {} : { displayName: "[redacted]" }),
+        ...(account.emailHint === undefined ? {} : { emailHint: "[redacted]" }),
+        ...(account.stableAccountIdHash === undefined ? {} : { stableAccountIdHash: "[redacted]" })
       }
 
 export const redactSdkSessionSnapshot = (snapshot: SdkSessionSnapshot): SdkSessionSnapshotDiagnostic =>
-  Either.getOrThrow(
+  Result.getOrThrow(
     parseUnknown(SdkSessionSnapshotDiagnosticSchema, {
       ...redactSessionSnapshot(snapshot.session),
       ...(() => {

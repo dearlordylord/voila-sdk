@@ -7,7 +7,7 @@ export type Money = Schema.Schema.Type<typeof MoneySchema>
 export const UnitPriceSchema = Schema.Struct({
   price: MoneySchema,
   unit: Schema.String,
-  unitName: Schema.optionalWith(Schema.String, { exact: true })
+  unitName: Schema.optionalKey(Schema.String)
 })
 
 export type UnitPrice = Schema.Schema.Type<typeof UnitPriceSchema>

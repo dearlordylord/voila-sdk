@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -50,23 +50,23 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const htmlWithoutCategories = (): string => {
   const payload = extractInitialStatePayload(fixtureHtml)
 
-  if (Either.isLeft(payload) || !isRecord(payload.right) || !isRecord(payload.right.data)) {
+  if (Result.isFailure(payload) || !isRecord(payload.success) || !isRecord(payload.success.data)) {
     throw new Error("Expected the fixture to carry an initial state")
   }
 
-  const data = Object.fromEntries(Object.entries(payload.right.data).filter(([key]) => key !== "categories"))
+  const data = Object.fromEntries(Object.entries(payload.success.data).filter(([key]) => key !== "categories"))
 
-  return `<script>window.__INITIAL_STATE__ = ${JSON.stringify({ ...payload.right, data })};</script>`
+  return `<script>window.__INITIAL_STATE__ = ${JSON.stringify({ ...payload.success, data })};</script>`
 }
 
 describe("category tree normalization", () => {
   it("resolves root and child categories from homepage initial state", () => {
     const initialState = extractInitialState(fixtureHtml)
 
-    expect(Either.isRight(initialState)).toBe(true)
+    expect(Result.isSuccess(initialState)).toBe(true)
 
-    if (Either.isRight(initialState)) {
-      const categories = getInitialStateCategories(initialState.right)
+    if (Result.isSuccess(initialState)) {
+      const categories = getInitialStateCategories(initialState.success)
       const [produce] = categories
       const [fruit, vegetables] = produce?.children ?? []
 
@@ -89,10 +89,10 @@ describe("category tree normalization", () => {
   it("returns an empty tree when initial state has no categories", () => {
     const initialState = extractInitialState(htmlWithoutCategories())
 
-    expect(Either.isRight(initialState)).toBe(true)
+    expect(Result.isSuccess(initialState)).toBe(true)
 
-    if (Either.isRight(initialState)) {
-      expect(getInitialStateCategories(initialState.right)).toEqual([])
+    if (Result.isSuccess(initialState)) {
+      expect(getInitialStateCategories(initialState.success)).toEqual([])
     }
   })
 
@@ -144,7 +144,7 @@ describe("category tree normalization", () => {
   })
 
   it("rejects normalized categories without rooted full URL paths", () => {
-    const duplicateSlashResult = Schema.decodeUnknownEither(NormalizedCategoryTreeSchema)([
+    const duplicateSlashResult = Schema.decodeUnknownResult(NormalizedCategoryTreeSchema)([
       {
         categoryId: "category-id",
         children: [],
@@ -164,10 +164,10 @@ describe("category tree normalization", () => {
       }
     ])
 
-    expect(Either.isLeft(duplicateSlashResult)).toBe(true)
+    expect(Result.isFailure(duplicateSlashResult)).toBe(true)
 
-    if (Either.isLeft(duplicateSlashResult)) {
-      expect(String(duplicateSlashResult.left)).toContain(
+    if (Result.isFailure(duplicateSlashResult)) {
+      expect(String(duplicateSlashResult.failure)).toContain(
         "Category full URL path must not start with duplicate slashes"
       )
     }
@@ -189,10 +189,10 @@ describe("category tree normalization", () => {
   })
 
   it("explains category identifier collisions through schemas", () => {
-    const rawResult = Schema.decodeUnknownEither(RawCategoryStoreSchema)(
+    const rawResult = Schema.decodeUnknownResult(RawCategoryStoreSchema)(
       storeOf([{ ...validEntry, retailerId: validEntry.id }], [validEntry.id])
     )
-    const normalizedResult = Schema.decodeUnknownEither(NormalizedCategoryTreeSchema)([
+    const normalizedResult = Schema.decodeUnknownResult(NormalizedCategoryTreeSchema)([
       {
         categoryId: "category-id",
         children: [],
@@ -202,35 +202,35 @@ describe("category tree normalization", () => {
       }
     ])
 
-    expect(Either.isLeft(rawResult)).toBe(true)
-    expect(Either.isLeft(normalizedResult)).toBe(true)
+    expect(Result.isFailure(rawResult)).toBe(true)
+    expect(Result.isFailure(normalizedResult)).toBe(true)
 
-    if (Either.isLeft(rawResult)) {
-      expect(String(rawResult.left)).toContain("Category ID and retailer category ID must be distinct")
+    if (Result.isFailure(rawResult)) {
+      expect(String(rawResult.failure)).toContain("Category ID and retailer category ID must be distinct")
     }
 
-    if (Either.isLeft(normalizedResult)) {
-      expect(String(normalizedResult.left)).toContain("Category ID and retailer category ID must be distinct")
+    if (Result.isFailure(normalizedResult)) {
+      expect(String(normalizedResult.failure)).toContain("Category ID and retailer category ID must be distinct")
     }
   })
 
   it("resolves the nested shape a page may serve instead of a store", () => {
     const payload = extractInitialStatePayload(fixtureHtml)
 
-    if (Either.isLeft(payload) || !isRecord(payload.right) || !isRecord(payload.right.data)) {
+    if (Result.isFailure(payload) || !isRecord(payload.success) || !isRecord(payload.success.data)) {
       throw new Error("Expected the fixture to carry an initial state")
     }
 
     const nested = {
-      ...payload.right,
-      data: { ...payload.right.data, categories: [{ ...validNestedCategory, categories: [] }] }
+      ...payload.success,
+      data: { ...payload.success.data, categories: [{ ...validNestedCategory, categories: [] }] }
     }
     const initialState = extractInitialState(`<script>window.__INITIAL_STATE__ = ${JSON.stringify(nested)};</script>`)
 
-    expect(Either.isRight(initialState)).toBe(true)
+    expect(Result.isSuccess(initialState)).toBe(true)
 
-    if (Either.isRight(initialState)) {
-      expect(getInitialStateCategories(initialState.right)).toEqual([
+    if (Result.isSuccess(initialState)) {
+      expect(getInitialStateCategories(initialState.success)).toEqual([
         {
           categoryId: "category-id",
           children: [],
@@ -301,14 +301,14 @@ describe("category tree normalization", () => {
 
     expect(assertDecodeSuccess(RawCategoryTreeSchema, nested)).toEqual(nested)
 
-    const collision = Schema.decodeUnknownEither(RawCategoryTreeSchema)([
+    const collision = Schema.decodeUnknownResult(RawCategoryTreeSchema)([
       { ...validNestedCategory, retailerCategoryId: validNestedCategory.categoryId }
     ])
 
-    expect(Either.isLeft(collision)).toBe(true)
+    expect(Result.isFailure(collision)).toBe(true)
 
-    if (Either.isLeft(collision)) {
-      expect(String(collision.left)).toContain("Category ID and retailer category ID must be distinct")
+    if (Result.isFailure(collision)) {
+      expect(String(collision.failure)).toContain("Category ID and retailer category ID must be distinct")
     }
   })
 

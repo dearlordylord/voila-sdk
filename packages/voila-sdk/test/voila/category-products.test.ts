@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -11,40 +11,40 @@ const fixtureText = readFileSync(new URL("../fixtures/category-products-produce.
 const readFixture = (): unknown => {
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 describe("category product page normalization", () => {
   it("normalizes category metadata, filters, pagination, and PRD-required product fields", () => {
     const result = parseCategoryProductsResponse(readFixture())
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.category).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.category).toEqual({
         categoryId: "sanitized-category-produce",
         name: "Fruits & Vegetables",
         retailerCategoryId: "retailer-category-produce",
         urlPath: "/aisles/fruits-vegetables"
       })
-      expect(result.right.pagination.nextPageToken).toBe("sanitized-category-next-page-token")
-      expect(result.right.pagination.totalProducts).toBe(19)
-      expect(result.right.filters).toHaveLength(2)
-      expect(result.right.filters[0]?.id).toBe("brand")
-      expect(result.right.filters[0]?.options[0]).toEqual({
+      expect(result.success.pagination.nextPageToken).toBe("sanitized-category-next-page-token")
+      expect(result.success.pagination.totalProducts).toBe(19)
+      expect(result.success.filters).toHaveLength(2)
+      expect(result.success.filters[0]?.id).toBe("brand")
+      expect(result.success.filters[0]?.options[0]).toEqual({
         count: 7,
         id: "fresh-farms",
         label: "Fresh Farms",
         selected: true
       })
-      expect(result.right.products).toHaveLength(2)
-      expect(result.right).not.toHaveProperty("productGroups")
+      expect(result.success.products).toHaveLength(2)
+      expect(result.success).not.toHaveProperty("productGroups")
 
-      const [strawberries, blueberries] = result.right.products
+      const [strawberries, blueberries] = result.success.products
 
       expect(strawberries?.productId).toBe("sanitized-strawberries-product-id")
       expect(strawberries?.retailerProductId).toBe("111222EA")
@@ -122,11 +122,11 @@ describe("category product page normalization", () => {
   it("fails at the schema boundary when category metadata drifts", () => {
     const result = parseCategoryProductsResponse({ category: { categoryId: "category-id" }, productGroups: [] })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CategoryProductsResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("category-id")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CategoryProductsResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("category-id")
     }
   })
 
@@ -138,10 +138,10 @@ describe("category product page normalization", () => {
         productGroups: []
       })
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("CategoryProductsResponseSchemaMismatch")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("CategoryProductsResponseSchemaMismatch")
       }
     }
   })
@@ -154,10 +154,10 @@ describe("category product page normalization", () => {
         totalProducts
       })
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("CategoryProductsResponseSchemaMismatch")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("CategoryProductsResponseSchemaMismatch")
       }
     }
   })
@@ -182,11 +182,11 @@ describe("category product page normalization", () => {
       ]
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CategoryProductsResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("Broken category product")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CategoryProductsResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("Broken category product")
     }
   })
 })

@@ -1,12 +1,12 @@
 # @firfi/voila-session-store
 
-The session-domain wrapper over [`atomic-file-store`](https://www.npmjs.com/package/atomic-file-store): the only way a session snapshot reaches disk.
+The session-domain file adapter: the only way a session snapshot reaches disk.
 
 Draft package: private to this workspace, not published.
 
 ## Why
 
-A session snapshot read at boot and written back later is a blind write: a process that loaded the file before an interactive login silently reverts it on its next tick. `atomic-file-store` owns the mechanics of the read-modify-write cycle; this package states it in session terms, so callers work in snapshots rather than bytes and the session-specific safety rules live in one place.
+A session snapshot read at boot and written back later is a blind write: a process that loaded the file before an interactive login silently reverts it on its next tick. The local atomic file adapter owns the mechanics of the read-modify-write cycle; this package states it in session terms, so callers work in snapshots rather than bytes and the session-specific safety rules live in one place.
 
 ## API
 
@@ -16,7 +16,7 @@ import { keepSessionFile, persistSession, updateSessionFile } from "@firfi/voila
 
 `updateSessionFile(path, update)` is the whole surface. There is no `save`, `write`, or `initialize` entry point beside it, so a snapshot built earlier cannot be handed over for a blind write.
 
-The path is a `StateFilePath`, re-exported by this package from `atomic-file-store/effect`, parsed once where the session path is configured; the session file is a state file, so it does not get a second brand of its own.
+The path is a `StateFilePath`, exported by this package and parsed once where the session path is configured; the session file is a state file, so it does not get a second brand of its own.
 
 `update` receives the snapshot as it exists on disk right now — or `undefined` when the file does not exist yet — and returns either `persistSession(snapshot)` or `keepSessionFile`. It is an arbitrary effect: it may perform network I/O (folding `Set-Cookie` from a live response into the snapshot it returns) and fail with its own typed errors, which surface unchanged. The whole read-decide-write window is covered by the conflict check, not just the final write.
 

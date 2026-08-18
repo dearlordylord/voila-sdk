@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 
 import { Schema } from "effect"
 
-const NonEmptyString = Schema.String.pipe(Schema.minLength(1))
+const NonEmptyString = Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
 const ServerJsonSchema = Schema.Struct({ name: NonEmptyString, version: NonEmptyString })
 
 const PackageJsonSchema = Schema.Struct({ mcpName: NonEmptyString, version: NonEmptyString })

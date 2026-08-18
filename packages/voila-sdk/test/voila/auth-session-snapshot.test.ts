@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { SdkSessionSnapshotDiagnosticSchema, SdkSessionSnapshotSchema } from "../../src/domain/schemas/index.js"
@@ -36,30 +36,30 @@ const makeBaseSession = () => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const session = makeSessionSnapshot(sampleMetadata, { token: secretCsrfToken }, cookieJar.right)
+  const session = makeSessionSnapshot(sampleMetadata, { token: secretCsrfToken }, cookieJar.success)
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return session.right
+  return session.success
 }
 
 describe("auth session snapshots", () => {
   it("round-trips guest SDK session snapshots through the schema", () => {
     const snapshot = makeGuestSdkSessionSnapshot(makeBaseSession())
 
-    expect(Either.isRight(snapshot)).toBe(true)
+    expect(Result.isSuccess(snapshot)).toBe(true)
 
-    if (Either.isRight(snapshot)) {
-      const decoded = assertDecodeSuccess(SdkSessionSnapshotSchema, snapshot.right)
+    if (Result.isSuccess(snapshot)) {
+      const decoded = assertDecodeSuccess(SdkSessionSnapshotSchema, snapshot.success)
 
       expect(decoded.kind).toBe("guest")
-      expect(assertEncodeSuccess(SdkSessionSnapshotSchema, decoded)).toEqual(snapshot.right)
+      expect(assertEncodeSuccess(SdkSessionSnapshotSchema, decoded)).toEqual(snapshot.success)
     }
   })
 
@@ -70,10 +70,10 @@ describe("auth session snapshots", () => {
       stableAccountIdHash: secretAccountHash
     })
 
-    expect(Either.isRight(snapshot)).toBe(true)
+    expect(Result.isSuccess(snapshot)).toBe(true)
 
-    if (Either.isRight(snapshot)) {
-      const decoded = assertDecodeSuccess(SdkSessionSnapshotSchema, snapshot.right)
+    if (Result.isSuccess(snapshot)) {
+      const decoded = assertDecodeSuccess(SdkSessionSnapshotSchema, snapshot.success)
 
       expect(decoded.kind).toBe("authenticated")
 
@@ -82,17 +82,17 @@ describe("auth session snapshots", () => {
         expect(decoded.account?.emailHint).toBe(secretEmailHint)
       }
 
-      expect(assertEncodeSuccess(SdkSessionSnapshotSchema, decoded)).toEqual(snapshot.right)
+      expect(assertEncodeSuccess(SdkSessionSnapshotSchema, decoded)).toEqual(snapshot.success)
     }
   })
 
   it("represents reauthentication-required authenticated sessions", () => {
     const snapshot = makeAuthenticatedSdkSessionSnapshot(makeBaseSession(), "reauth-required")
 
-    expect(Either.isRight(snapshot)).toBe(true)
+    expect(Result.isSuccess(snapshot)).toBe(true)
 
-    if (Either.isRight(snapshot)) {
-      const decoded = assertDecodeSuccess(SdkSessionSnapshotSchema, snapshot.right)
+    if (Result.isSuccess(snapshot)) {
+      const decoded = assertDecodeSuccess(SdkSessionSnapshotSchema, snapshot.success)
 
       expect(decoded.kind).toBe("authenticated")
 
@@ -101,7 +101,7 @@ describe("auth session snapshots", () => {
         expect(decoded.account).toBeUndefined()
       }
 
-      expect(assertEncodeSuccess(SdkSessionSnapshotSchema, decoded)).toEqual(snapshot.right)
+      expect(assertEncodeSuccess(SdkSessionSnapshotSchema, decoded)).toEqual(snapshot.success)
     }
   })
 
@@ -121,11 +121,11 @@ describe("auth session snapshots", () => {
       state: "authenticated"
     })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SessionSnapshotSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain(secretCsrfToken)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SessionSnapshotSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain(secretCsrfToken)
     }
   })
 
@@ -136,10 +136,10 @@ describe("auth session snapshots", () => {
       stableAccountIdHash: secretAccountHash
     })
 
-    expect(Either.isRight(snapshot)).toBe(true)
+    expect(Result.isSuccess(snapshot)).toBe(true)
 
-    if (Either.isRight(snapshot)) {
-      const diagnostic = formatSdkSessionSnapshotDiagnostic(snapshot.right)
+    if (Result.isSuccess(snapshot)) {
+      const diagnostic = formatSdkSessionSnapshotDiagnostic(snapshot.success)
 
       expect(diagnostic).toContain("authenticated")
       expect(diagnostic).toContain("[redacted]")
@@ -180,10 +180,10 @@ describe("auth session snapshots", () => {
   it("redacts guest SDK session diagnostics without account state", () => {
     const snapshot = makeGuestSdkSessionSnapshot(makeBaseSession())
 
-    expect(Either.isRight(snapshot)).toBe(true)
+    expect(Result.isSuccess(snapshot)).toBe(true)
 
-    if (Either.isRight(snapshot)) {
-      const diagnostic = redactSdkSessionSnapshot(snapshot.right)
+    if (Result.isSuccess(snapshot)) {
+      const diagnostic = redactSdkSessionSnapshot(snapshot.success)
 
       expect(diagnostic.kind).toBe("guest")
       expect(diagnostic.state).toBe("guest")
@@ -201,14 +201,14 @@ describe("auth session snapshots", () => {
       stableAccountIdHash: secretAccountHash
     })
 
-    expect(Either.isRight(withoutAccount)).toBe(true)
-    expect(Either.isRight(partialAccount)).toBe(true)
-    expect(Either.isRight(emailOnlyAccount)).toBe(true)
+    expect(Result.isSuccess(withoutAccount)).toBe(true)
+    expect(Result.isSuccess(partialAccount)).toBe(true)
+    expect(Result.isSuccess(emailOnlyAccount)).toBe(true)
 
-    if (Either.isRight(withoutAccount) && Either.isRight(partialAccount) && Either.isRight(emailOnlyAccount)) {
-      expect(redactSdkSessionSnapshot(withoutAccount.right).account).toBeUndefined()
-      expect(redactSdkSessionSnapshot(partialAccount.right).account).toEqual({ displayName: "[redacted]" })
-      expect(redactSdkSessionSnapshot(emailOnlyAccount.right).account).toEqual({
+    if (Result.isSuccess(withoutAccount) && Result.isSuccess(partialAccount) && Result.isSuccess(emailOnlyAccount)) {
+      expect(redactSdkSessionSnapshot(withoutAccount.success).account).toBeUndefined()
+      expect(redactSdkSessionSnapshot(partialAccount.success).account).toEqual({ displayName: "[redacted]" })
+      expect(redactSdkSessionSnapshot(emailOnlyAccount.success).account).toEqual({
         emailHint: "[redacted]",
         stableAccountIdHash: "[redacted]"
       })

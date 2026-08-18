@@ -3,12 +3,13 @@ import { Schema } from "effect"
 import { CartViewSignalSchema } from "./cart.js"
 import { MoneySchema } from "./money.js"
 
-const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
-const NonEmptyStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+import { withUnknownStringFields } from "./unknown-fields.js"
+
+const NonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isTrimmed()), Schema.check(Schema.isMinLength(1)))
 
 export const CheckoutSummaryInputSchema = Schema.Struct({
-  appliedPaymentCheckId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
-  fetchAllocatedPaymentChecks: Schema.optionalWith(Schema.Boolean, { exact: true })
+  appliedPaymentCheckId: Schema.optionalKey(NonEmptyStringSchema),
+  fetchAllocatedPaymentChecks: Schema.optionalKey(Schema.Boolean)
 })
 
 export type CheckoutSummaryInput = Schema.Schema.Type<typeof CheckoutSummaryInputSchema>
@@ -17,65 +18,62 @@ export const CheckoutSummarySignalSchema = CartViewSignalSchema
 
 export type CheckoutSummarySignal = Schema.Schema.Type<typeof CheckoutSummarySignalSchema>
 
-export const CheckoutSummaryTotalsSchema = Schema.asSchema(
+export const CheckoutSummaryTotalsSchema = Schema.revealCodec(
   Schema.Struct({
-    depositsPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    environmentalHandlingPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    finalPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    itemPriceAfterPromos: Schema.optionalWith(MoneySchema, { exact: true }),
-    itemsRetailPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    retailPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    savingsPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    totalPrice: Schema.optionalWith(MoneySchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    depositsPrice: Schema.optionalKey(MoneySchema),
+    environmentalHandlingPrice: Schema.optionalKey(MoneySchema),
+    finalPrice: Schema.optionalKey(MoneySchema),
+    itemPriceAfterPromos: Schema.optionalKey(MoneySchema),
+    itemsRetailPrice: Schema.optionalKey(MoneySchema),
+    retailPrice: Schema.optionalKey(MoneySchema),
+    savingsPrice: Schema.optionalKey(MoneySchema),
+    totalPrice: Schema.optionalKey(MoneySchema)
+  }).pipe(withUnknownStringFields)
 )
 
 export type CheckoutSummaryTotals = Schema.Schema.Type<typeof CheckoutSummaryTotalsSchema>
 
-export const CheckoutChargeComponentSchema = Schema.asSchema(
-  Schema.Struct({
-    finalPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    price: Schema.optionalWith(MoneySchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+export const CheckoutChargeComponentSchema = Schema.revealCodec(
+  Schema.Struct({ finalPrice: Schema.optionalKey(MoneySchema), price: Schema.optionalKey(MoneySchema) }).pipe(
+    withUnknownStringFields
+  )
 )
 
 export type CheckoutChargeComponent = Schema.Schema.Type<typeof CheckoutChargeComponentSchema>
 
-export const CheckoutChargesSchema = Schema.asSchema(
+export const CheckoutChargesSchema = Schema.revealCodec(
   Schema.Struct({
-    carrierBag: Schema.optionalWith(CheckoutChargeComponentSchema, { exact: true }),
-    delivery: Schema.optionalWith(CheckoutChargeComponentSchema, { exact: true }),
-    invoice: Schema.optionalWith(CheckoutChargeComponentSchema, { exact: true }),
-    preparation: Schema.optionalWith(CheckoutChargeComponentSchema, { exact: true }),
-    smallOrder: Schema.optionalWith(CheckoutChargeComponentSchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    carrierBag: Schema.optionalKey(CheckoutChargeComponentSchema),
+    delivery: Schema.optionalKey(CheckoutChargeComponentSchema),
+    invoice: Schema.optionalKey(CheckoutChargeComponentSchema),
+    preparation: Schema.optionalKey(CheckoutChargeComponentSchema),
+    smallOrder: Schema.optionalKey(CheckoutChargeComponentSchema)
+  }).pipe(withUnknownStringFields)
 )
 
 export type CheckoutCharges = Schema.Schema.Type<typeof CheckoutChargesSchema>
 
 export const NormalizedCheckoutFeesSchema = Schema.Struct({
-  carrierBag: Schema.optionalWith(MoneySchema, { exact: true }),
-  delivery: Schema.optionalWith(MoneySchema, { exact: true }),
-  invoice: Schema.optionalWith(MoneySchema, { exact: true }),
-  preparation: Schema.optionalWith(MoneySchema, { exact: true }),
-  smallOrder: Schema.optionalWith(MoneySchema, { exact: true })
+  carrierBag: Schema.optionalKey(MoneySchema),
+  delivery: Schema.optionalKey(MoneySchema),
+  invoice: Schema.optionalKey(MoneySchema),
+  preparation: Schema.optionalKey(MoneySchema),
+  smallOrder: Schema.optionalKey(MoneySchema)
 })
 
 export type NormalizedCheckoutFees = Schema.Schema.Type<typeof NormalizedCheckoutFeesSchema>
 
 const CheckoutSlotShapeSchema = Schema.Struct({
-  deliveryPriceChanged: Schema.optionalWith(Schema.Boolean, { exact: true }),
-  endTime: Schema.optionalWith(Schema.String, { exact: true }),
-  expiryTime: Schema.optionalWith(Schema.String, { exact: true }),
-  price: Schema.optionalWith(MoneySchema, { exact: true }),
-  slotId: Schema.optionalWith(Schema.String, { exact: true }),
-  startTime: Schema.optionalWith(Schema.String, { exact: true }),
-  timeZoneId: Schema.optionalWith(Schema.String, { exact: true })
+  deliveryPriceChanged: Schema.optionalKey(Schema.Boolean),
+  endTime: Schema.optionalKey(Schema.String),
+  expiryTime: Schema.optionalKey(Schema.String),
+  price: Schema.optionalKey(MoneySchema),
+  slotId: Schema.optionalKey(Schema.String),
+  startTime: Schema.optionalKey(Schema.String),
+  timeZoneId: Schema.optionalKey(Schema.String)
 })
 
-export const RawCheckoutDeliverySchema = Schema.asSchema(
-  CheckoutSlotShapeSchema.pipe(Schema.extend(UnknownStringRecordSchema))
-)
+export const RawCheckoutDeliverySchema = Schema.revealCodec(CheckoutSlotShapeSchema.pipe(withUnknownStringFields))
 
 export type RawCheckoutDelivery = Schema.Schema.Type<typeof RawCheckoutDeliverySchema>
 
@@ -83,81 +81,81 @@ export const CheckoutSlotSummarySchema = CheckoutSlotShapeSchema
 
 export type CheckoutSlotSummary = Schema.Schema.Type<typeof CheckoutSlotSummarySchema>
 
-export const RawCheckoutStateSchema = Schema.asSchema(
+export const RawCheckoutStateSchema = Schema.revealCodec(
   Schema.Struct({
-    basketAboveThreshold: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    canCheckout: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    checkoutRestrictions: Schema.optionalWith(Schema.Array(CheckoutSummarySignalSchema), { exact: true }),
-    delivery: Schema.optionalWith(RawCheckoutDeliverySchema, { exact: true }),
-    minimumCheckoutThreshold: Schema.optionalWith(MoneySchema, { exact: true }),
-    shippingGroupType: Schema.optionalWith(Schema.String, { exact: true }),
-    shippingGroupTypeDisplayName: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    basketAboveThreshold: Schema.optionalKey(Schema.Boolean),
+    canCheckout: Schema.optionalKey(Schema.Boolean),
+    checkoutRestrictions: Schema.optionalKey(Schema.Array(CheckoutSummarySignalSchema)),
+    delivery: Schema.optionalKey(RawCheckoutDeliverySchema),
+    minimumCheckoutThreshold: Schema.optionalKey(MoneySchema),
+    shippingGroupType: Schema.optionalKey(Schema.String),
+    shippingGroupTypeDisplayName: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawCheckoutState = Schema.Schema.Type<typeof RawCheckoutStateSchema>
 
 export const CheckoutSummaryWarningSchema = Schema.Struct({
-  kind: Schema.Literal(
+  kind: Schema.Literals([
     "checkout-restriction",
     "limited-item",
     "pricing-notification",
     "substitution",
     "unavailable-item"
-  ),
+  ]),
   signal: CheckoutSummarySignalSchema
 })
 
 export type CheckoutSummaryWarning = Schema.Schema.Type<typeof CheckoutSummaryWarningSchema>
 
-export const RawCheckoutSummaryResponseSchema = Schema.asSchema(
+export const RawCheckoutSummaryResponseSchema = Schema.revealCodec(
   Schema.Struct({
-    cartId: Schema.optionalWith(Schema.String, { exact: true }),
-    charges: Schema.optionalWith(CheckoutChargesSchema, { exact: true }),
+    cartId: Schema.optionalKey(Schema.String),
+    charges: Schema.optionalKey(CheckoutChargesSchema),
     checkout: RawCheckoutStateSchema,
-    checkoutCorrelationId: Schema.optionalWith(Schema.String, { exact: true }),
-    limitedItems: Schema.optionalWith(Schema.Array(CheckoutSummarySignalSchema), { exact: true }),
-    orderId: Schema.optionalWith(Schema.String, { exact: true }),
-    pricingNotifications: Schema.optionalWith(Schema.Array(CheckoutSummarySignalSchema), { exact: true }),
-    substitutions: Schema.optionalWith(Schema.Array(CheckoutSummarySignalSchema), { exact: true }),
-    totals: Schema.optionalWith(CheckoutSummaryTotalsSchema, { exact: true }),
-    unavailableData: Schema.optionalWith(Schema.Array(CheckoutSummarySignalSchema), { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    checkoutCorrelationId: Schema.optionalKey(Schema.String),
+    limitedItems: Schema.optionalKey(Schema.Array(CheckoutSummarySignalSchema)),
+    orderId: Schema.optionalKey(Schema.String),
+    pricingNotifications: Schema.optionalKey(Schema.Array(CheckoutSummarySignalSchema)),
+    substitutions: Schema.optionalKey(Schema.Array(CheckoutSummarySignalSchema)),
+    totals: Schema.optionalKey(CheckoutSummaryTotalsSchema),
+    unavailableData: Schema.optionalKey(Schema.Array(CheckoutSummarySignalSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawCheckoutSummaryResponse = Schema.Schema.Type<typeof RawCheckoutSummaryResponseSchema>
 
 export const NormalizedCheckoutSummarySchema = Schema.Struct({
   basketAboveThreshold: Schema.Boolean,
-  basketId: Schema.optionalWith(Schema.String, { exact: true }),
+  basketId: Schema.optionalKey(Schema.String),
   canCheckout: Schema.Boolean,
-  checkoutCorrelationId: Schema.optionalWith(Schema.String, { exact: true }),
+  checkoutCorrelationId: Schema.optionalKey(Schema.String),
   checkoutRestrictions: Schema.Array(CheckoutSummarySignalSchema),
   fees: NormalizedCheckoutFeesSchema,
   limitedItems: Schema.Array(CheckoutSummarySignalSchema),
-  minimumCheckoutThreshold: Schema.optionalWith(MoneySchema, { exact: true }),
-  orderId: Schema.optionalWith(Schema.String, { exact: true }),
+  minimumCheckoutThreshold: Schema.optionalKey(MoneySchema),
+  orderId: Schema.optionalKey(Schema.String),
   pricingNotifications: Schema.Array(CheckoutSummarySignalSchema),
-  selectedSlot: Schema.optionalWith(CheckoutSlotSummarySchema, { exact: true }),
-  shippingGroupType: Schema.optionalWith(Schema.String, { exact: true }),
-  shippingGroupTypeDisplayName: Schema.optionalWith(Schema.String, { exact: true }),
+  selectedSlot: Schema.optionalKey(CheckoutSlotSummarySchema),
+  shippingGroupType: Schema.optionalKey(Schema.String),
+  shippingGroupTypeDisplayName: Schema.optionalKey(Schema.String),
   substitutions: Schema.Array(CheckoutSummarySignalSchema),
-  totals: Schema.optionalWith(CheckoutSummaryTotalsSchema, { exact: true }),
+  totals: Schema.optionalKey(CheckoutSummaryTotalsSchema),
   unavailableData: Schema.Array(CheckoutSummarySignalSchema),
   warnings: Schema.Array(CheckoutSummaryWarningSchema)
 })
 
 export type NormalizedCheckoutSummary = Schema.Schema.Type<typeof NormalizedCheckoutSummarySchema>
 
-export const CheckoutReadinessStatusSchema = Schema.Literal("blocked", "needs-review", "ready-for-manual-checkout")
+export const CheckoutReadinessStatusSchema = Schema.Literals(["blocked", "needs-review", "ready-for-manual-checkout"])
 
 export type CheckoutReadinessStatus = Schema.Schema.Type<typeof CheckoutReadinessStatusSchema>
 
-export const CheckoutReadinessReasonSchema = Schema.Literal(
+export const CheckoutReadinessReasonSchema = Schema.Literals([
   "checkout-blocked",
   "review-signals-present",
   "ready-for-manual-checkout"
-)
+])
 
 export type CheckoutReadinessReason = Schema.Schema.Type<typeof CheckoutReadinessReasonSchema>
 

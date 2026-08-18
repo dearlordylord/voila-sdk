@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -30,27 +30,27 @@ const makeBaseSession = () => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const session = makeSessionSnapshot(sampleMetadata, { token: secretCsrfToken }, cookieJar.right)
+  const session = makeSessionSnapshot(sampleMetadata, { token: secretCsrfToken }, cookieJar.success)
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return session.right
+  return session.success
 }
 
 const makeGuestSnapshot = () => {
   const snapshot = makeGuestSdkSessionSnapshot(makeBaseSession())
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected guest SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeAuthenticatedSnapshot = () => {
@@ -58,11 +58,11 @@ const makeAuthenticatedSnapshot = () => {
     emailHint: secretEmailHint
   })
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeMemoryStorage = (contents: unknown = ""): SessionStoragePort => ({ read: () => Effect.succeed(contents) })
@@ -76,33 +76,33 @@ const failingReadStorage: SessionStoragePort = { read: () => Effect.fail(session
 describe("session storage", () => {
   it("reads back a stored guest SDK session snapshot", async () => {
     const snapshot = makeGuestSnapshot()
-    const loaded = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(storedSnapshot(snapshot))))
+    const loaded = await Effect.runPromise(Effect.result(loadSdkSessionSnapshot(storedSnapshot(snapshot))))
 
-    expect(Either.isRight(loaded)).toBe(true)
+    expect(Result.isSuccess(loaded)).toBe(true)
 
-    if (Either.isRight(loaded)) {
-      expect(loaded.right).toEqual(snapshot)
+    if (Result.isSuccess(loaded)) {
+      expect(loaded.success).toEqual(snapshot)
     }
   })
 
   it("reads back a stored authenticated SDK session snapshot", async () => {
     const snapshot = makeAuthenticatedSnapshot()
-    const loaded = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(storedSnapshot(snapshot))))
+    const loaded = await Effect.runPromise(Effect.result(loadSdkSessionSnapshot(storedSnapshot(snapshot))))
 
-    expect(Either.isRight(loaded)).toBe(true)
+    expect(Result.isSuccess(loaded)).toBe(true)
 
-    if (Either.isRight(loaded)) {
-      expect(loaded.right).toEqual(snapshot)
+    if (Result.isSuccess(loaded)) {
+      expect(loaded.success).toEqual(snapshot)
     }
   })
 
   it("returns redacted typed read failures", async () => {
-    const result = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(failingReadStorage)))
+    const result = await Effect.runPromise(Effect.result(loadSdkSessionSnapshot(failingReadStorage)))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SessionStorageReadFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SessionStorageReadFailure")
     }
   })
 
@@ -118,14 +118,14 @@ describe("session storage", () => {
       name: "stale session JSON"
     }
   ])("returns redacted typed failures for $name", async ({ contents }) => {
-    const result = await Effect.runPromise(Effect.either(loadSdkSessionSnapshot(makeMemoryStorage(contents))))
+    const result = await Effect.runPromise(Effect.result(loadSdkSessionSnapshot(makeMemoryStorage(contents))))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SessionStorageContentsInvalid")
-      expect(JSON.stringify(result.left)).not.toContain(secretCsrfToken)
-      expect(JSON.stringify(result.left)).not.toContain(secretCookieValue)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SessionStorageContentsInvalid")
+      expect(JSON.stringify(result.failure)).not.toContain(secretCsrfToken)
+      expect(JSON.stringify(result.failure)).not.toContain(secretCookieValue)
     }
   })
 })

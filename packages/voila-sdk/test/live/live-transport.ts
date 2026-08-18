@@ -1,4 +1,4 @@
-import { Effect, type Either, Layer } from "effect"
+import { Effect, type Result, Layer } from "effect"
 
 import {
   connectionFailure,
@@ -42,5 +42,5 @@ export const liveTransportLayer: Layer.Layer<VoilaTransport> = Layer.succeed(Voi
  * Runs one live operation and hands back its either: a smoke reports a typed
  * failure and exits non-zero, it does not throw.
  */
-export const runLive = <A, E>(effect: Effect.Effect<A, E, VoilaTransport>): Promise<Either.Either<A, E>> =>
-  Effect.runPromise(Effect.either(Effect.provide(effect, liveTransportLayer)))
+export const runLive = <A, E>(effect: Effect.Effect<A, E, VoilaTransport>): Promise<Result.Result<A, E>> =>
+  Effect.runPromise(Effect.result(Effect.provide(effect, liveTransportLayer)))

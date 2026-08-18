@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 
 import { parseUnknown } from "./parse.js"
 import type { CartQuantityDelta } from "./schemas/index.js"
@@ -14,15 +14,15 @@ const cartQuantityDeltaInvalid = (): CartQuantityDeltaError => ({
 export const makeCartQuantityDelta = (
   productId: string,
   quantity: number
-): Either.Either<CartQuantityDelta, CartQuantityDeltaError> =>
-  Either.mapLeft(parseUnknown(CartQuantityDeltaSchema, { productId, quantity }), cartQuantityDeltaInvalid)
+): Result.Result<CartQuantityDelta, CartQuantityDeltaError> =>
+  Result.mapError(parseUnknown(CartQuantityDeltaSchema, { productId, quantity }), cartQuantityDeltaInvalid)
 
 export const makeAddToCartDelta = (
   productId: string,
   quantity: number
-): Either.Either<CartQuantityDelta, CartQuantityDeltaError> => makeCartQuantityDelta(productId, Math.abs(quantity))
+): Result.Result<CartQuantityDelta, CartQuantityDeltaError> => makeCartQuantityDelta(productId, Math.abs(quantity))
 
 export const makeRemoveFromCartDelta = (
   productId: string,
   quantity: number
-): Either.Either<CartQuantityDelta, CartQuantityDeltaError> => makeCartQuantityDelta(productId, -Math.abs(quantity))
+): Result.Result<CartQuantityDelta, CartQuantityDeltaError> => makeCartQuantityDelta(productId, -Math.abs(quantity))

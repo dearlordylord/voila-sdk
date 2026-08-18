@@ -2,21 +2,28 @@ import { Schema } from "effect"
 
 import { MoneySchema } from "./money.js"
 
-const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
+import { withUnknownStringFields } from "./unknown-fields.js"
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMinLength(1))
+)
 
-const NonNegativeIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative())
+const NonNegativeIntegerSchema = Schema.Number.pipe(
+  Schema.check(Schema.isFinite()),
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isGreaterThanOrEqualTo(0))
+)
 
 const CartQuantityDeltaIntegerSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.filter((quantity) => quantity !== 0, { message: () => "Cart quantity delta must not be zero" })
+  Schema.check(Schema.isFinite()),
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.makeFilter((quantity) => quantity !== 0, { message: "Cart quantity delta must not be zero" }))
 )
 
 const ProductUuidSchema = Schema.String.pipe(
-  Schema.trimmed(),
-  Schema.pattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i))
 )
 
 export const CartQuantityDeltaSchema = Schema.Struct({
@@ -34,9 +41,9 @@ export const CartItemQuantityInputSchema = Schema.Struct({
 export type CartItemQuantityInput = Schema.Schema.Type<typeof CartItemQuantityInputSchema>
 
 export const CartItemSchema = Schema.Struct({
-  finalPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-  maxQuantityReached: Schema.optionalWith(Schema.Boolean, { exact: true }),
-  price: Schema.optionalWith(MoneySchema, { exact: true }),
+  finalPrice: Schema.optionalKey(MoneySchema),
+  maxQuantityReached: Schema.optionalKey(Schema.Boolean),
+  price: Schema.optionalKey(MoneySchema),
   productId: Schema.String,
   quantity: NonNegativeIntegerSchema
 })
@@ -57,25 +64,30 @@ export const CartTotalsSchema = Schema.Struct({
 export type CartTotals = Schema.Schema.Type<typeof CartTotalsSchema>
 
 export const CartUpdateResultSchema = Schema.Struct({
-  itemGroups: Schema.optionalWith(Schema.Array(CartItemGroupSchema), { exact: true }),
+  itemGroups: Schema.optionalKey(Schema.Array(CartItemGroupSchema)),
   totals: CartTotalsSchema
 })
 
 export type CartUpdateResult = Schema.Schema.Type<typeof CartUpdateResultSchema>
 
-export const CartViewSignalSchema = Schema.asSchema(
-  Schema.Struct({
-    code: Schema.optionalWith(Schema.String, { exact: true }),
-    message: Schema.optionalWith(Schema.String, { exact: true }),
-    severity: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
-)
+const CartViewSignalFieldsSchema = Schema.Struct({
+  code: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+  severity: Schema.optionalKey(Schema.String)
+})
+
+export const CartViewSignalSchema = Schema.revealCodec(withUnknownStringFields(CartViewSignalFieldsSchema))
 
 export type CartViewSignal = Schema.Schema.Type<typeof CartViewSignalSchema>
 
-export const LimitedCartItemSchema = Schema.asSchema(
-  Schema.Struct({ productId: Schema.String, quantity: NonNegativeIntegerSchema, reason: Schema.String }).pipe(
-    Schema.extend(CartViewSignalSchema)
+export const LimitedCartItemSchema = Schema.revealCodec(
+  withUnknownStringFields(
+    Schema.Struct({
+      ...CartViewSignalFieldsSchema.fields,
+      productId: Schema.String,
+      quantity: NonNegativeIntegerSchema,
+      reason: Schema.String
+    })
   )
 )
 
@@ -104,23 +116,23 @@ export const NormalizedCartMutationResultSchema = Schema.Struct({
 export type NormalizedCartMutationResult = Schema.Schema.Type<typeof NormalizedCartMutationResultSchema>
 
 export const CartViewItemSchema = Schema.Struct({
-  available: Schema.optionalWith(Schema.Boolean, { exact: true }),
-  finalPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-  imageUrl: Schema.optionalWith(Schema.String, { exact: true }),
-  maxQuantityReached: Schema.optionalWith(Schema.Boolean, { exact: true }),
-  name: Schema.optionalWith(Schema.String, { exact: true }),
-  price: Schema.optionalWith(MoneySchema, { exact: true }),
+  available: Schema.optionalKey(Schema.Boolean),
+  finalPrice: Schema.optionalKey(MoneySchema),
+  imageUrl: Schema.optionalKey(Schema.String),
+  maxQuantityReached: Schema.optionalKey(Schema.Boolean),
+  name: Schema.optionalKey(Schema.String),
+  price: Schema.optionalKey(MoneySchema),
   productId: Schema.String,
   quantity: NonNegativeIntegerSchema,
-  retailerProductId: Schema.optionalWith(Schema.String, { exact: true }),
-  unavailable: Schema.optionalWith(Schema.Boolean, { exact: true })
+  retailerProductId: Schema.optionalKey(Schema.String),
+  unavailable: Schema.optionalKey(Schema.Boolean)
 })
 
 export type CartViewItem = Schema.Schema.Type<typeof CartViewItemSchema>
 
 export const CartViewItemGroupSchema = Schema.Struct({
   items: Schema.Array(CartViewItemSchema),
-  name: Schema.optionalWith(Schema.String, { exact: true })
+  name: Schema.optionalKey(Schema.String)
 })
 
 export type CartViewItemGroup = Schema.Schema.Type<typeof CartViewItemGroupSchema>
@@ -132,56 +144,54 @@ export type CartCheckoutRestriction = Schema.Schema.Type<typeof CartCheckoutRest
 export const CartViewResponseSchema = Schema.Struct({
   basket: Schema.Struct({
     basketId: Schema.String,
-    itemGroups: Schema.optionalWith(Schema.Array(CartViewItemGroupSchema), { exact: true }),
+    itemGroups: Schema.optionalKey(Schema.Array(CartViewItemGroupSchema)),
     totals: CartTotalsSchema
   }),
-  checkoutRestrictions: Schema.optionalWith(Schema.Array(CartCheckoutRestrictionSchema), { exact: true }),
-  limitedItems: Schema.optionalWith(Schema.Array(CartViewSignalSchema), { exact: true }),
-  pricingNotifications: Schema.optionalWith(Schema.Array(CartViewSignalSchema), { exact: true }),
-  unavailableData: Schema.optionalWith(Schema.Array(CartViewSignalSchema), { exact: true })
+  checkoutRestrictions: Schema.optionalKey(Schema.Array(CartCheckoutRestrictionSchema)),
+  limitedItems: Schema.optionalKey(Schema.Array(CartViewSignalSchema)),
+  pricingNotifications: Schema.optionalKey(Schema.Array(CartViewSignalSchema)),
+  unavailableData: Schema.optionalKey(Schema.Array(CartViewSignalSchema))
 })
 
 export type CartViewResponse = Schema.Schema.Type<typeof CartViewResponseSchema>
 
-export const ActiveCartCheckoutGroupSchema = Schema.asSchema(
+export const ActiveCartCheckoutGroupSchema = Schema.revealCodec(
   Schema.Struct({
-    checkoutRestrictions: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
-    itemGroups: Schema.optionalWith(Schema.Array(CartViewItemGroupSchema), { exact: true }),
-    totals: Schema.optionalWith(CartTotalsSchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    checkoutRestrictions: Schema.optionalKey(Schema.Array(Schema.String)),
+    itemGroups: Schema.optionalKey(Schema.Array(CartViewItemGroupSchema)),
+    totals: Schema.optionalKey(CartTotalsSchema)
+  }).pipe(withUnknownStringFields)
 )
 
 export type ActiveCartCheckoutGroup = Schema.Schema.Type<typeof ActiveCartCheckoutGroupSchema>
 
-export const ActiveCartViewResponseSchema = Schema.asSchema(
+export const ActiveCartViewResponseSchema = Schema.revealCodec(
   Schema.Struct({
-    activeCheckoutGroup: Schema.optionalWith(
-      Schema.Struct({ checkoutRestrictions: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }) }).pipe(
-        Schema.extend(UnknownStringRecordSchema)
-      ),
-      { exact: true }
+    activeCheckoutGroup: Schema.optionalKey(
+      Schema.Struct({ checkoutRestrictions: Schema.optionalKey(Schema.Array(Schema.String)) }).pipe(
+        withUnknownStringFields
+      )
     ),
     cartId: Schema.String,
-    checkoutGroups: Schema.optionalWith(
-      Schema.Struct({
-        assignedCheckoutGroups: Schema.optionalWith(Schema.Array(ActiveCartCheckoutGroupSchema), { exact: true })
-      }).pipe(Schema.extend(UnknownStringRecordSchema)),
-      { exact: true }
+    checkoutGroups: Schema.optionalKey(
+      Schema.Struct({ assignedCheckoutGroups: Schema.optionalKey(Schema.Array(ActiveCartCheckoutGroupSchema)) }).pipe(
+        withUnknownStringFields
+      )
     ),
-    pricingNotifications: Schema.optionalWith(Schema.Array(CartViewSignalSchema), { exact: true }),
+    pricingNotifications: Schema.optionalKey(Schema.Array(CartViewSignalSchema)),
     totals: CartTotalsSchema,
-    unavailableData: Schema.optionalWith(Schema.Array(CartViewSignalSchema), { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    unavailableData: Schema.optionalKey(Schema.Array(CartViewSignalSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type ActiveCartViewResponse = Schema.Schema.Type<typeof ActiveCartViewResponseSchema>
 
-export const AnyCartViewResponseSchema = Schema.Union(CartViewResponseSchema, ActiveCartViewResponseSchema)
+export const AnyCartViewResponseSchema = Schema.Union([CartViewResponseSchema, ActiveCartViewResponseSchema])
 
 export type AnyCartViewResponse = Schema.Schema.Type<typeof AnyCartViewResponseSchema>
 
 export const NormalizedCartItemSchema = CartViewItemSchema.pipe(
-  Schema.extend(Schema.Struct({ groupName: Schema.optionalWith(Schema.String, { exact: true }) }))
+  Schema.fieldsAssign({ groupName: Schema.optionalKey(Schema.String) })
 )
 
 export type NormalizedCartItem = Schema.Schema.Type<typeof NormalizedCartItemSchema>

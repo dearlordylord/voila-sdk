@@ -23,7 +23,7 @@ import {
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import type { Layer } from "effect"
-import { Effect, Either, Schema } from "effect"
+import { Effect, Result, Schema } from "effect"
 
 import {
   authGuidanceForHealth,
@@ -73,15 +73,15 @@ export {
  */
 export const OperationFailureSchema = Schema.Struct({
   _tag: Schema.String,
-  authGuidance: Schema.optionalWith(OperationAuthGuidanceSchema, { exact: true }),
+  authGuidance: Schema.optionalKey(OperationAuthGuidanceSchema),
   message: Schema.String,
-  status: Schema.optionalWith(Schema.Number, { exact: true })
+  status: Schema.optionalKey(Schema.Number)
 })
 
 export type OperationFailure = Schema.Schema.Type<typeof OperationFailureSchema>
 
 export const OperationExecutionSuccessSchema = Schema.Struct({
-  authGuidance: Schema.optionalWith(OperationAuthGuidanceSchema, { exact: true }),
+  authGuidance: Schema.optionalKey(OperationAuthGuidanceSchema),
   ok: Schema.Literal(true),
   value: Schema.Unknown
 })
@@ -187,19 +187,19 @@ const redactError = (error: unknown): OperationFailure => {
   }
 }
 
-const parseInput = <A, I>(
-  schema: Schema.Schema<A, I, never>,
+const parseInput = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
   input: unknown
-): Effect.Effect<A, OperationExecutionFailure> =>
-  Effect.mapError(parseUnknown(schema, input), () => failure(inputInvalid()))
+): Effect.Effect<S["Type"], OperationExecutionFailure> =>
+  Effect.mapError(Effect.fromResult(parseUnknown(schema, input)), () => failure(inputInvalid()))
 
 const updateSdkSession = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot
-): Either.Either<SdkSessionSnapshot, OperationFailure> =>
+): Result.Result<SdkSessionSnapshot, OperationFailure> =>
   previous.kind === "guest"
-    ? Either.mapLeft(makeGuestSdkSessionSnapshot(session), sessionUpdateInvalid)
-    : Either.mapLeft(
+    ? Result.mapError(makeGuestSdkSessionSnapshot(session), sessionUpdateInvalid)
+    : Result.mapError(
         makeAuthenticatedSdkSessionSnapshot(session, previous.state, previous.account),
         sessionUpdateInvalid
       )
@@ -207,7 +207,8 @@ const updateSdkSession = (
 export const makeGuestSessionSnapshot = (): Effect.Effect<SdkSessionSnapshot, OperationFailure, VoilaTransport> =>
   Effect.flatMap(
     Effect.mapError(bootstrapGuestSession(), (error) => bootstrapFailed(redactError(error))),
-    (bootstrapped) => Either.mapLeft(makeGuestSdkSessionSnapshot(bootstrapped.session), sessionUpdateInvalid)
+    (bootstrapped) =>
+      Effect.fromResult(Result.mapError(makeGuestSdkSessionSnapshot(bootstrapped.session), sessionUpdateInvalid))
   )
 
 /**
@@ -233,9 +234,9 @@ const refreshedOutcome = (
 ): SessionOperationOutcome<OperationExecutionResult> => {
   const refreshed = updateSdkSession(current, result.session)
 
-  return Either.isLeft(refreshed)
-    ? { value: failure(refreshed.left) }
-    : { refreshed: refreshed.right, value: success(result.value, authGuidanceForSnapshot(env.authGuidance, current)) }
+  return Result.isFailure(refreshed)
+    ? { value: failure(refreshed.failure) }
+    : { refreshed: refreshed.success, value: success(result.value, authGuidanceForSnapshot(env.authGuidance, current)) }
 }
 
 /**
@@ -249,11 +250,11 @@ type SessionOperationExecutor<A> = (
   input: A
 ) => Effect.Effect<VoilaJsonResult<unknown>, unknown, VoilaTransport>
 
-const runSessionOperation = <A, I>(
-  schema: Schema.Schema<A, I, never>,
+const runSessionOperation = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
   input: unknown,
   env: OperationEnvironment,
-  execute: SessionOperationExecutor<A>,
+  execute: SessionOperationExecutor<S["Type"]>,
   authGuidanceOnFailure = false
 ): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
   Effect.flatMap(parseInput(schema, input), (parsed) =>
@@ -409,7 +410,7 @@ export const runVoilaOperation = (
   input: unknown,
   env: OperationEnvironment
 ): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure> =>
-  Effect.catchAllDefect(Effect.provide(runOperation(name, input, env), env.transport), () =>
+  Effect.catchDefect(Effect.provide(runOperation(name, input, env), env.transport), () =>
     Effect.fail(operationDefect())
   )
 

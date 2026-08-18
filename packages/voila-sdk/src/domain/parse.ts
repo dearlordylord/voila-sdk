@@ -1,20 +1,19 @@
-import type { ParseResult } from "effect"
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 
-export const parseUnknown = <A, I>(
-  schema: Schema.Schema<A, I, never>,
+export const parseUnknown = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
   input: unknown
-): Either.Either<A, ParseResult.ParseError> => Schema.decodeUnknownEither(schema)(input)
+): Result.Result<S["Type"], Schema.SchemaError> => Schema.decodeUnknownResult(schema)(input)
 
 export interface ParseJsonError {
   readonly _tag: "ParseJsonError"
   readonly message: string
 }
 
-export const parseJson = (text: string): Either.Either<unknown, ParseJsonError> => {
+export const parseJson = (text: string): Result.Result<unknown, ParseJsonError> => {
   try {
-    return Either.right(JSON.parse(text))
+    return Result.succeed(JSON.parse(text))
   } catch {
-    return Either.left({ _tag: "ParseJsonError", message: "Invalid JSON" })
+    return Result.fail({ _tag: "ParseJsonError", message: "Invalid JSON" })
   }
 }

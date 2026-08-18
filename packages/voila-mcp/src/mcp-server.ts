@@ -1,9 +1,11 @@
-import { McpServer } from "@effect/ai"
-import { NodeSink, NodeStream } from "@effect/platform-node"
-import { Layer } from "effect"
-import type { Sink, Stream } from "effect"
+import { NodeStdio } from "@effect/platform-node"
+import { Effect, Layer, Sink, Stdio } from "effect"
+import type { Stream } from "effect"
+import type { PlatformError } from "effect/PlatformError"
+import { McpProtocol, McpServer } from "effect/unstable/ai"
 
-import { type VoilaOperations, voilaToolkit, voilaToolkitLayer } from "./mcp-toolkit.js"
+import { voilaMcpRegistryLayer } from "./mcp-tool-registry.js"
+import type { VoilaOperations } from "./mcp-toolkit.js"
 import { mcpName, type VoilaOperationName, voilaOperationDescriptors } from "./operation-descriptors.js"
 import { packageVersion } from "./package-version.js"
 
@@ -14,21 +16,23 @@ export { VoilaOperations } from "./mcp-toolkit.js"
  * the process runs. What is left unprovided is the operation environment: a
  * server layer says how tool calls travel, not what account they run against.
  */
-export const voilaToolsLayer: Layer.Layer<never, never, VoilaOperations> = McpServer.toolkit(voilaToolkit).pipe(
-  Layer.provide(voilaToolkitLayer)
-)
+export const voilaToolsLayer: Layer.Layer<never, never, McpServer.McpServer | VoilaOperations> = voilaMcpRegistryLayer
 
 export interface VoilaStdioStreams {
-  readonly stdin: Stream.Stream<Uint8Array, unknown, never>
-  readonly stdout: Sink.Sink<unknown, Uint8Array | string, unknown, unknown, never>
+  readonly stdin: Stream.Stream<Uint8Array, PlatformError>
+  readonly stdout: Sink.Sink<void, Uint8Array | string, never, PlatformError>
 }
 
-const stdioStreamFailure = (): Error => new Error("Voila MCP stdio stream failed")
-
-const processStdio = (): VoilaStdioStreams => ({
-  stdin: NodeStream.fromReadable(() => process.stdin, stdioStreamFailure),
-  stdout: NodeSink.fromWritable(() => process.stdout, stdioStreamFailure)
-})
+const streamsLayer = (streams: VoilaStdioStreams): Layer.Layer<Stdio.Stdio> =>
+  Layer.succeed(
+    Stdio.Stdio,
+    Stdio.make({
+      args: Effect.succeed(process.argv.slice(2)),
+      stderr: () => Sink.drain,
+      stdin: streams.stdin,
+      stdout: () => streams.stdout
+    })
+  )
 
 /**
  * The stdio server. The streams are a parameter rather than `process.stdin`
@@ -37,11 +41,14 @@ const processStdio = (): VoilaStdioStreams => ({
  * way to learn less.
  */
 export const voilaStdioServerLayer = (
-  streams: VoilaStdioStreams = processStdio(),
+  streams?: VoilaStdioStreams,
   version: string = packageVersion
 ): Layer.Layer<never, never, VoilaOperations> =>
   voilaToolsLayer.pipe(
-    Layer.provide(McpServer.layerStdio({ name: mcpName, stdin: streams.stdin, stdout: streams.stdout, version }))
+    Layer.provide(
+      McpServer.layerStdio({ name: mcpName, protocols: [McpProtocol.v2025_06_18], version }).pipe(Layer.orDie)
+    ),
+    Layer.provide(streams === undefined ? NodeStdio.layer : streamsLayer(streams))
   )
 
 export const isVoilaOperationName = (name: string): name is VoilaOperationName =>

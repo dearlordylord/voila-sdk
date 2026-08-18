@@ -11,6 +11,7 @@ if (pnpmEntryPoint === undefined) {
 
 const gates = [
   { args: ["rebuild:native"], name: "native dependencies", timeout: 5 * 60 * second },
+  { args: ["verify:effect-cohort"], name: "Effect dependency cohort", timeout: 60 * second },
   { args: ["build"], name: "build", timeout: 2 * 60 * second },
   { args: ["check:package-boundary"], name: "package boundaries", timeout: 60 * second },
   { args: ["typecheck"], name: "TypeScript and Effect diagnostics", timeout: 3 * 60 * second },
@@ -20,6 +21,7 @@ const gates = [
   { args: ["lint"], name: "lint, format, and duplication", timeout: 2 * 60 * second },
   { args: ["fixtures:audit"], name: "fixture safety", timeout: 60 * second },
   { args: ["test:harness"], name: "quality harness tests", timeout: 60 * second },
+  { args: ["oracle:verify"], name: "Effect 3 behavioral oracle parity", timeout: 60 * second },
   { args: ["test:coverage"], name: "tests and coverage", timeout: 5 * 60 * second }
 ]
 

@@ -1,159 +1,155 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 import { MoneySchema } from "./money.js"
+
+import { withUnknownStringFields } from "./unknown-fields.js"
 
 export const MIN_ORDER_PAGE_SIZE = 1
 export const MAX_ORDER_PAGE_SIZE = 50
 export const DEFAULT_ORDER_PAGE_SIZE = 20
 
-const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+const NonEmptyTrimmedStringSchema = Schema.String.pipe(
+  Schema.check(Schema.isTrimmed()),
+  Schema.check(Schema.isMinLength(1))
+)
 const OrderPageSizeSchema = Schema.Number.pipe(
-  Schema.finite(),
-  Schema.int(),
-  Schema.greaterThanOrEqualTo(MIN_ORDER_PAGE_SIZE),
-  Schema.lessThanOrEqualTo(MAX_ORDER_PAGE_SIZE)
+  Schema.check(Schema.isFinite()),
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isGreaterThanOrEqualTo(MIN_ORDER_PAGE_SIZE)),
+  Schema.check(Schema.isLessThanOrEqualTo(MAX_ORDER_PAGE_SIZE))
 )
 
 export const CompletedOrdersInputSchema = Schema.Struct({
-  pageSize: Schema.optionalWith(OrderPageSizeSchema, { default: () => DEFAULT_ORDER_PAGE_SIZE }),
-  pageToken: Schema.optionalWith(NonEmptyTrimmedStringSchema, { exact: true })
+  pageSize: OrderPageSizeSchema.pipe(Schema.withDecodingDefaultType(Effect.succeed(DEFAULT_ORDER_PAGE_SIZE))),
+  pageToken: Schema.optionalKey(NonEmptyTrimmedStringSchema)
 })
 
 export type CompletedOrdersInput = Schema.Schema.Type<typeof CompletedOrdersInputSchema>
 
-const RawOrderRegionSchema = Schema.asSchema(
-  Schema.Struct({ regionId: Schema.String, retailerRegionId: Schema.String }).pipe(
-    Schema.extend(UnknownStringRecordSchema)
-  )
+const RawOrderRegionSchema = Schema.revealCodec(
+  Schema.Struct({ regionId: Schema.String, retailerRegionId: Schema.String }).pipe(withUnknownStringFields)
 )
 
-const RawOrderCarrierSchema = Schema.asSchema(
-  Schema.Struct({ carrierId: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
+const RawOrderCarrierSchema = Schema.revealCodec(
+  Schema.Struct({ carrierId: Schema.String }).pipe(withUnknownStringFields)
 )
 
-const RawOrderExternalLockerSchema = Schema.asSchema(
-  Schema.Struct({ externalLockerId: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
+const RawOrderExternalLockerSchema = Schema.revealCodec(
+  Schema.Struct({ externalLockerId: Schema.String }).pipe(withUnknownStringFields)
 )
 
-const RawOrderDeliveryDestinationSchema = Schema.asSchema(
+const RawOrderDeliveryDestinationSchema = Schema.revealCodec(
   Schema.Struct({
-    address: Schema.Struct({ timeZone: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema)),
+    address: Schema.Struct({ timeZone: Schema.String }).pipe(withUnknownStringFields),
     deliveryMethod: Schema.String,
     name: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  }).pipe(withUnknownStringFields)
 )
 
-export const RawCompletedOrdersGraphqlErrorSchema = Schema.asSchema(
-  Schema.Struct({ message: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
+export const RawCompletedOrdersGraphqlErrorSchema = Schema.revealCodec(
+  Schema.Struct({ message: Schema.String }).pipe(withUnknownStringFields)
 )
 
 export type RawCompletedOrdersGraphqlError = Schema.Schema.Type<typeof RawCompletedOrdersGraphqlErrorSchema>
 
-export const RawInternalCompletedOrderSlotSchema = Schema.asSchema(
+export const RawInternalCompletedOrderSlotSchema = Schema.revealCodec(
   Schema.Struct({
     __typename: Schema.Literal("InternalOrderSlot"),
-    carrier: Schema.optionalWith(Schema.NullOr(RawOrderCarrierSchema), { exact: true }),
+    carrier: Schema.optionalKey(Schema.NullOr(RawOrderCarrierSchema)),
     deliveryDestination: RawOrderDeliveryDestinationSchema,
     end: Schema.String,
-    externalLocker: Schema.optionalWith(Schema.NullOr(RawOrderExternalLockerSchema), { exact: true }),
-    shippingGroupType: Schema.optionalWith(Schema.String, { exact: true }),
+    externalLocker: Schema.optionalKey(Schema.NullOr(RawOrderExternalLockerSchema)),
+    shippingGroupType: Schema.optionalKey(Schema.String),
     start: Schema.String,
     type: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawInternalCompletedOrderSlot = Schema.Schema.Type<typeof RawInternalCompletedOrderSlotSchema>
 
-export const RawImportedCompletedOrderSlotSchema = Schema.asSchema(
+export const RawImportedCompletedOrderSlotSchema = Schema.revealCodec(
   Schema.Struct({
     __typename: Schema.Literal("ImportedOrderSlot"),
     end: Schema.String,
     name: Schema.String,
     start: Schema.String,
     timeZone: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawImportedCompletedOrderSlot = Schema.Schema.Type<typeof RawImportedCompletedOrderSlotSchema>
 
-export const RawCompletedOrderSlotSchema = Schema.Union(
+export const RawCompletedOrderSlotSchema = Schema.Union([
   RawInternalCompletedOrderSlotSchema,
   RawImportedCompletedOrderSlotSchema
-)
+])
 
 export type RawCompletedOrderSlot = Schema.Schema.Type<typeof RawCompletedOrderSlotSchema>
 
-export const RawCompletedOrderNodeSchema = Schema.asSchema(
+export const RawCompletedOrderNodeSchema = Schema.revealCodec(
   Schema.Struct({
     orderId: Schema.String,
-    prices: Schema.Struct({ total: MoneySchema }).pipe(Schema.extend(UnknownStringRecordSchema)),
-    recurringOrderDefinition: Schema.optionalWith(
-      Schema.NullOr(Schema.Struct({ name: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))),
-      { exact: true }
+    prices: Schema.Struct({ total: MoneySchema }).pipe(withUnknownStringFields),
+    recurringOrderDefinition: Schema.optionalKey(
+      Schema.NullOr(Schema.Struct({ name: Schema.String }).pipe(withUnknownStringFields))
     ),
     region: RawOrderRegionSchema,
     slot: RawCompletedOrderSlotSchema,
     status: Schema.String
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawCompletedOrderNode = Schema.Schema.Type<typeof RawCompletedOrderNodeSchema>
 
-const RawCompletedOrdersConnectionSchema = Schema.asSchema(
+const RawCompletedOrdersConnectionSchema = Schema.revealCodec(
   Schema.Struct({
     edges: Schema.Array(
-      Schema.NullOr(
-        Schema.Struct({ node: Schema.NullOr(RawCompletedOrderNodeSchema) }).pipe(
-          Schema.extend(UnknownStringRecordSchema)
-        )
-      )
+      Schema.NullOr(Schema.Struct({ node: Schema.NullOr(RawCompletedOrderNodeSchema) }).pipe(withUnknownStringFields))
     ),
     pageInfo: Schema.Struct({ endCursor: Schema.NullOr(Schema.String), hasNextPage: Schema.Boolean }).pipe(
-      Schema.extend(UnknownStringRecordSchema)
+      withUnknownStringFields
     ),
-    retentionPeriod: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    retentionPeriod: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawCompletedOrdersConnection = Schema.Schema.Type<typeof RawCompletedOrdersConnectionSchema>
 
-export const RawCompletedOrdersGraphqlResponseSchema = Schema.asSchema(
+export const RawCompletedOrdersGraphqlResponseSchema = Schema.revealCodec(
   Schema.Struct({
-    data: Schema.optionalWith(
+    data: Schema.optionalKey(
       Schema.NullOr(
         Schema.Struct({ completedOrders: Schema.NullOr(RawCompletedOrdersConnectionSchema) }).pipe(
-          Schema.extend(UnknownStringRecordSchema)
+          withUnknownStringFields
         )
-      ),
-      { exact: true }
+      )
     ),
-    errors: Schema.optionalWith(Schema.Array(RawCompletedOrdersGraphqlErrorSchema), { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    errors: Schema.optionalKey(Schema.Array(RawCompletedOrdersGraphqlErrorSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawCompletedOrdersGraphqlResponse = Schema.Schema.Type<typeof RawCompletedOrdersGraphqlResponseSchema>
 
 export const CompletedOrdersPaginationSchema = Schema.Struct({
   hasNextPage: Schema.Boolean,
-  nextPageToken: Schema.optionalWith(Schema.String, { exact: true }),
-  retentionPeriod: Schema.optionalWith(Schema.String, { exact: true })
+  nextPageToken: Schema.optionalKey(Schema.String),
+  retentionPeriod: Schema.optionalKey(Schema.String)
 })
 
 export type CompletedOrdersPagination = Schema.Schema.Type<typeof CompletedOrdersPaginationSchema>
 
 export const NormalizedCompletedOrderSchema = Schema.Struct({
   addressNickName: Schema.String,
-  carrierId: Schema.optionalWith(Schema.String, { exact: true }),
+  carrierId: Schema.optionalKey(Schema.String),
   dates: Schema.Struct({ deliveryEndDate: Schema.String, deliveryStartDate: Schema.String, timeZoneId: Schema.String }),
   deliveryMethod: Schema.String,
-  externalAddress: Schema.optionalWith(Schema.Struct({ externalCollectionPointId: Schema.String }), { exact: true }),
+  externalAddress: Schema.optionalKey(Schema.Struct({ externalCollectionPointId: Schema.String })),
   orderId: Schema.String,
   orderTotals: Schema.Struct({ totalPrice: MoneySchema }),
-  recurringShoppingDefinition: Schema.optionalWith(Schema.Struct({ name: Schema.String }), { exact: true }),
+  recurringShoppingDefinition: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
   regionId: Schema.String,
   retailerRegionId: Schema.String,
-  shippingGroupType: Schema.optionalWith(Schema.String, { exact: true }),
+  shippingGroupType: Schema.optionalKey(Schema.String),
   slotType: Schema.String,
   status: Schema.String
 })

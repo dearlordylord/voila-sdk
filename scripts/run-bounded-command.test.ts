@@ -4,7 +4,6 @@ import { join } from "node:path"
 
 import { expect, test } from "vitest"
 
-// @ts-expect-error The production quality-gate helper is an executable JavaScript module.
 import { runBoundedCommand } from "./run-bounded-command.mjs"
 
 const processExists = (pid: number) => {

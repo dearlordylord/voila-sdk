@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { CookieJar, PrefixSecurityEnum } from "tough-cookie"
 import { describe, expect, it } from "vitest"
 
@@ -101,15 +101,15 @@ describe("session snapshots", () => {
   it("serializes and deserializes a tough-cookie jar", () => {
     const serialized = toughCookieJarPort.serialize(makeCookieJarWithSecret())
 
-    expect(Either.isRight(serialized)).toBe(true)
+    expect(Result.isSuccess(serialized)).toBe(true)
 
-    if (Either.isRight(serialized)) {
-      const deserialized = toughCookieJarPort.deserialize(serialized.right)
+    if (Result.isSuccess(serialized)) {
+      const deserialized = toughCookieJarPort.deserialize(serialized.success)
 
-      expect(Either.isRight(deserialized)).toBe(true)
+      expect(Result.isSuccess(deserialized)).toBe(true)
 
-      if (Either.isRight(deserialized)) {
-        expect(deserialized.right.getCookieStringSync(voilaUrl)).toBe(`voila-session=${secretCookieValue}`)
+      if (Result.isSuccess(deserialized)) {
+        expect(deserialized.success.getCookieStringSync(voilaUrl)).toBe(`voila-session=${secretCookieValue}`)
       }
     }
   })
@@ -117,23 +117,23 @@ describe("session snapshots", () => {
   it("preserves tough-cookie serialized metadata across a jar round-trip", () => {
     const serialized = toughCookieJarPort.serialize(makeConfiguredCookieJar())
 
-    expect(Either.isRight(serialized)).toBe(true)
+    expect(Result.isSuccess(serialized)).toBe(true)
 
-    if (Either.isRight(serialized)) {
-      const deserialized = toughCookieJarPort.deserialize(serialized.right)
+    if (Result.isSuccess(serialized)) {
+      const deserialized = toughCookieJarPort.deserialize(serialized.success)
 
-      expect(Either.isRight(deserialized)).toBe(true)
+      expect(Result.isSuccess(deserialized)).toBe(true)
 
-      if (Either.isRight(deserialized)) {
-        const reserialized = toughCookieJarPort.serialize(deserialized.right)
+      if (Result.isSuccess(deserialized)) {
+        const reserialized = toughCookieJarPort.serialize(deserialized.success)
 
-        expect(Either.isRight(reserialized)).toBe(true)
+        expect(Result.isSuccess(reserialized)).toBe(true)
 
-        if (Either.isRight(reserialized)) {
-          expect(reserialized.right.allowSpecialUseDomain).toBe(true)
-          expect(reserialized.right.enableLooseMode).toBe(true)
-          expect(reserialized.right.prefixSecurity).toBe(PrefixSecurityEnum.DISABLED)
-          expect(reserialized.right.rejectPublicSuffixes).toBe(false)
+        if (Result.isSuccess(reserialized)) {
+          expect(reserialized.success.allowSpecialUseDomain).toBe(true)
+          expect(reserialized.success.enableLooseMode).toBe(true)
+          expect(reserialized.success.prefixSecurity).toBe(PrefixSecurityEnum.DISABLED)
+          expect(reserialized.success.rejectPublicSuffixes).toBe(false)
         }
       }
     }
@@ -142,12 +142,12 @@ describe("session snapshots", () => {
   it("builds schema-owned session snapshots", () => {
     const serialized = serializeCookieJar(makeCookieJarWithSecret())
 
-    expect(Either.isRight(serialized)).toBe(true)
+    expect(Result.isSuccess(serialized)).toBe(true)
 
-    if (Either.isRight(serialized)) {
-      const snapshot = makeSessionSnapshot(sampleMetadata, sampleCsrf, serialized.right)
+    if (Result.isSuccess(serialized)) {
+      const snapshot = makeSessionSnapshot(sampleMetadata, sampleCsrf, serialized.success)
 
-      expect(Either.isRight(snapshot)).toBe(true)
+      expect(Result.isSuccess(snapshot)).toBe(true)
     }
   })
 
@@ -160,82 +160,82 @@ describe("session snapshots", () => {
   it("returns a typed error for throwing cookie jar serialization", () => {
     const result = serializeCookieJar(throwingSerializableCookieJar)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result) && result.left._tag === "CookieJarSerializationFailed") {
-      expect(result.left._tag).toBe("CookieJarSerializationFailed")
-      expect(result.left.message).toBe("Cookie jar serialization failed")
-      expect(JSON.stringify(result.left)).not.toContain(secretCookieValue)
+    if (Result.isFailure(result) && result.failure._tag === "CookieJarSerializationFailed") {
+      expect(result.failure._tag).toBe("CookieJarSerializationFailed")
+      expect(result.failure.message).toBe("Cookie jar serialization failed")
+      expect(JSON.stringify(result.failure)).not.toContain(secretCookieValue)
     }
   })
 
   it("redacts non-error thrown values from cookie jar serialization failures", () => {
     const result = serializeCookieJar(throwingNonErrorSerializableCookieJar)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result) && result.left._tag === "CookieJarSerializationFailed") {
-      expect(result.left.message).toBe("Cookie jar serialization failed")
-      expect(JSON.stringify(result.left)).not.toContain("secret thrown payload")
+    if (Result.isFailure(result) && result.failure._tag === "CookieJarSerializationFailed") {
+      expect(result.failure.message).toBe("Cookie jar serialization failed")
+      expect(JSON.stringify(result.failure)).not.toContain("secret thrown payload")
     }
   })
 
   it("returns a typed error for unsupported cookie jar serialization", () => {
     const result = serializeCookieJar(unsupportedSerializableCookieJar)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CookieJarSerializationUnsupported")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CookieJarSerializationUnsupported")
     }
   })
 
   it("returns a typed error for malformed serialized cookie jars", () => {
     const result = serializeCookieJar(malformedSerializableCookieJar)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CookieJarSnapshotSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("not-boolean")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CookieJarSnapshotSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("not-boolean")
     }
   })
 
   it("returns a typed error when a cookie jar snapshot cannot be imported", () => {
     const result = deserializeCookieJar(jsonUnsafeCookieJarSnapshot)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result) && result.left._tag === "CookieJarSnapshotImportFailed") {
-      expect(result.left._tag).toBe("CookieJarSnapshotImportFailed")
-      expect(result.left.message).toBe("Cookie jar snapshot import failed")
-      expect(JSON.stringify(result.left)).not.toContain("unsupported")
+    if (Result.isFailure(result) && result.failure._tag === "CookieJarSnapshotImportFailed") {
+      expect(result.failure._tag).toBe("CookieJarSnapshotImportFailed")
+      expect(result.failure.message).toBe("Cookie jar snapshot import failed")
+      expect(JSON.stringify(result.failure)).not.toContain("unsupported")
     }
   })
 
   it("returns a typed error for malformed session snapshots", () => {
     const result = decodeSessionSnapshot({ csrf: sampleCsrf, metadata: sampleMetadata })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SessionSnapshotSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain(secretCsrfToken)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SessionSnapshotSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain(secretCsrfToken)
     }
   })
 
   it("keeps secret-bearing fields out of diagnostic strings", () => {
     const serialized = serializeCookieJar(makeCookieJarWithSecret())
 
-    expect(Either.isRight(serialized)).toBe(true)
+    expect(Result.isSuccess(serialized)).toBe(true)
 
-    if (Either.isRight(serialized)) {
-      const snapshot = makeSessionSnapshot(sampleMetadata, sampleCsrf, serialized.right)
+    if (Result.isSuccess(serialized)) {
+      const snapshot = makeSessionSnapshot(sampleMetadata, sampleCsrf, serialized.success)
 
-      expect(Either.isRight(snapshot)).toBe(true)
+      expect(Result.isSuccess(snapshot)).toBe(true)
 
-      if (Either.isRight(snapshot)) {
-        const diagnostic = formatSessionSnapshotDiagnostic(snapshot.right)
+      if (Result.isSuccess(snapshot)) {
+        const diagnostic = formatSessionSnapshotDiagnostic(snapshot.success)
 
         expect(diagnostic).not.toContain(secretCookieValue)
         expect(diagnostic).not.toContain(secretCsrfToken)
@@ -249,21 +249,21 @@ describe("session snapshots", () => {
   it("states no route id in a diagnostic for a session captured without one", () => {
     const serialized = serializeCookieJar(makeCookieJarWithSecret())
 
-    if (Either.isLeft(serialized)) {
+    if (Result.isFailure(serialized)) {
       throw new Error("Expected cookie jar serialization to succeed")
     }
 
     const snapshot = makeSessionSnapshot(
       { assetVersion: "asset-version", pageViewId: secretPageViewId, regionId: "region-id" },
       sampleCsrf,
-      serialized.right
+      serialized.success
     )
 
-    if (Either.isLeft(snapshot)) {
+    if (Result.isFailure(snapshot)) {
       throw new Error("Expected session snapshot creation to succeed")
     }
 
-    const diagnostic = formatSessionSnapshotDiagnostic(snapshot.right)
+    const diagnostic = formatSessionSnapshotDiagnostic(snapshot.success)
 
     expect(diagnostic).not.toContain("clientRouteId")
     expect(diagnostic).not.toContain(secretPageViewId)

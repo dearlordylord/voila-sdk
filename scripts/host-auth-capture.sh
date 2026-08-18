@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 dist_index="${repo_root}/dist/src/index.js"
+session_store_index="${repo_root}/packages/voila-session-store/dist/src/index.js"
 
 session_dir="${VOILA_SESSION_DIR:-${repo_root}/local-session-snapshots}"
 session_file="${VOILA_AUTH_SESSION_PATH:-${session_dir}/voila-auth-session.json}"
@@ -44,23 +45,76 @@ EOF
   exit 0
 fi
 
+if [[ ! -f "${session_store_index}" ]]; then
+  cat >&2 <<EOF
+Built session-store output is missing at:
+${session_store_index}
+
+Run this inside Docker first:
+pnpm build
+EOF
+  exit 1
+fi
+
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/voila-auth-capture.XXXXXX")"
 cleanup() {
   rm -rf "${tmp_dir}"
 }
 trap cleanup EXIT
 
-mkdir -p "${tmp_dir}/pkg/dist"
+mkdir -p "${tmp_dir}/pkg/dist" "${tmp_dir}/session-store/dist"
 cp -R "${repo_root}/dist/src" "${tmp_dir}/pkg/dist/src"
+cp -R "${repo_root}/packages/voila-session-store/dist/src" "${tmp_dir}/session-store/dist/src"
+
+cat > "${tmp_dir}/pkg/package.json" <<'EOF'
+{
+  "name": "@firfi/voila-sdk",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "effect": "4.0.0-rc.110",
+    "tough-cookie": "^6.0.0"
+  }
+}
+EOF
+
+cat > "${tmp_dir}/session-store/package.json" <<'EOF'
+{
+  "name": "@firfi/voila-session-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js"
+    }
+  },
+  "dependencies": {
+    "@firfi/voila-sdk": "file:../pkg",
+    "effect": "4.0.0-rc.110"
+  }
+}
+EOF
 
 cat > "${tmp_dir}/package.json" <<'EOF'
 {
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0"
+  },
   "dependencies": {
-    "@effect/platform": "^0.94.2",
-    "@effect/platform-node": "^0.104.1",
-    "effect": "^3.19.15",
+    "@firfi/voila-sdk": "file:./pkg",
+    "@firfi/voila-session-store": "file:./session-store",
+    "effect": "4.0.0-rc.110",
     "playwright": "^1.61.1",
     "tough-cookie": "^6.0.0"
   }
@@ -69,17 +123,23 @@ EOF
 
 cat > "${tmp_dir}/capture.mjs" <<'EOF'
 import { randomUUID } from "node:crypto"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir } from "node:fs/promises"
 import process from "node:process"
 
-import { Either } from "effect"
+import { Effect, Result, Schema } from "effect"
 import { chromium } from "playwright"
 
+import {
+  makeStateFileLocks,
+  persistSession,
+  StateFileLocks,
+  StateFilePathSchema,
+  updateSessionFile
+} from "@firfi/voila-session-store"
 import {
   extractInitialStatePayload,
   makeAuthenticatedSdkSessionSnapshot,
   makeSessionSnapshot,
-  saveSdkSessionSnapshot,
   toughCookieJarPort
 } from "./pkg/dist/src/index.js"
 
@@ -192,13 +252,13 @@ const recordPayload = (payload, source) => {
 const parseInitialStatePayloadFromHtml = (html, source) => {
   const payload = extractInitialStatePayload(html)
 
-  if (Either.isRight(payload)) {
-    recordPayload(payload.right, source)
+  if (Result.isSuccess(payload)) {
+    recordPayload(payload.success, source)
     return
   }
 
   if (process.env.VOILA_AUTH_CAPTURE_DEBUG === "1") {
-    process.stdout.write(`Initial state extraction from ${source} failed: ${payload.left._tag}\n`)
+    process.stdout.write(`Initial state extraction from ${source} failed: ${payload.failure._tag}\n`)
   }
 }
 
@@ -267,11 +327,11 @@ const tryRefreshCapture = async (context, loginPage) => {
 
   if (isPageClosed(loginPage)) {
     return latestCapture === undefined
-      ? Either.left({ _tag: "BrowserLoginCaptureInvalid" })
-      : Either.right(undefined)
+      ? Result.fail({ _tag: "BrowserLoginCaptureInvalid" })
+      : Result.succeed(undefined)
   }
 
-  return Either.right(undefined)
+  return Result.succeed(undefined)
 }
 
 const waitForCapture = async (context, loginPage, deadlineMs) => {
@@ -281,12 +341,12 @@ const waitForCapture = async (context, loginPage, deadlineMs) => {
   while (Date.now() < deadline) {
     const refresh = await tryRefreshCapture(context, loginPage)
 
-    if (Either.isLeft(refresh)) {
+    if (Result.isFailure(refresh)) {
       return refresh
     }
 
     if (isPageClosed(loginPage) && latestCapture !== undefined) {
-      return Either.right(undefined)
+      return Result.succeed(undefined)
     }
 
     if (Date.now() - lastStatusAt > 10_000) {
@@ -309,7 +369,7 @@ const waitForCapture = async (context, loginPage, deadlineMs) => {
 
   await context.close().catch(() => undefined)
 
-  return Either.left({ _tag: "BrowserLoginTimedOut" })
+  return Result.fail({ _tag: "BrowserLoginTimedOut" })
 }
 
 const makeCookieHeader = (cookie) => {
@@ -341,32 +401,24 @@ const serializeBrowserCookies = (cookies) => {
 const makeSdkSession = () => {
   const cookieJar = serializeBrowserCookies(latestCapture.cookies)
 
-  if (Either.isLeft(cookieJar)) {
-    return Either.left(cookieJar.left)
+  if (Result.isFailure(cookieJar)) {
+    return cookieJar
   }
 
   const session = makeSessionSnapshot(
     latestCapture.metadata,
     { token: latestCapture.csrfToken ?? readonlyCsrfFallback },
-    cookieJar.right
+    cookieJar.success
   )
 
-  if (Either.isLeft(session)) {
+  if (Result.isFailure(session)) {
     return session
   }
 
   return makeAuthenticatedSdkSessionSnapshot(
-    session.right,
+    session.success,
     latestCapture.csrfToken === undefined ? "unknown-expiry" : "authenticated"
   )
-}
-
-const storage = {
-  read: async () => "",
-  write: async (contents) => {
-    await mkdir(sessionDirectory, { recursive: true })
-    await writeFile(sessionFile, contents, { mode: 0o600 })
-  }
 }
 
 await mkdir(sessionDirectory, { recursive: true })
@@ -389,9 +441,9 @@ await loginPage.goto(voilaBaseUrl, { waitUntil: "domcontentloaded" })
 
 const captureResult = await waitForCapture(context, loginPage, timeoutMs)
 
-if (Either.isLeft(captureResult)) {
+if (Result.isFailure(captureResult)) {
   await context.close().catch(() => undefined)
-  process.stderr.write(`Authentication capture failed: ${captureResult.left._tag}\n`)
+  process.stderr.write(`Authentication capture failed: ${captureResult.failure._tag}\n`)
   process.exit(1)
 }
 
@@ -399,17 +451,38 @@ process.stdout.write(`Saving observed Voila session from ${new Date(latestCaptur
 
 const sdkSession = makeSdkSession()
 
-if (Either.isLeft(sdkSession)) {
+if (Result.isFailure(sdkSession)) {
   await context.close().catch(() => undefined)
-  process.stderr.write(`Authentication capture failed: ${sdkSession.left._tag}\n`)
+  process.stderr.write(`Authentication capture failed: ${sdkSession.failure._tag}\n`)
   process.exit(1)
 }
 
-const saved = await saveSdkSessionSnapshot(storage, sdkSession.right)
+const stateFilePath = Schema.decodeUnknownResult(StateFilePathSchema)(sessionFile)
 
-if (Either.isLeft(saved)) {
+if (Result.isFailure(stateFilePath)) {
   await context.close().catch(() => undefined)
-  process.stderr.write(`Authentication session save failed: ${saved.left._tag}\n`)
+  process.stderr.write("Authentication session save failed: VoilaAuthSessionPathInvalid\n")
+  process.exit(1)
+}
+
+const stateFileLocks = await Effect.runPromise(makeStateFileLocks())
+const saved = await Effect.runPromise(
+  Effect.result(
+    updateSessionFile(stateFilePath.success, () => Effect.succeed(persistSession(sdkSession.success))).pipe(
+      Effect.provideService(StateFileLocks, stateFileLocks)
+    )
+  )
+)
+
+if (Result.isFailure(saved)) {
+  await context.close().catch(() => undefined)
+  process.stderr.write(`Authentication session save failed: ${saved.failure._tag}\n`)
+  process.exit(1)
+}
+
+if (saved.success._tag === "dropped-conflict") {
+  await context.close().catch(() => undefined)
+  process.stderr.write("Authentication session save failed: VoilaAuthSessionSuperseded\n")
   process.exit(1)
 }
 
@@ -428,7 +501,7 @@ EOF
 
 (
   cd "${tmp_dir}"
-  pnpm install --silent
+  npm_config_minimum_release_age=0 pnpm install --silent
   PLAYWRIGHT_BROWSERS_PATH="${browser_path}" pnpm exec playwright install chromium
   VOILA_SESSION_DIR="${session_dir}" \
     VOILA_AUTH_SESSION_PATH="${session_file}" \

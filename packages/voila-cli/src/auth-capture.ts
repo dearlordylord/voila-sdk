@@ -7,7 +7,7 @@ import {
   type SessionMetadata,
   VOILA_BASE_URL
 } from "@firfi/voila-sdk"
-import { Either } from "effect"
+import { Result } from "effect"
 import { randomUUID } from "node:crypto"
 import { type Page } from "playwright"
 
@@ -131,7 +131,7 @@ const readMaterialFromRuntime = async (page: Page): Promise<CapturedSessionMater
 const readMaterialFromHtml = (html: string): CapturedSessionMaterial | undefined => {
   const payload = extractInitialStatePayload(html)
 
-  return Either.isRight(payload) ? captureSessionMaterial(payload.right) : undefined
+  return Result.isSuccess(payload) ? captureSessionMaterial(payload.success) : undefined
 }
 
 const readMaterialFromFetchedHtml = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
@@ -174,16 +174,16 @@ const captureBrowserSession = async (
     return undefined
   }
 
-  const cookies = Either.mapLeft(
+  const cookies = Result.mapError(
     parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.context().cookies(VOILA_BASE_URL)),
     () => failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
   )
 
-  if (Either.isLeft(cookies)) {
+  if (Result.isFailure(cookies)) {
     return undefined
   }
 
-  return { cookies: cookies.right, material }
+  return { cookies: cookies.success, material }
 }
 
 export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver => {
@@ -243,8 +243,8 @@ export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver =
 
         const payload = extractInitialStatePayload(await response.text())
 
-        if (Either.isRight(payload)) {
-          recordPayload(payload.right)
+        if (Result.isSuccess(payload)) {
+          recordPayload(payload.success)
         }
       } catch {
         return

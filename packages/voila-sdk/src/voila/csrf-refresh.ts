@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import type { CookieJar } from "tough-cookie"
 
 import { parseUnknown } from "../domain/parse.js"
@@ -59,21 +59,21 @@ const isSuccessStatus = (status: number): boolean => status >= successStatusMin 
 const hasAuthenticatedCookie = (jar: CookieJar): boolean =>
   jar.getCookiesSync(homepageUrl.href).some((cookie) => cookie.key === authenticatedCookieName)
 
-const foldSetCookies = (jar: CookieJar, response: VoilaTransportResponse): Either.Either<void, CsrfRefreshError> => {
+const foldSetCookies = (jar: CookieJar, response: VoilaTransportResponse): Result.Result<void, CsrfRefreshError> => {
   for (const cookie of getHeaderValues(response.headers, setCookieHeader)) {
     try {
       jar.setCookieSync(cookie, homepageUrl.href)
     } catch {
-      return Either.left(persistenceFailure())
+      return Result.fail(persistenceFailure())
     }
   }
 
-  return Either.right(undefined)
+  return Result.succeed(undefined)
 }
 
-const readInitialStateSession = (html: string): Either.Either<InitialStateSession, CsrfRefreshError> =>
-  Either.flatMap(Either.mapLeft(extractInitialStatePayload(html), initialStateMalformed), (payload) =>
-    Either.mapLeft(parseUnknown(InitialStateSessionSchema, payload), initialStateMalformed)
+const readInitialStateSession = (html: string): Result.Result<InitialStateSession, CsrfRefreshError> =>
+  Result.flatMap(Result.mapError(extractInitialStatePayload(html), initialStateMalformed), (payload) =>
+    Result.mapError(parseUnknown(InitialStateSessionSchema, payload), initialStateMalformed)
   )
 
 /**
@@ -87,29 +87,29 @@ const makeRefreshedSession = (
   jar: CookieJar,
   session: SessionSnapshot,
   response: VoilaTransportResponse
-): Either.Either<SessionSnapshot, CsrfRefreshError> => {
+): Result.Result<SessionSnapshot, CsrfRefreshError> => {
   if (!isSuccessStatus(response.status)) {
-    return Either.left(non2xxResponse(response.status))
+    return Result.fail(non2xxResponse(response.status))
   }
 
-  return Either.flatMap(readInitialStateSession(response.body), (initialState) => {
+  return Result.flatMap(readInitialStateSession(response.body), (initialState) => {
     if (initialState.session.csrf.token.trim().length === emptyStringLength) {
-      return Either.left(initialStateMalformed())
+      return Result.fail(initialStateMalformed())
     }
 
     if (initialState.session.csrf.token === session.csrf.token) {
-      return Either.left(tokenUnchanged())
+      return Result.fail(tokenUnchanged())
     }
 
     const wasAuthenticated = hasAuthenticatedCookie(jar)
 
-    return Either.flatMap(foldSetCookies(jar, response), () => {
+    return Result.flatMap(foldSetCookies(jar, response), () => {
       if (wasAuthenticated && !hasAuthenticatedCookie(jar)) {
-        return Either.left(sessionDeauthenticated())
+        return Result.fail(sessionDeauthenticated())
       }
 
-      return Either.flatMap(Either.mapLeft(cookieJarPort.serialize(jar), persistenceFailure), (cookieJar) =>
-        Either.mapLeft(
+      return Result.flatMap(Result.mapError(cookieJarPort.serialize(jar), persistenceFailure), (cookieJar) =>
+        Result.mapError(
           makeSessionSnapshot(initialState.session.metadata, initialState.session.csrf, cookieJar),
           persistenceFailure
         )
@@ -129,8 +129,12 @@ export const refreshSessionCsrf = (
   cookieJarPort: CookieJarPort = toughCookieJarPort
 ): Effect.Effect<SessionSnapshot, CsrfRefreshError, VoilaTransport> =>
   Effect.gen(function* () {
-    const jar = yield* Either.mapLeft(cookieJarPort.deserialize(session.cookieJar), persistenceFailure)
-    const cookieHeader = yield* Either.mapLeft(readCookieHeader(jar, homepageUrl.href), persistenceFailure)
+    const jar = yield* Effect.fromResult(
+      Result.mapError(cookieJarPort.deserialize(session.cookieJar), persistenceFailure)
+    )
+    const cookieHeader = yield* Effect.fromResult(
+      Result.mapError(readCookieHeader(jar, homepageUrl.href), persistenceFailure)
+    )
     const transport = yield* VoilaTransport
     const response = yield* transport.request({
       headers: cookieHeader.length === emptyStringLength ? {} : { cookie: cookieHeader },
@@ -138,5 +142,5 @@ export const refreshSessionCsrf = (
       url: homepageUrl
     })
 
-    return yield* makeRefreshedSession(cookieJarPort, jar, session, response)
+    return yield* Effect.fromResult(makeRefreshedSession(cookieJarPort, jar, session, response))
   })

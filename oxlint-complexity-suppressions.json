@@ -88,7 +88,7 @@
     },
     {
       "complexity": 12,
-      "signature": "( response: RawDecoratedOrderResponse, orderId: string ): Either.Either<NormalizedOrderDetailsResult, OrderDetailsUnavailableError> =>"
+      "signature": "( response: RawDecoratedOrderResponse, orderId: string ): Result.Result<NormalizedOrderDetailsResult, OrderDetailsUnavailableError> =>"
     },
     {
       "complexity": 10,

@@ -1,6 +1,6 @@
 import { normalizeCliCartInput, type OperationExecutionResult, type VoilaOperationName } from "@firfi/voila-mcp"
 import { type StateFilePath, StateFilePathSchema } from "@firfi/voila-session-store"
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 
 import { makeDiscountsOperationInput, renderDiscountsText } from "./cli-discounts.js"
 import { defaultBrowserProfilePath, defaultSessionPath } from "./defaults.js"
@@ -124,11 +124,13 @@ const fail = (result: OperationExecutionResult, json: boolean): CliRunResult => 
 // onward: a relative `--session` would name different files depending on the
 // directory a command happened to run in.
 const getSessionPath = (parsed: ParsedOptions): CliRunResult | StateFilePath => {
-  const configured = Schema.decodeUnknownEither(StateFilePathSchema)(
+  const configured = Schema.decodeUnknownResult(StateFilePathSchema)(
     parsed.options.get("session") ?? defaultSessionPath()
   )
 
-  return Either.isLeft(configured) ? usage("--session must be an absolute path to a session file") : configured.right
+  return Result.isFailure(configured)
+    ? usage("--session must be an absolute path to a session file")
+    : configured.success
 }
 
 const getJsonFlag = (parsed: ParsedOptions): boolean => parsed.flags.has("json")

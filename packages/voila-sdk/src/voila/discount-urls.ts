@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import { type DiscountedProductsInput, DiscountedProductsInputSchema } from "../domain/schemas/index.js"
@@ -46,9 +46,9 @@ const buildDiscountedProductsUrl = (input: DiscountedProductsInput): URL => {
 
 export const makeDiscountedProductsRequest = (
   input: unknown
-): Either.Either<DiscountedProductsRequest, DiscountedProductsRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(DiscountedProductsInputSchema, input), discountedProductsInputInvalid),
+): Result.Result<DiscountedProductsRequest, DiscountedProductsRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(DiscountedProductsInputSchema, input), discountedProductsInputInvalid),
     makeDiscountedProductsRequestFromInput
   )
 

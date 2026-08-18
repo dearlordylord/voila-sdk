@@ -1,11 +1,13 @@
 import { NodeSink, NodeStream } from "@effect/platform-node"
 import { Effect, Layer, Queue, type Scope, Stream } from "effect"
+import { badArgument, type PlatformError } from "effect/PlatformError"
 import { PassThrough } from "node:stream"
 
 import type { VoilaOperations } from "../../src/mcp-server.js"
 import { voilaStdioServerLayer } from "../../src/mcp-server.js"
 
-const streamFailure = (): Error => new Error("Voila MCP stdio test stream failed")
+const streamFailure = (): PlatformError =>
+  badArgument({ description: "Voila MCP stdio test stream failed", method: "stdio", module: "voila-mcp-test" })
 
 export interface StdioClient {
   /** Sends one JSON-RPC message and reads the next line the server writes. */
@@ -26,20 +28,20 @@ export const stdioClient = (operations: Layer.Layer<VoilaOperations>): Effect.Ef
     const lines = yield* Queue.unbounded<string>()
 
     const server = voilaStdioServerLayer({
-      stdin: NodeStream.fromReadable(() => toServer, streamFailure),
-      stdout: NodeSink.fromWritable(() => fromServer, streamFailure)
+      stdin: NodeStream.fromReadable({ evaluate: () => toServer, onError: streamFailure }),
+      stdout: NodeSink.fromWritable({ evaluate: () => fromServer, onError: streamFailure })
     }).pipe(Layer.provide(operations))
 
-    yield* Effect.forkScoped(Layer.launch(server))
-    yield* Effect.forkScoped(
-      NodeStream.fromReadable<Error, Uint8Array>(() => fromServer, streamFailure).pipe(
+    yield* Layer.launch(server).pipe(Effect.forkScoped)
+    yield* NodeStream.fromReadable<Uint8Array, PlatformError>({ evaluate: () => fromServer, onError: streamFailure })
+      .pipe(
         Stream.decodeText(),
         Stream.splitLines,
         Stream.filter((line) => line.trim().length > 0),
         Stream.runForEach((line) => Queue.offer(lines, line)),
         Effect.orDie
       )
-    )
+      .pipe(Effect.forkScoped)
 
     const send = (message: unknown) =>
       Effect.sync(() => {
@@ -48,10 +50,7 @@ export const stdioClient = (operations: Layer.Layer<VoilaOperations>): Effect.Ef
 
     return {
       exchange: (message: unknown) =>
-        Effect.flatMap(
-          Effect.zipRight(send(message), Queue.take(lines)),
-          (line): Effect.Effect<unknown> => Effect.sync(() => JSON.parse(line))
-        ),
+        Effect.flatMap(send(message), () => Effect.map(Queue.take(lines), (line) => JSON.parse(line))),
       notify: send
     }
   })

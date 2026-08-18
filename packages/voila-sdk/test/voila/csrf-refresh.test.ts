@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { CookieJarPort, CookieJarPortError, SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -44,17 +44,17 @@ const makeSession = (cookies: ReadonlyArray<string>, token: string = staleToken)
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(staleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(staleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const homepageHtml = (session: unknown): string =>
@@ -74,22 +74,22 @@ const homepageResponse = (
 const cookiesOf = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected refreshed cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () => Either.left(cookieSerializationFailure)
+  serialize: () => Result.fail(cookieSerializationFailure)
 }
 
 const failingDeserializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
-  deserialize: () => Either.left(cookieImportFailure),
+  deserialize: () => Result.fail(cookieImportFailure),
   serialize: toughCookieJarPort.serialize
 }
 
@@ -103,13 +103,13 @@ describe("refreshSessionCsrf", () => {
     expect(request?.url.href).toBe(`${VOILA_BASE_URL}/`)
     expect(request?.headers.cookie).toContain("voila-session=before")
 
-    if (Either.isLeft(result)) {
-      throw new Error(`Expected refresh to succeed, got ${result.left._tag}`)
+    if (Result.isFailure(result)) {
+      throw new Error(`Expected refresh to succeed, got ${result.failure._tag}`)
     }
 
-    expect(result.right.csrf.token).toBe(freshToken)
-    expect(result.right.metadata.assetVersion).toBe("fresh-asset-version")
-    expect(result.right.metadata.pageViewId).toBe("fresh-page-view-id")
+    expect(result.success.csrf.token).toBe(freshToken)
+    expect(result.success.metadata.assetVersion).toBe("fresh-asset-version")
+    expect(result.success.metadata.pageViewId).toBe("fresh-page-view-id")
   })
 
   it("keeps the session cookies it started from and folds the homepage's on top", async () => {
@@ -118,11 +118,11 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse(undefined, { "set-cookie": "visitor=fresh; Path=/; Secure" }))
     )
 
-    if (Either.isLeft(result)) {
-      throw new Error(`Expected refresh to succeed, got ${result.left._tag}`)
+    if (Result.isFailure(result)) {
+      throw new Error(`Expected refresh to succeed, got ${result.failure._tag}`)
     }
 
-    const cookies = cookiesOf(result.right)
+    const cookies = cookiesOf(result.success)
 
     expect(cookies).toContain("voila-session=before")
     expect(cookies).toContain("userEmail=")
@@ -142,10 +142,10 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse(homepageHtml({ csrf: { token: staleToken }, metadata: freshMetadata })))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshTokenUnchanged")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshTokenUnchanged")
     }
   })
 
@@ -157,10 +157,10 @@ describe("refreshSessionCsrf", () => {
       )
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshSessionDeauthenticated")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshSessionDeauthenticated")
     }
   })
 
@@ -170,10 +170,10 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse(undefined, {}, 503))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshNon2xxResponse")
     }
   })
 
@@ -183,10 +183,10 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse(homepageHtml({ metadata: freshMetadata })))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshInitialStateMalformed")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshInitialStateMalformed")
     }
   })
 
@@ -196,10 +196,10 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse("<html><body>maintenance</body></html>"))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshInitialStateMalformed")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshInitialStateMalformed")
     }
   })
 
@@ -209,10 +209,10 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse(homepageHtml({ csrf: { token: " " }, metadata: freshMetadata })))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshInitialStateMalformed")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshInitialStateMalformed")
     }
   })
 
@@ -222,11 +222,11 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse(undefined, { "set-cookie": "bad cookie value" }))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshPersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain("bad cookie value")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshPersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain("bad cookie value")
     }
   })
 
@@ -236,11 +236,11 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse())
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshPersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain(cookieSerializationFailure.message)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshPersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(cookieSerializationFailure.message)
     }
   })
 
@@ -250,21 +250,21 @@ describe("refreshSessionCsrf", () => {
       respondingTransport(homepageResponse())
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CsrfRefreshPersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain(cookieImportFailure.message)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshPersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(cookieImportFailure.message)
     }
   })
 
   it("passes a transport failure through untouched", async () => {
     const result = await runWith(refreshSessionCsrf(makeSession([sessionCookie])), connectionFailureTransport())
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaConnectionFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
     }
   })
 })

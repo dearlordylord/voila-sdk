@@ -20,6 +20,7 @@ import type {
   SessionStoragePort,
   VoilaTransport
 } from "@firfi/voila-sdk"
+import { Schema } from "effect"
 import {
   addCartItems,
   applyCartDeltas,
@@ -134,12 +135,16 @@ describe("public package entrypoint", () => {
   })
 
   it("exports documented public schemas", () => {
-    expect(SessionSnapshotSchema.ast._tag).toBe("TypeLiteral")
-    expect(NormalizedCheckoutSummarySchema.ast._tag).toBe("TypeLiteral")
-    expect(NormalizedCompletedOrderItemsResultSchema.ast._tag).toBe("TypeLiteral")
-    expect(NormalizedCompletedOrdersResultSchema.ast._tag).toBe("TypeLiteral")
-    expect(NormalizedOrderDetailsResultSchema.ast._tag).toBe("TypeLiteral")
-    expect(CheckoutReadinessDecisionSchema.ast._tag).toBe("TypeLiteral")
+    const schemas = [
+      SessionSnapshotSchema,
+      NormalizedCheckoutSummarySchema,
+      NormalizedCompletedOrderItemsResultSchema,
+      NormalizedCompletedOrdersResultSchema,
+      NormalizedOrderDetailsResultSchema,
+      CheckoutReadinessDecisionSchema
+    ]
+
+    expect(schemas.every(Schema.isSchema)).toBe(true)
   })
 })
 

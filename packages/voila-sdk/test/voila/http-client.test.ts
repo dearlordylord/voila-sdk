@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 import { CookieJar, Store } from "tough-cookie"
 import { describe, expect, it } from "vitest"
 
@@ -21,7 +21,8 @@ import {
   deadlineExceededTransport,
   respondingTransport,
   responseReadFailureTransport,
-  runWith
+  runWith,
+  type StubTransport
 } from "../helpers/transport.js"
 
 const OkResponseSchema = Schema.Struct({ ok: Schema.Boolean })
@@ -53,29 +54,29 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const failingDeserializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
-  deserialize: () => Either.left(cookieImportFailure),
+  deserialize: () => Result.fail(cookieImportFailure),
   serialize: toughCookieJarPort.serialize
 }
 
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () => Either.left(cookieSerializationFailure)
+  serialize: () => Result.fail(cookieSerializationFailure)
 }
 
 /**
@@ -85,18 +86,18 @@ const failingSerializeCookieJarPort: CookieJarPort = {
  */
 const asyncStoreCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
-  deserialize: () => Either.right(new CookieJar(new Store())),
+  deserialize: () => Result.succeed(new CookieJar(new Store())),
   serialize: toughCookieJarPort.serialize
 }
 
 const getRestoredCookieString = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected cookie jar deserialization to succeed")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("requestVoilaJson", () => {
@@ -112,38 +113,38 @@ describe("requestVoilaJson", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
-      expect(result.right.value).toEqual({ ok: true })
+      expect(result.success.value).toEqual({ ok: true })
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers["client-route-id"]).toBe(sampleMetadata.clientRouteId)
       expect(request?.headers.cookie).toContain("voila-session=before")
-      expect(getRestoredCookieString(result.right.session)).toContain("fresh-cookie=after")
+      expect(getRestoredCookieString(result.success.session)).toContain("fresh-cookie=after")
     }
   })
 
   it("omits the cookie header when the session jar has no cookies", async () => {
     const emptyCookieJar = serializeCookieJar(toughCookieJarPort.create())
 
-    expect(Either.isRight(emptyCookieJar)).toBe(true)
+    expect(Result.isSuccess(emptyCookieJar)).toBe(true)
 
-    if (Either.isRight(emptyCookieJar)) {
-      const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, emptyCookieJar.right)
+    if (Result.isSuccess(emptyCookieJar)) {
+      const session = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, emptyCookieJar.success)
       const fake = respondingTransport(okResponse)
 
-      expect(Either.isRight(session)).toBe(true)
+      expect(Result.isSuccess(session)).toBe(true)
 
-      if (Either.isRight(session)) {
+      if (Result.isSuccess(session)) {
         const result = await runWith(
-          requestVoilaJson(OkResponseSchema, session.right, { method: "GET", url: voilaUrl }),
+          requestVoilaJson(OkResponseSchema, session.success, { method: "GET", url: voilaUrl }),
           fake
         )
         const [request] = fake.requests
 
-        expect(Either.isRight(result)).toBe(true)
+        expect(Result.isSuccess(result)).toBe(true)
         expect(request?.headers.cookie).toBeUndefined()
       }
     }
@@ -161,10 +162,10 @@ describe("requestVoilaJson", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(getRestoredCookieString(result.right.session)).toContain("single-cookie=after")
+    if (Result.isSuccess(result)) {
+      expect(getRestoredCookieString(result.success.session)).toContain("single-cookie=after")
     }
   })
 
@@ -176,7 +177,7 @@ describe("requestVoilaJson", () => {
     )
     const [request] = fake.requests
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(request?.body).toBe('{"query":"milk"}')
   })
 
@@ -188,7 +189,7 @@ describe("requestVoilaJson", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
   })
 
   it("returns a typed redacted error for malformed set-cookie header values", async () => {
@@ -197,11 +198,11 @@ describe("requestVoilaJson", () => {
       respondingTransport({ body: '{"ok":true}', headers: { "set-cookie": "bad cookie value" }, status: 200 })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSessionPersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain("bad cookie value")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSessionPersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain("bad cookie value")
     }
   })
 
@@ -212,11 +213,11 @@ describe("requestVoilaJson", () => {
       fake
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaMissingCsrfToken")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaMissingCsrfToken")
     }
   })
 
@@ -226,10 +227,10 @@ describe("requestVoilaJson", () => {
       respondingTransport(okResponse)
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaUnsupportedOrigin")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaUnsupportedOrigin")
     }
   })
 
@@ -244,11 +245,11 @@ describe("requestVoilaJson", () => {
       respondingTransport(okResponse)
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSessionPersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain("secret-cookie")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSessionPersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain("secret-cookie")
     }
   })
 
@@ -259,10 +260,10 @@ describe("requestVoilaJson", () => {
       transport
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSessionPersistenceFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSessionPersistenceFailure")
     }
 
     // the failure happens before the request: nothing is sent with no cookie
@@ -280,11 +281,11 @@ describe("requestVoilaJson", () => {
       respondingTransport(okResponse)
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSessionPersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain("csrf-token")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSessionPersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain("csrf-token")
     }
   })
 
@@ -293,22 +294,25 @@ describe("requestVoilaJson", () => {
       method: "GET",
       url: new URL("/api/orders/secret-order-id?token=secret-query", VOILA_BASE_URL)
     }
-    const cases = [
+    const cases: ReadonlyArray<{
+      readonly expected: "VoilaConnectionFailure" | "VoilaRequestDeadlineExceeded" | "VoilaResponseReadFailure"
+      readonly transport: StubTransport
+    }> = [
       { expected: "VoilaConnectionFailure", transport: connectionFailureTransport() },
       { expected: "VoilaRequestDeadlineExceeded", transport: deadlineExceededTransport() },
       { expected: "VoilaResponseReadFailure", transport: responseReadFailureTransport() }
-    ] as const
+    ]
 
     for (const { expected, transport } of cases) {
       const result = await runWith(requestVoilaJson(OkResponseSchema, makeSession(), request), transport)
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe(expected)
-        expect(JSON.stringify(result.left)).not.toContain("secret-order-id")
-        expect(JSON.stringify(result.left)).not.toContain("secret-query")
-        expect(JSON.stringify(result.left)).not.toContain(csrfToken)
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe(expected)
+        expect(JSON.stringify(result.failure)).not.toContain("secret-order-id")
+        expect(JSON.stringify(result.failure)).not.toContain("secret-query")
+        expect(JSON.stringify(result.failure)).not.toContain(csrfToken)
       }
     }
   })
@@ -319,10 +323,10 @@ describe("requestVoilaJson", () => {
       respondingTransport({ body: "{}", headers: {}, status })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaUnauthorizedSession")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaUnauthorizedSession")
     }
   })
 
@@ -339,22 +343,22 @@ describe("requestVoilaJson", () => {
       })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaRequestBlocked")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaRequestBlocked")
 
-      if (result.left._tag === "VoilaRequestBlocked") {
-        expect(result.left).toEqual({
+      if (result.failure._tag === "VoilaRequestBlocked") {
+        expect(result.failure).toEqual({
           _tag: "VoilaRequestBlocked",
           edgeRequestId: "safe-edge-request-id",
           message: "Voila request was blocked",
           method: "GET",
           status
         })
-        expect(JSON.stringify(result.left)).not.toContain("secret-cookie")
-        expect(JSON.stringify(result.left)).not.toContain("secret-order-id")
-        expect(JSON.stringify(result.left)).not.toContain("secret-query")
+        expect(JSON.stringify(result.failure)).not.toContain("secret-cookie")
+        expect(JSON.stringify(result.failure)).not.toContain("secret-order-id")
+        expect(JSON.stringify(result.failure)).not.toContain("secret-query")
       }
     }
   })
@@ -368,10 +372,10 @@ describe("requestVoilaJson", () => {
       respondingTransport({ body: "The request blocked a downstream operation", headers: {}, status })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe(expectedTag)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe(expectedTag)
     }
   })
 
@@ -385,10 +389,10 @@ describe("requestVoilaJson", () => {
       })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 
@@ -398,10 +402,10 @@ describe("requestVoilaJson", () => {
       respondingTransport({ body: "{}", headers: {}, status: 500 })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 
@@ -411,10 +415,10 @@ describe("requestVoilaJson", () => {
       respondingTransport({ body: "{", headers: {}, status: 200 })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaMalformedJson")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaMalformedJson")
     }
   })
 
@@ -424,11 +428,11 @@ describe("requestVoilaJson", () => {
       respondingTransport({ body: '{"ok":"yes"}', headers: {}, status: 200 })
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
-      expect(JSON.stringify(result.left)).not.toContain("yes")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
+      expect(JSON.stringify(result.failure)).not.toContain("yes")
     }
   })
 })

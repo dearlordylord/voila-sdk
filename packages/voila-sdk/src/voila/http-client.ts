@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect"
+import { Effect, Result, Schema } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import { type SessionSnapshot } from "../domain/schemas/index.js"
@@ -32,9 +32,9 @@ export interface VoilaJsonResult<A> {
 
 export const VoilaRequestBlockedSchema = Schema.Struct({
   _tag: Schema.Literal("VoilaRequestBlocked"),
-  edgeRequestId: Schema.optionalWith(Schema.String, { exact: true }),
+  edgeRequestId: Schema.optionalKey(Schema.String),
   message: Schema.String,
-  method: Schema.Literal("DELETE", "GET", "PATCH", "POST", "PUT"),
+  method: Schema.Literals(["DELETE", "GET", "PATCH", "POST", "PUT"]),
   status: Schema.Number
 })
 
@@ -143,21 +143,21 @@ const applySetCookieHeaders = (
   session: SessionSnapshot,
   response: VoilaTransportResponse,
   url: URL
-): Either.Either<SessionSnapshot, VoilaSdkError> =>
-  Either.flatMap(
-    Either.mapLeft(cookieJarPort.deserialize(session.cookieJar), sessionPersistenceFailure),
+): Result.Result<SessionSnapshot, VoilaSdkError> =>
+  Result.flatMap(
+    Result.mapError(cookieJarPort.deserialize(session.cookieJar), sessionPersistenceFailure),
     (cookieJar) => {
       for (const cookie of getHeaderValues(response.headers, setCookieHeader)) {
         try {
           cookieJar.setCookieSync(cookie, url.href)
         } catch {
-          return Either.left(setCookiePersistenceFailure())
+          return Result.fail(setCookiePersistenceFailure())
         }
       }
 
-      return Either.flatMap(
-        Either.mapLeft(cookieJarPort.serialize(cookieJar), sessionPersistenceFailure),
-        (cookieJarSnapshot) => Either.right({ ...session, cookieJar: cookieJarSnapshot })
+      return Result.flatMap(
+        Result.mapError(cookieJarPort.serialize(cookieJar), sessionPersistenceFailure),
+        (cookieJarSnapshot) => Result.succeed({ ...session, cookieJar: cookieJarSnapshot })
       )
     }
   )
@@ -165,25 +165,25 @@ const applySetCookieHeaders = (
 const classifyResponse = (
   response: VoilaTransportResponse,
   request: VoilaHttpRequest
-): Either.Either<VoilaTransportResponse, VoilaSdkError> => {
+): Result.Result<VoilaTransportResponse, VoilaSdkError> => {
   if (!isSuccessStatus(response.status) && isBlockedResponse(response)) {
-    return Either.left(requestBlocked(response, request))
+    return Result.fail(requestBlocked(response, request))
   }
 
   if (isUnauthorizedStatus(response.status)) {
-    return Either.left(unauthorizedSession(response.status))
+    return Result.fail(unauthorizedSession(response.status))
   }
 
-  return isSuccessStatus(response.status) ? Either.right(response) : Either.left(non2xxResponse(response.status))
+  return isSuccessStatus(response.status) ? Result.succeed(response) : Result.fail(non2xxResponse(response.status))
 }
 
-const decodeBody = <A, I>(
-  schema: Schema.Schema<A, I, never>,
+const decodeBody = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
   session: SessionSnapshot,
   body: string
-): Either.Either<VoilaJsonResult<A>, VoilaSdkError> =>
-  Either.flatMap(Either.mapLeft(parseJson(body), malformedJson), (payload) =>
-    Either.map(Either.mapLeft(parseUnknown(schema, payload), schemaDecodeFailure), (value) => ({ session, value }))
+): Result.Result<VoilaJsonResult<S["Type"]>, VoilaSdkError> =>
+  Result.flatMap(Result.mapError(parseJson(body), malformedJson), (payload) =>
+    Result.map(Result.mapError(parseUnknown(schema, payload), schemaDecodeFailure), (value) => ({ session, value }))
   )
 
 const makeTransportRequest = (
@@ -203,12 +203,12 @@ const makeTransportRequest = (
  * fails the operation rather than silently dropping the refresh onto a caller
  * that never gets it (ADR-0002).
  */
-export const requestVoilaJson = <A, I>(
-  schema: Schema.Schema<A, I, never>,
+export const requestVoilaJson = <S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
   session: SessionSnapshot,
   request: VoilaHttpRequest,
   cookieJarPort: CookieJarPort = toughCookieJarPort
-): Effect.Effect<VoilaJsonResult<A>, VoilaSdkError, VoilaTransport> =>
+): Effect.Effect<VoilaJsonResult<S["Type"]>, VoilaSdkError, VoilaTransport> =>
   Effect.gen(function* () {
     if (session.csrf.token.trim().length === emptyStringLength) {
       return yield* Effect.fail(missingCsrfToken())
@@ -218,12 +218,18 @@ export const requestVoilaJson = <A, I>(
       return yield* Effect.fail(unsupportedOrigin(request.url.origin))
     }
 
-    const cookieJar = yield* Either.mapLeft(cookieJarPort.deserialize(session.cookieJar), sessionPersistenceFailure)
+    const cookieJar = yield* Effect.fromResult(
+      Result.mapError(cookieJarPort.deserialize(session.cookieJar), sessionPersistenceFailure)
+    )
     const transport = yield* VoilaTransport
-    const cookieHeader = yield* Either.mapLeft(readCookieHeader(cookieJar, request.url.href), sessionPersistenceFailure)
+    const cookieHeader = yield* Effect.fromResult(
+      Result.mapError(readCookieHeader(cookieJar, request.url.href), sessionPersistenceFailure)
+    )
     const response = yield* transport.request(makeTransportRequest(request, session, cookieHeader))
-    const classified = yield* classifyResponse(response, request)
-    const updatedSession = yield* applySetCookieHeaders(cookieJarPort, session, classified, request.url)
+    const classified = yield* Effect.fromResult(classifyResponse(response, request))
+    const updatedSession = yield* Effect.fromResult(
+      applySetCookieHeaders(cookieJarPort, session, classified, request.url)
+    )
 
-    return yield* decodeBody(schema, updatedSession, classified.body)
+    return yield* Effect.fromResult(decodeBody(schema, updatedSession, classified.body))
   })

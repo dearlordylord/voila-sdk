@@ -1,0 +1,737 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "after": "{\"module\":\"Toolkit\",\"method\":\"voila_search_products.handle\",\"description\":\"Failed to decode tool call parameters for tool 'voila_search_products' from:\\n'{\\n  \\\"query\\\": \\\" milk \\\"\\n}'\",\"cause\":{\"_id\":\"ParseError\",\"message\":\"Expected a string with no leading or trailing whitespace\\n  at [\\\"query\\\"]\"},\"_tag\":\"MalformedOutput\",\"~@effect/ai/AiError\":\"~@effect/ai/AiError\"}",
+      "before": "{\"module\":\"Toolkit\",\"method\":\"voila_search_products.handle\",\"description\":\"Failed to decode tool call parameters for tool 'voila_search_products' from:\\n'{\\n  \\\"query\\\": \\\" milk \\\"\\n}'\",\"cause\":{\"_id\":\"ParseError\",\"message\":\"{ readonly pageSize?: finite & int & greaterThanOrEqualTo(1) & lessThanOrEqualTo(24); readonly pageToken?: trimmed & minLength(1); readonly query: trimmed & minLength(1) }\\n└─ [\\\"query\\\"]\\n   └─ trimmed & minLength(1)\\n      └─ From side refinement failure\\n         └─ trimmed\\n            └─ Predicate refinement failure\\n               └─ Expected a string with no leading or trailing whitespace, actual \\\" milk \\\"\"},\"_tag\":\"MalformedOutput\",\"~@effect/ai/AiError\":\"~@effect/ai/AiError\"}",
+      "path": "$.mcp.protocol.invalid.body.result.content[0].text",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "rationale": "The RC.110 protocol adapter changes only this parse or missing-argument error-rendering leaf; the surrounding wire sample remains an exact parity requirement."
+    },
+    {
+      "after": "Expected a string with no leading or trailing whitespace\n  at [\"query\"]",
+      "before": "{ readonly pageSize?: finite & int & greaterThanOrEqualTo(1) & lessThanOrEqualTo(24); readonly pageToken?: trimmed & minLength(1); readonly query: trimmed & minLength(1) }\n└─ [\"query\"]\n   └─ trimmed & minLength(1)\n      └─ From side refinement failure\n         └─ trimmed\n            └─ Predicate refinement failure\n               └─ Expected a string with no leading or trailing whitespace, actual \" milk \"",
+      "path": "$.mcp.protocol.invalid.body.result.structuredContent.cause.message",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "rationale": "The RC.110 protocol adapter changes only this parse or missing-argument error-rendering leaf; the surrounding wire sample remains an exact parity requirement."
+    },
+    {
+      "after": "Missing key\n  at [\"arguments\"]",
+      "before": "{ readonly _meta?: { readonly progressToken?: string | number | undefined } | undefined; readonly name: string; readonly arguments: { readonly [x: string]: unknown } }\n└─ [\"arguments\"]\n   └─ is missing",
+      "path": "$.mcp.protocol.missingArguments.body.error.data.defect",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "rationale": "The RC.110 protocol adapter changes only this parse or missing-argument error-rendering leaf; the surrounding wire sample remains an exact parity requirement."
+    },
+    {
+      "after": "{\"_tag\":\"Die\",\"defect\":\"Missing key\\n  at [\\\"arguments\\\"]\"}",
+      "before": "{\"_tag\":\"Die\",\"defect\":\"{ readonly _meta?: { readonly progressToken?: string | number | undefined } | undefined; readonly name: string; readonly arguments: { readonly [x: string]: unknown } }\\n└─ [\\\"arguments\\\"]\\n   └─ is missing\"}",
+      "path": "$.mcp.protocol.missingArguments.body.error.message",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "rationale": "The RC.110 protocol adapter changes only this parse or missing-argument error-rendering leaf; the surrounding wire sample remains an exact parity requirement."
+    }
+  ],
+  "groups": [
+    {
+      "count": 3,
+      "diffHash": "aa3824f76c9c5c94b570ab6512ee9175de36ad94fd82f5505ff0ebf92f2fb54e",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[0].bundleComposition",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1,
+      "diffHash": "66f035eaba587e1470ed91057a7fafb0ec850c4dab1335ff52a08931522969f3",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[0].bundleCompositionStatus",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 40,
+      "diffHash": "60f9a8f4e46870f28b9a5432d3769028ee1440f7fbea850296598699bbb13277",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[0].dependencyClosure",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 164,
+      "diffHash": "b9b553fe28c1b2a85b52b520253142ad629c21c6400de921ea4289c919ccf13f",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[0].files",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "cf4074f61f7e62d8484cce87d52e5f884d1e1e0668cbc20ef32ff362ef60e25e",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[1].bundleComposition",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1,
+      "diffHash": "444a49a90c804162a03b0c66b57c066e4da026db17a3b0abb435a1ec7031b665",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[1].bundleCompositionStatus",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 32,
+      "diffHash": "a8804e657e57feaa412bb2959adda442690318a3a855e23c02c44c2e853a575a",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[1].dependencyClosure",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 7,
+      "diffHash": "08b0a244429827cf39edc2b9111fe507b75966c8d12767411a28424ad585e335",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[1].files",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1,
+      "diffHash": "96fcbcd1f2f5a90576d29136c5e7cc0d1872dc295326273d43e2d14ea0857690",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[2].bundleCompositionStatus",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 11,
+      "diffHash": "37f358d16204b968c14a46e62e24ddf87714f93ec883def6e4ef91ab8717dbe5",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[2].dependencyClosure",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1065,
+      "diffHash": "20878cd3f71e1f16479f95d9a8effbb3bf37cec05f9a15032841cc7d482d2a07",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.artifacts[2].files",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 5,
+      "diffHash": "12a86d47cc8255b94e5c762610d7cbc0c4a166142931c4a78d540f5f65944c13",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[0].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "d953aaa195a0730c7b273c594fbdff27de2809e02928609d150eadbc3e1b0747",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[0].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "238e67b5a217452ea26f553cde032239990ad1164bfba54d7f1d7f9c0cc57526",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[0].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 7,
+      "diffHash": "8a59ce01b5273e541fa3270fa0cdc60046064a9be6daec3ef43b75c6c606cabe",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[1].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "3445af0d7826658a2a03a150e8049e3c052c4a6a181c0748fcea1c494a59f261",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[1].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "0774286a3ac490387c6ad8fecaa6facca16878d85385e85d64e3b1f2de215b28",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[1].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 25,
+      "diffHash": "c24d04aa6b048fdf449eccf4ade8cf858d051046d9825bdf4f1d63082ef77716",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[2].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "c5c14744d6454908a2c275d0a3465711ed5d5ff437f52a792d2f3982e593d7f6",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[2].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "80cb893f68e5ee15999c9971f9eaa021d4d7ddfcfc7637d3bfbf66ecbd808143",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[2].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 19,
+      "diffHash": "985b1fc32467187c05c040f01fa126fdfd5948aaebbd85c00291d8e8fd881893",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[3].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "9a35ea900ce9da3d111698abff442581871c2cf6124c1b09dedf47f42ff366ee",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[3].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "4710d6cc05b5b8a45c58552dbd89bf438c19b85ebbeff2ee391260707a1c759c",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[3].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 16,
+      "diffHash": "a1a3df43bdfbfeaa63ec2c5c6125fc59e5b800c608aecd3cb44d978f9b72836f",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[4].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "f9d4dc9fff43d4f73ff424ac4e3e241eb6f1cb780600881707ccc3202044d45c",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[4].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "974a1b86e1337c396c774377f5d681d5b3a73bf5775bb47d03bc0aa81b911d99",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[4].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 16,
+      "diffHash": "7f19949abb178c5b36320b064b577cfe50b255636dc7724eeb4a3193e4525734",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[5].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "c452eb3a75ad4e86958f3bc47b8800a425023a80ce1aa474ce8e247b0221b0cd",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[5].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "186167be3e3caaf930a6faa543736bbbf89adc13544792cfbb7d5d87e4c94832",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[5].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 35,
+      "diffHash": "c40c919f172de3f8e1637a3973b0a60c8626c7eae2308d0cd2f964b9d982d1f2",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[6].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "0529b53a29d7244cec655f1b5c629f4620e44f8e9fb37a8a4e2e0cffa60a35cb",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[6].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "c1fb7ce45a451468b0e1519b56280e83b371161962219a64dd6f7c03fd269953",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[6].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 12,
+      "diffHash": "8b6a91e04b9f11e7460115f886845aeaffc7ba904dea0f1180ff6c403db01894",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[7].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "fa53b78bc574416d6ed6426854e397d3d592c65e52b8a18bd0637e595e1041a3",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[7].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "c7a71d1fe076495c83927507e5e9219f26c3c9c43cb6fb16091a5223280babbd",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[7].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 6,
+      "diffHash": "b704c09bc0c65205b364cf90879e52d813956ef299c20eb9196d4d27c1b6ccaf",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[8].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "7e5d49bde18c9a69a9e046fcaf40a279fc7238b45ec5e04a057af1a368fb3112",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[8].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "7d124bec75359b9a3bddd8119556c094762145d579974d8f8e90ad3ddf11df5e",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[8].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 29,
+      "diffHash": "63ef3a46915430d44e2217d947a6f1630e7bf4ff3e7d0265f4223ee52bacd4e2",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[9].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "6d6d4e746df8f1b792c5334f4408ce1d8e9c32fbb4fd4c0a2fe81ac6665f40c7",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[9].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "e0a34bb26968d9394d40e9c99ef124597cf1a2721f7e2a60dedaaf782bed5852",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[9].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 5,
+      "diffHash": "8e1b63e31e23f38b982ce62f081e3c1be74c1e2d65fc1ef88a77b9a5ea08bfb3",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[10].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "011ccead16dbe4b3d209509ef21486f4ed8bdcc03f9a531796551e5f0fd0c83d",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[10].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "05bc3952b383b3562e8fcc185d36861c1082685cc62da201418e5799ba3da10c",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[10].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 14,
+      "diffHash": "389ab21a29d3b1154356360941b854d2bbba86de45f2ecb064f8ef5ed59557e8",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[11].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "e6c8abb79cdcbc5abc4bac8dd13062ef8a36a46a01c13a2f2a0b8f01c857cd1e",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[11].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "4400ba82fd014d1ec9d4be16409d2a8fb639d11c3ec14f16a37af10735d27cff",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[11].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 14,
+      "diffHash": "16ae090404868d31c3473ef2a4b1387d5f09f2174e76586028372dcbcee9233f",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[12].inputSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "5f674422a6823db3b775915075d0ad0c4ec2cdd0f78227adab69e643615e2910",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[12].failureSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 3,
+      "diffHash": "81722ed99445d180c94e216040a1bce01cc146c3c343aa3dcce15b47360425ff",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.mcp.tools[12].successSchema",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 120,
+      "diffHash": "c9aa96953ba77b24eceeab517ac5192a61c17531f960adbbf2b4bc19927d92e4",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.sdk.schemaCases.optionalUndefined",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 60,
+      "diffHash": "cf110ce19109ca6bb458668dae24fb97f1a075001ba6484b1f5ee729183bff1c",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.sdk.schemaCases.refinementFailure",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 6,
+      "diffHash": "ad46d1b7ee2718d1daa42fccc5344fa040d33d43acad6e66e7b173a63e6f3aad",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.sdk.parsed.discounts",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1,
+      "diffHash": "e732008f44c39187a2ef4056b628266c5a770322de20401792d2c9a7f55695c5",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.initialize.result.capabilities",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1,
+      "diffHash": "e2a151e30f3b7ebeaeecbdde3912f081e284ad54337d9c36d455a3a6a87e6031",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.output",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 1,
+      "diffHash": "35e66bedaedd4c64344fa5786f05a295b7115cf1520d592143943fc7cb760af3",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.cli.process",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "0d645efd183e9138afa87047f60d84106795b277104d1cf894eec0dac5e62686",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[0]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "d7c2ae15881233d83517068973ae6bd1e15e1416acfaca755fc3880eaf7e5c2a",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[1]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "bff85c826cde07947f22f74699730688e0814646705f504a485603816efe9427",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[2]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "c047ee03324739239c52925023abab15f28c99ed1d44b10be9a98323f0a5661a",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[3]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "bd8189309c7714784334ec8ed06cc27b3411d12ea1b128bf5fb7de831613e8b4",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[4]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "e01bc31a4a73f21a7596b94e65967cc201e6bfe231a593209ba5e2ca4766b4e9",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[5]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "bafda2cf8be40e1b7c4b77851deb0c1e684d58fbd00d88b7d8e6858a566f4aac",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[6]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "a5d8791a613a22380a94b0d47315bf253266a9977af7b9c4f3d3b1335749dfb7",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[7]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "f9ed2451bb66437502763db0cd465b6296b179719318d5042501aabb8c4d6711",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[8]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "af1687e7f251d8f0e43364f8fa0e97492caafc5f001db5f740b85862d741d112",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[9]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "c5f7743100834eb5d8e701092e314660e7d5110d1f7889cd31f27597d45b24f3",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[10]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "bf8e93ee91e442ed9063d07fd05a1d7f6bc4dea2b930d7c72d3003caffd70fe4",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[11]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "count": 2,
+      "diffHash": "f5cc71b47686f71b1ce6ca5d470c508625e409bb959e14ee913845b6da79bbe1",
+      "evidence": [
+        "docs/migrations/effect-4/migration-ledger.md#lookup-decisions",
+        "docs/migrations/effect-4/reference-provenance.md#effect-4-implementation-authority"
+      ],
+      "prefix": "$.stdio.listed.result.tools[12]",
+      "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
+    }
+  ]
+}

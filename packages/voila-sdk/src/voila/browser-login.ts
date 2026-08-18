@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -75,11 +75,11 @@ const browserLoginNotAuthenticated = (): BrowserLoginError => ({
 const normalizeBrowserLoginPortError = (error: unknown): BrowserLoginError => {
   const parsedError = parseUnknown(BrowserLoginPortErrorSchema, error)
 
-  if (Either.isLeft(parsedError)) {
+  if (Result.isFailure(parsedError)) {
     return browserLoginAdapterFailure()
   }
 
-  switch (parsedError.right._tag) {
+  switch (parsedError.success._tag) {
     case "BrowserLoginAdapterFailure":
       return browserLoginAdapterFailure()
     case "BrowserLoginTimedOut":
@@ -89,38 +89,38 @@ const normalizeBrowserLoginPortError = (error: unknown): BrowserLoginError => {
   }
 }
 
-const makeBrowserLoginRequest = (options?: unknown): Either.Either<BrowserLoginRequest, BrowserLoginError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(BrowserLoginOptionsSchema, options ?? {}), browserLoginOptionsInvalid),
+const makeBrowserLoginRequest = (options?: unknown): Result.Result<BrowserLoginRequest, BrowserLoginError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(BrowserLoginOptionsSchema, options ?? {}), browserLoginOptionsInvalid),
     (parsedOptions) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(BrowserLoginRequestSchema, { ...parsedOptions, loginUrl }),
         browserLoginOptionsInvalid
       )
   )
 
-const makeBrowserLoginResult = (captureResult: unknown): Either.Either<BrowserLoginResult, BrowserLoginError> => {
-  if (captureResult === undefined || captureResult === null || !Either.isEither(captureResult)) {
-    return Either.left(browserLoginAdapterFailure())
+const makeBrowserLoginResult = (captureResult: unknown): Result.Result<BrowserLoginResult, BrowserLoginError> => {
+  if (captureResult === undefined || captureResult === null || !Result.isResult(captureResult)) {
+    return Result.fail(browserLoginAdapterFailure())
   }
 
-  if (Either.isLeft(captureResult)) {
-    return Either.left(normalizeBrowserLoginPortError(captureResult.left))
+  if (Result.isFailure(captureResult)) {
+    return Result.fail(normalizeBrowserLoginPortError(captureResult.failure))
   }
 
-  return Either.flatMap(
-    Either.mapLeft(parseUnknown(BrowserLoginCaptureSchema, captureResult.right), browserLoginCaptureInvalid),
+  return Result.flatMap(
+    Result.mapError(parseUnknown(BrowserLoginCaptureSchema, captureResult.success), browserLoginCaptureInvalid),
     (capture) => {
       if (capture.session.cookieJar.cookies.length === emptyCookieCount) {
-        return Either.left(browserLoginMissingCookies())
+        return Result.fail(browserLoginMissingCookies())
       }
 
       if (!capture.authenticated) {
-        return Either.left(browserLoginNotAuthenticated())
+        return Result.fail(browserLoginNotAuthenticated())
       }
 
-      return Either.map(
-        Either.mapLeft(
+      return Result.map(
+        Result.mapError(
           makeAuthenticatedSdkSessionSnapshot(capture.session, "authenticated", capture.account),
           browserLoginCaptureInvalid
         ),
@@ -134,9 +134,9 @@ export const loginWithBrowser = (
   browser: BrowserLoginPort,
   options?: unknown
 ): Effect.Effect<BrowserLoginResult, BrowserLoginError> =>
-  Effect.flatMap(makeBrowserLoginRequest(options), (request) =>
+  Effect.flatMap(Effect.fromResult(makeBrowserLoginRequest(options)), (request) =>
     Effect.flatMap(
       Effect.tryPromise({ catch: browserLoginAdapterFailure, try: () => browser.captureSession(request) }),
-      makeBrowserLoginResult
+      (captureResult) => Effect.fromResult(makeBrowserLoginResult(captureResult))
     )
   )

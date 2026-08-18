@@ -7,7 +7,7 @@
  * names neither the contents nor the path, and callers depend on session
  * vocabulary rather than on the store this package happens to be built on.
  */
-import type { ConflictExhausted, ContentsInvalidError, ReadError, WriteError } from "atomic-file-store/effect"
+import type { ConflictExhausted, ContentsInvalidError, ReadError, WriteError } from "./atomic-file-store-errors.js"
 import { Effect } from "effect"
 
 export type SessionFileReadFailure = { readonly _tag: "SessionFileReadFailure"; readonly message: string }
@@ -34,9 +34,19 @@ export type SessionFileError =
  */
 type StoreFailure = ReadError | WriteError | ContentsInvalidError | ConflictExhausted | SessionFileGuestOverwriteRefused
 
+type SessionFileErrorByTag = {
+  readonly [Tag in StoreFailure["_tag"]]: Tag extends "ConflictExhausted" | "WriteError"
+    ? SessionFileWriteFailure
+    : Tag extends "ContentsInvalidError"
+      ? SessionFileContentsInvalid
+      : Tag extends "ReadError"
+        ? SessionFileReadFailure
+        : SessionFileGuestOverwriteRefused
+}
+
 // keyed by every tag in `StoreFailure`, so a tag this package stops handling
 // fails at this declaration rather than at the lookup below
-const sessionFileErrorByTag = {
+const sessionFileErrorByTag: SessionFileErrorByTag = {
   // unreachable while every session write drops on conflict; mapped so adding
   // a retrying caller cannot turn contention into an unhandled error shape
   ConflictExhausted: { _tag: "SessionFileWriteFailure", message: "Session snapshot could not be written" },
@@ -52,7 +62,7 @@ const sessionFileErrorByTag = {
     message: "A guest session snapshot must not replace an authenticated one"
   },
   WriteError: { _tag: "SessionFileWriteFailure", message: "Session snapshot could not be written" }
-} as const satisfies Record<StoreFailure["_tag"], SessionFileError>
+}
 
 export const guestOverwriteRefused: SessionFileGuestOverwriteRefused =
   sessionFileErrorByTag.SessionFileGuestOverwriteRefused

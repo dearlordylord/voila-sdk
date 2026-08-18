@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import { CheckoutSummaryInputSchema } from "../domain/schemas/index.js"
@@ -20,9 +20,9 @@ const checkoutSummaryInputInvalid = (): CheckoutSummaryRequestError => ({
 
 export const makeCheckoutSummaryRequest = (
   input: unknown = {}
-): Either.Either<CheckoutSummaryRequest, CheckoutSummaryRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(CheckoutSummaryInputSchema, input), checkoutSummaryInputInvalid),
+): Result.Result<CheckoutSummaryRequest, CheckoutSummaryRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(CheckoutSummaryInputSchema, input), checkoutSummaryInputInvalid),
     (summaryInput) => {
       const url = new URL(CHECKOUT_SUMMARY_PATH, VOILA_BASE_URL)
 

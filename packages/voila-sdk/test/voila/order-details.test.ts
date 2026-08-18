@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -104,17 +104,17 @@ const makeSession = (): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token: csrfToken }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const response = (body: unknown): VoilaTransportResponse => ({
@@ -134,15 +134,15 @@ describe("order details", () => {
   it("normalizes decorated order item groups", () => {
     const parsed = parseUnknown(RawDecoratedOrderResponseSchema, decoratedOrderResponse)
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const result = normalizeOrderDetailsResponse(parsed.right, "sanitized-order-id-1")
+    if (Result.isSuccess(parsed)) {
+      const result = normalizeOrderDetailsResponse(parsed.success, "sanitized-order-id-1")
 
-      expect(Either.isRight(result)).toBe(true)
+      expect(Result.isSuccess(result)).toBe(true)
 
-      if (Either.isRight(result)) {
-        expect(result.right.items).toEqual(
+      if (Result.isSuccess(result)) {
+        expect(result.success.items).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               groupKind: "received",
@@ -169,14 +169,14 @@ describe("order details", () => {
     const fake = makeTransport()
     const result = await runWith(getOrderDetails(makeSession(), { orderId: "sanitized-order-id-1" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
       expect(request?.url.pathname).toBe("/api/order/v6/orders/sanitized-order-id-1/decorated")
-      expect(result.right.value).toMatchObject({
+      expect(result.success.value).toMatchObject({
         orderId: "sanitized-order-id-1",
         orderReference: "reference-1",
         status: "DELIVERED"
@@ -196,10 +196,10 @@ describe("order details", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.value).toMatchObject({
+    if (Result.isSuccess(result)) {
+      expect(result.success.value).toMatchObject({
         itemCount: 1,
         items: [
           {

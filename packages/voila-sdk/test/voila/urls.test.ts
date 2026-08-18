@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { makeCartQuantityDelta } from "../../src/domain/cart.js"
@@ -26,10 +26,10 @@ describe("Voila URLs", () => {
   it("builds product search URLs with web search parameters", () => {
     const request = makeSearchRequest({ pageSize: 24, query: "milk" })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      const searchRequest = expectSearchRequest(request.right)
+    if (Result.isSuccess(request)) {
+      const searchRequest = expectSearchRequest(request.success)
 
       expect(searchRequest.url.origin).toBe("https://voila.ca")
       expect(searchRequest.url.pathname).toBe("/api/webproductpagews/v6/product-pages/search")
@@ -43,18 +43,18 @@ describe("Voila URLs", () => {
   it("builds apply quantity requests", () => {
     const delta = makeCartQuantityDelta(productUuid, 1)
 
-    expect(Either.isRight(delta)).toBe(true)
+    expect(Result.isSuccess(delta)).toBe(true)
 
-    if (Either.isRight(delta)) {
-      const request = makeApplyQuantityRequest([delta.right])
+    if (Result.isSuccess(delta)) {
+      const request = makeApplyQuantityRequest([delta.success])
 
-      expect(Either.isRight(request)).toBe(true)
+      expect(Result.isSuccess(request)).toBe(true)
 
-      if (Either.isRight(request)) {
-        expect(request.right.method).toBe("POST")
-        expect(request.right.url.pathname).toBe("/api/cart/v1/carts/active/apply-quantity")
-        expect(request.right.url.searchParams.get("cartProductSorting")).toBe("CATEGORIES")
-        expect(request.right.body).toBe(`[{"productId":"${productUuid}","quantity":1}]`)
+      if (Result.isSuccess(request)) {
+        expect(request.success.method).toBe("POST")
+        expect(request.success.url.pathname).toBe("/api/cart/v1/carts/active/apply-quantity")
+        expect(request.success.url.searchParams.get("cartProductSorting")).toBe("CATEGORIES")
+        expect(request.success.body).toBe(`[{"productId":"${productUuid}","quantity":1}]`)
       }
     }
   })
@@ -68,10 +68,10 @@ describe("Voila URLs", () => {
     ]) {
       const request = makeApplyQuantityRequest(input)
 
-      expect(Either.isLeft(request)).toBe(true)
+      expect(Result.isFailure(request)).toBe(true)
 
-      if (Either.isLeft(request)) {
-        expect(request.left._tag).toBe("CartQuantityInputInvalid")
+      if (Result.isFailure(request)) {
+        expect(request.failure._tag).toBe("CartQuantityInputInvalid")
       }
     }
   })
@@ -91,23 +91,23 @@ describe("Voila URLs", () => {
       fetchAllocatedPaymentChecks: true
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("GET")
-      expect(request.right.url.pathname).toBe("/api/cart/v1/carts/active/checkout-summary")
-      expect(request.right.url.searchParams.get("fetchAllocatedPaymentChecks")).toBe("true")
-      expect(request.right.url.searchParams.get("paymentCheckId")).toBe("payment-check-id")
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("GET")
+      expect(request.success.url.pathname).toBe("/api/cart/v1/carts/active/checkout-summary")
+      expect(request.success.url.searchParams.get("fetchAllocatedPaymentChecks")).toBe("true")
+      expect(request.success.url.searchParams.get("paymentCheckId")).toBe("payment-check-id")
     }
   })
 
   it("builds delivery destination list requests with a home-delivery default", () => {
     const request = makeDeliveryDestinationsRequest()
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      const deliveryRequest = expectDeliveryDestinationsRequest(request.right)
+    if (Result.isSuccess(request)) {
+      const deliveryRequest = expectDeliveryDestinationsRequest(request.success)
 
       expect(deliveryRequest.method).toBe("GET")
       expect(deliveryRequest.url.origin).toBe("https://voila.ca")
@@ -119,31 +119,31 @@ describe("Voila URLs", () => {
   it("builds delivery destination list requests for collection destinations", () => {
     const request = makeDeliveryDestinationsRequest({ deliveryMethod: "CUSTOMER_COLLECTION" })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.url.searchParams.get("deliveryMethod")).toBe("CUSTOMER_COLLECTION")
+    if (Result.isSuccess(request)) {
+      expect(request.success.url.searchParams.get("deliveryMethod")).toBe("CUSTOMER_COLLECTION")
     }
   })
 
   it("rejects invalid delivery destination list inputs", () => {
     const request = makeDeliveryDestinationsRequest({ deliveryMethod: "PICKUP" })
 
-    expect(Either.isLeft(request)).toBe(true)
+    expect(Result.isFailure(request)).toBe(true)
 
-    if (Either.isLeft(request)) {
-      expect(request.left._tag).toBe("DeliveryDestinationsInputInvalid")
+    if (Result.isFailure(request)) {
+      expect(request.failure._tag).toBe("DeliveryDestinationsInputInvalid")
     }
   })
 
   it("builds single delivery destination requests", () => {
     const request = makeDeliveryDestinationRequest({ deliveryDestinationId: "destination/id with spaces" })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("GET")
-      expect(request.right.url.pathname).toBe(
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("GET")
+      expect(request.success.url.pathname).toBe(
         "/api/ecomdeliverydestinations/v4/delivery-addresses/destination%2Fid%20with%20spaces"
       )
     }
@@ -152,12 +152,12 @@ describe("Voila URLs", () => {
   it("builds active shopping context requests with optional region scope", () => {
     const request = makeActiveShoppingContextRequest({ regionId: "region-id" })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("GET")
-      expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/active")
-      expect(request.right.url.searchParams.get("regionId")).toBe("region-id")
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("GET")
+      expect(request.success.url.pathname).toBe("/api/customersessions/v2/sessions/active")
+      expect(request.success.url.searchParams.get("regionId")).toBe("region-id")
     }
   })
 
@@ -167,13 +167,13 @@ describe("Voila URLs", () => {
       regionId: "region-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("GET")
-      expect(request.right.url.pathname).toBe("/api/ecomdeliverydestinations/v1/propositions")
-      expect(request.right.url.searchParams.get("deliveryDestinationId")).toBe("delivery-destination-id")
-      expect(request.right.url.searchParams.get("regionId")).toBe("region-id")
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("GET")
+      expect(request.success.url.pathname).toBe("/api/ecomdeliverydestinations/v1/propositions")
+      expect(request.success.url.searchParams.get("deliveryDestinationId")).toBe("delivery-destination-id")
+      expect(request.success.url.searchParams.get("regionId")).toBe("region-id")
     }
   })
 
@@ -183,12 +183,12 @@ describe("Voila URLs", () => {
       destinationRegionId: "region-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("POST")
-      expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/proposition")
-      expect(request.right.body).toBe(
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("POST")
+      expect(request.success.url.pathname).toBe("/api/customersessions/v2/sessions/proposition")
+      expect(request.success.body).toBe(
         JSON.stringify({ deliveryDestinationId: "delivery-destination-id", destinationRegionId: "region-id" })
       )
     }
@@ -202,13 +202,13 @@ describe("Voila URLs", () => {
       visitorId: "visitor-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("PUT")
-      expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/active")
-      expect(request.right.headers).toEqual({ "customer-id": "customer-id", "visitor-id": "visitor-id" })
-      expect(request.right.body).toBe(
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("PUT")
+      expect(request.success.url.pathname).toBe("/api/customersessions/v2/sessions/active")
+      expect(request.success.headers).toEqual({ "customer-id": "customer-id", "visitor-id": "visitor-id" })
+      expect(request.success.body).toBe(
         JSON.stringify({ deliveryDestinationId: "delivery-destination-id", regionId: "region-id" })
       )
     }
@@ -220,13 +220,13 @@ describe("Voila URLs", () => {
       originCartPropositionId: "origin-cart-proposition-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("POST")
-      expect(request.right.url.pathname).toBe("/api/customersessions/v2/sessions/active")
-      expect(request.right.headers).toBeUndefined()
-      expect(request.right.body).toBe(
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("POST")
+      expect(request.success.url.pathname).toBe("/api/customersessions/v2/sessions/active")
+      expect(request.success.headers).toBeUndefined()
+      expect(request.success.body).toBe(
         JSON.stringify({
           destinationCartPropositionId: "destination-cart-proposition-id",
           originCartPropositionId: "origin-cart-proposition-id"
@@ -245,12 +245,12 @@ describe("Voila URLs", () => {
       viewingLocation: "SLOT_BOOKING"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("POST")
-      expect(request.right.url.pathname).toBe("/api/ecomslots/v2/slots")
-      expect(JSON.parse(request.right.body)).toEqual({
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("POST")
+      expect(request.success.url.pathname).toBe("/api/ecomslots/v2/slots")
+      expect(JSON.parse(request.success.body)).toEqual({
         analyticsData: { platform: "WEB", sessionId: "analytics-session-id", viewingLocation: "SLOT_BOOKING" },
         deliveryDestinationId: "delivery-destination-id",
         displayConfiguration: "DELIVERY_METHOD",
@@ -268,10 +268,10 @@ describe("Voila URLs", () => {
       shippingGroupType: "HOME_DELIVERY"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(JSON.parse(request.right.body)).toEqual({
+    if (Result.isSuccess(request)) {
+      expect(JSON.parse(request.success.body)).toEqual({
         deliveryDestinationId: "delivery-destination-id",
         displayConfiguration: "DELIVERY_METHOD",
         regionId: "region-id",
@@ -289,10 +289,10 @@ describe("Voila URLs", () => {
       shippingGroupType: "HOME_DELIVERY"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(JSON.parse(request.right.body)).toEqual({
+    if (Result.isSuccess(request)) {
+      expect(JSON.parse(request.success.body)).toEqual({
         analyticsData: { pageViewId: "page-view-id", platform: "WEB", sessionId: "analytics-session-id" },
         deliveryDestinationId: "delivery-destination-id",
         displayConfiguration: "DELIVERY_METHOD",
@@ -312,12 +312,12 @@ describe("Voila URLs", () => {
       slotId: "slot-id"
     })
 
-    expect(Either.isRight(request)).toBe(true)
+    expect(Result.isSuccess(request)).toBe(true)
 
-    if (Either.isRight(request)) {
-      expect(request.right.method).toBe("POST")
-      expect(request.right.url.pathname).toBe("/api/ecomslots/v1/slots/reservation")
-      expect(JSON.parse(request.right.body)).toEqual({
+    if (Result.isSuccess(request)) {
+      expect(request.success.method).toBe("POST")
+      expect(request.success.url.pathname).toBe("/api/ecomslots/v1/slots/reservation")
+      expect(JSON.parse(request.success.body)).toEqual({
         deliveryDestinationId: "delivery-destination-id",
         externalAddress: { id: "external-address-id" },
         regionId: "region-id",
@@ -333,10 +333,10 @@ describe("Voila URLs", () => {
       slotId: "slot-id"
     })
 
-    expect(Either.isLeft(request)).toBe(true)
+    expect(Result.isFailure(request)).toBe(true)
 
-    if (Either.isLeft(request)) {
-      expect(request.left._tag).toBe("SlotReservationInputInvalid")
+    if (Result.isFailure(request)) {
+      expect(request.failure._tag).toBe("SlotReservationInputInvalid")
     }
   })
 })

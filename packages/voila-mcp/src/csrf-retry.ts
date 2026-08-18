@@ -17,7 +17,7 @@ export const withCsrfRefreshRetry = (
   session: SessionSnapshot,
   attempt: (session: SessionSnapshot) => Effect.Effect<VoilaJsonResult<unknown>, unknown, VoilaTransport>
 ): Effect.Effect<VoilaJsonResult<unknown>, unknown, VoilaTransport> =>
-  Effect.catchAll(attempt(session), (error) =>
+  Effect.catch(attempt(session), (error) =>
     isUnauthorizedSessionError(error)
       ? Effect.matchEffect(refreshSessionCsrf(session), { onFailure: () => Effect.fail(error), onSuccess: attempt })
       : Effect.fail(error)

@@ -1,4 +1,4 @@
-import { Effect, type Either, Layer } from "effect"
+import { Effect, type Result, Layer } from "effect"
 
 import {
   connectionFailure,
@@ -74,4 +74,4 @@ export const responseReadFailureTransport = (): StubTransport => failingTranspor
 export const runWith = <A, E>(
   effect: Effect.Effect<A, E, VoilaTransport>,
   transport: StubTransport
-): Promise<Either.Either<A, E>> => Effect.runPromise(Effect.either(Effect.provide(effect, transport.layer)))
+): Promise<Result.Result<A, E>> => Effect.runPromise(Effect.result(Effect.provide(effect, transport.layer)))

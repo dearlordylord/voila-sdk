@@ -5,7 +5,7 @@ import {
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import { StateFilePathSchema } from "@firfi/voila-session-store"
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
 
@@ -252,10 +252,10 @@ describe("Voila MCP operations", () => {
       })
     )
 
-    expect(Either.isRight(env)).toBe(true)
+    expect(Result.isSuccess(env)).toBe(true)
 
-    if (Either.isRight(env)) {
-      const result = await runOperation("voila_check_session_health", {}, env.right)
+    if (Result.isSuccess(env)) {
+      const result = await runOperation("voila_check_session_health", {}, env.success)
 
       expect(result.ok).toBe(true)
       // the first request is the homepage bootstrap of the in-memory guest session

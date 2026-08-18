@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type {
@@ -81,21 +81,21 @@ const makeHomepageResponse = (
 const failingSerializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
   deserialize: toughCookieJarPort.deserialize,
-  serialize: () => Either.left({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
+  serialize: () => Result.fail({ _tag: "CookieJarSerializationFailed", message: secretFailurePayload })
 }
 
-const getSessionCookies = (result: Either.Either<GuestBootstrapResult, GuestBootstrapError>): string => {
-  if (Either.isLeft(result)) {
+const getSessionCookies = (result: Result.Result<GuestBootstrapResult, GuestBootstrapError>): string => {
+  if (Result.isFailure(result)) {
     throw new Error("Expected bootstrap to succeed")
   }
 
-  const jar = toughCookieJarPort.deserialize(result.right.session.cookieJar)
+  const jar = toughCookieJarPort.deserialize(result.success.session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected result cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("bootstrapGuestSession", () => {
@@ -104,18 +104,18 @@ describe("bootstrapGuestSession", () => {
     const result = await runWith(bootstrapGuestSession(), fake)
     const [request] = fake.requests
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
     expect(request?.method).toBe("GET")
     expect(request?.url.href).toBe(`${VOILA_BASE_URL}/`)
 
-    if (Either.isRight(result)) {
-      expect(result.right.csrf.token).toBe("sanitized-csrf-token")
-      expect(result.right.metadata.pageViewId).toBe("sanitized-page-view-id")
-      expect(result.right.regionId).toBe("sanitized-region-id")
-      expect(result.right.categories[0]?.categoryId).toBe("sanitized-category-produce")
-      expect(result.right.categories[0]?.children[0]?.fullUrlPath).toBe("/aisles/fruits-vegetables/fresh-fruit")
-      expect(result.right.cart.basketId).toBe("sanitized-basket-id")
-      expect(result.right.cart.itemCount).toBe(0)
+    if (Result.isSuccess(result)) {
+      expect(result.success.csrf.token).toBe("sanitized-csrf-token")
+      expect(result.success.metadata.pageViewId).toBe("sanitized-page-view-id")
+      expect(result.success.regionId).toBe("sanitized-region-id")
+      expect(result.success.categories[0]?.categoryId).toBe("sanitized-category-produce")
+      expect(result.success.categories[0]?.children[0]?.fullUrlPath).toBe("/aisles/fruits-vegetables/fresh-fruit")
+      expect(result.success.cart.basketId).toBe("sanitized-basket-id")
+      expect(result.success.cart.itemCount).toBe(0)
       expect(getSessionCookies(result)).toContain("guest-session=fixture")
     }
   })
@@ -126,11 +126,11 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(htmlFromInitialState(minimalInitialState)))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.cart.itemCount).toBe(0)
-      expect(result.right.cart.regionId).toBe("fixture-region-id")
+    if (Result.isSuccess(result)) {
+      expect(result.success.cart.itemCount).toBe(0)
+      expect(result.success.cart.regionId).toBe("fixture-region-id")
     }
   })
 
@@ -140,20 +140,20 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(htmlFromInitialState(initialStateWithItems)))
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.cart.itemCount).toBe(5)
+    if (Result.isSuccess(result)) {
+      expect(result.success.cart.itemCount).toBe(5)
     }
   })
 
   it("returns a typed error when homepage cookies are missing", async () => {
     const result = await runWith(bootstrapGuestSession(), respondingTransport(makeHomepageResponse(fixtureHtml, {})))
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapMissingCookies")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapMissingCookies")
     }
   })
 
@@ -163,11 +163,11 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(fixtureHtml, { "set-cookie": "bad cookie value" }))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapCookiePersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain("bad cookie value")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapCookiePersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain("bad cookie value")
     }
   })
 
@@ -177,11 +177,11 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(fixtureHtml))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapCookiePersistenceFailure")
-      expect(JSON.stringify(result.left)).not.toContain(secretFailurePayload)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapCookiePersistenceFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
     }
   })
 
@@ -191,10 +191,10 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(htmlFromInitialState(withCsrf({ token: " " }))))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapMissingCsrf")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapMissingCsrf")
     }
   })
 
@@ -204,10 +204,10 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(htmlFromInitialState(withCsrf(undefined))))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapMissingCsrf")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapMissingCsrf")
     }
   })
 
@@ -217,10 +217,10 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse(htmlFromInitialState(withCsrf({}))))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapMissingCsrf")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapMissingCsrf")
     }
   })
 
@@ -230,31 +230,31 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse('<script>window.__INITIAL_STATE__ = {"csrf":}</script>'))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("GuestBootstrapInitialStateMalformed")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("GuestBootstrapInitialStateMalformed")
     }
   })
 
   it("surfaces the transport's own failure when the homepage cannot be reached", async () => {
     const result = await runWith(bootstrapGuestSession(), connectionFailureTransport())
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaConnectionFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
     }
   })
 
   it("distinguishes an abandoned deadline from a refused connection", async () => {
     const result = await runWith(bootstrapGuestSession(), deadlineExceededTransport())
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaRequestDeadlineExceeded")
-      expect(JSON.stringify(result.left)).not.toContain("voila.ca")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaRequestDeadlineExceeded")
+      expect(JSON.stringify(result.failure)).not.toContain("voila.ca")
     }
   })
 
@@ -264,11 +264,11 @@ describe("bootstrapGuestSession", () => {
       respondingTransport(makeHomepageResponse("not used", { "set-cookie": sessionCookie }, 500))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result) && result.left._tag === "GuestBootstrapNon2xxResponse") {
-      expect(result.left._tag).toBe("GuestBootstrapNon2xxResponse")
-      expect(result.left.status).toBe(500)
+    if (Result.isFailure(result) && result.failure._tag === "GuestBootstrapNon2xxResponse") {
+      expect(result.failure._tag).toBe("GuestBootstrapNon2xxResponse")
+      expect(result.failure.status).toBe(500)
     }
   })
 })

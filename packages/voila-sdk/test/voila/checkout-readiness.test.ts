@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -21,17 +21,17 @@ const readyFixtureText = readFileSync(new URL("../fixtures/checkout-summary-read
 const readSummaryFixture = (fixtureText: string) => {
   const parsedJson = parseJson(fixtureText)
 
-  if (Either.isLeft(parsedJson)) {
+  if (Result.isFailure(parsedJson)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  const parsedSummary = parseCheckoutSummaryResponse(parsedJson.right)
+  const parsedSummary = parseCheckoutSummaryResponse(parsedJson.success)
 
-  if (Either.isLeft(parsedSummary)) {
+  if (Result.isFailure(parsedSummary)) {
     throw new Error("Expected checkout summary fixture to parse")
   }
 
-  return parsedSummary.right
+  return parsedSummary.success
 }
 
 describe("checkout readiness decisions", () => {

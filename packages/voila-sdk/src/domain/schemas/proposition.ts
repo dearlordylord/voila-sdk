@@ -1,13 +1,12 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 import { DeliveryMethodSchema } from "./delivery-destination.js"
 
-const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
-const NonEmptyStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
+import { withUnknownStringFields } from "./unknown-fields.js"
 
-export const ActiveShoppingContextInputSchema = Schema.Struct({
-  regionId: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
-})
+const NonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isTrimmed()), Schema.check(Schema.isMinLength(1)))
+
+export const ActiveShoppingContextInputSchema = Schema.Struct({ regionId: Schema.optionalKey(NonEmptyStringSchema) })
 
 export type ActiveShoppingContextInput = Schema.Schema.Type<typeof ActiveShoppingContextInputSchema>
 
@@ -26,60 +25,56 @@ export const DeliveryContextPreviewInputSchema = Schema.Struct({
 export type DeliveryContextPreviewInput = Schema.Schema.Type<typeof DeliveryContextPreviewInputSchema>
 
 export const SetActiveDeliveryDestinationInputSchema = Schema.Struct({
-  customerId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
+  customerId: Schema.optionalKey(NonEmptyStringSchema),
   deliveryDestinationId: NonEmptyStringSchema,
   regionId: NonEmptyStringSchema,
-  visitorId: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
+  visitorId: Schema.optionalKey(NonEmptyStringSchema)
 })
 
 export type SetActiveDeliveryDestinationInput = Schema.Schema.Type<typeof SetActiveDeliveryDestinationInputSchema>
 
 export const SetActiveCartPropositionInputSchema = Schema.Struct({
-  customerId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
+  customerId: Schema.optionalKey(NonEmptyStringSchema),
   destinationCartPropositionId: NonEmptyStringSchema,
   originCartPropositionId: NonEmptyStringSchema,
-  visitorId: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
+  visitorId: Schema.optionalKey(NonEmptyStringSchema)
 })
 
 export type SetActiveCartPropositionInput = Schema.Schema.Type<typeof SetActiveCartPropositionInputSchema>
 
 export const ApplyDeliveryContextChangeInputSchema = Schema.Struct({
-  allowCartImpact: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  customerId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
+  allowCartImpact: Schema.Boolean.pipe(Schema.withDecodingDefaultType(Effect.succeed(false))),
+  customerId: Schema.optionalKey(NonEmptyStringSchema),
   deliveryDestinationId: NonEmptyStringSchema,
   destinationRegionId: NonEmptyStringSchema,
-  visitorId: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
+  visitorId: Schema.optionalKey(NonEmptyStringSchema)
 })
 
 export type ApplyDeliveryContextChangeInput = Schema.Schema.Type<typeof ApplyDeliveryContextChangeInputSchema>
 
-export const SupportedDeliveryPropositionSchema = Schema.asSchema(
+export const SupportedDeliveryPropositionSchema = Schema.revealCodec(
   Schema.Struct({
-    deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { exact: true }),
+    deliveryMethod: Schema.optionalKey(DeliveryMethodSchema),
     deliveryPropositionId: Schema.String,
-    details: Schema.optionalWith(
-      Schema.Struct({
-        iconUrl: Schema.optionalWith(Schema.String, { exact: true }),
-        name: Schema.optionalWith(Schema.String, { exact: true })
-      }).pipe(Schema.extend(UnknownStringRecordSchema)),
-      { exact: true }
+    details: Schema.optionalKey(
+      Schema.Struct({ iconUrl: Schema.optionalKey(Schema.String), name: Schema.optionalKey(Schema.String) }).pipe(
+        withUnknownStringFields
+      )
     ),
-    isDefault: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    propositionType: Schema.optionalWith(Schema.String, { exact: true }),
-    regionId: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    isDefault: Schema.optionalKey(Schema.Boolean),
+    propositionType: Schema.optionalKey(Schema.String),
+    regionId: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type SupportedDeliveryProposition = Schema.Schema.Type<typeof SupportedDeliveryPropositionSchema>
 
-export const DeliveryPropositionDetailsResponseSchema = Schema.Union(
+export const DeliveryPropositionDetailsResponseSchema = Schema.Union([
   Schema.Array(SupportedDeliveryPropositionSchema),
-  Schema.asSchema(
-    Schema.Struct({ propositions: Schema.Array(SupportedDeliveryPropositionSchema) }).pipe(
-      Schema.extend(UnknownStringRecordSchema)
-    )
+  Schema.revealCodec(
+    Schema.Struct({ propositions: Schema.Array(SupportedDeliveryPropositionSchema) }).pipe(withUnknownStringFields)
   )
-)
+])
 
 export type DeliveryPropositionDetailsResponse = Schema.Schema.Type<typeof DeliveryPropositionDetailsResponseSchema>
 
@@ -89,49 +84,49 @@ export const NormalizedDeliveryPropositionDetailsSchema = Schema.Struct({
 
 export type NormalizedDeliveryPropositionDetails = Schema.Schema.Type<typeof NormalizedDeliveryPropositionDetailsSchema>
 
-export const CartImpactProductSchema = Schema.asSchema(
+export const CartImpactProductSchema = Schema.revealCodec(
   Schema.Struct({
-    actualAmount: Schema.optionalWith(Schema.Number.pipe(Schema.finite()), { exact: true }),
-    expectedAmount: Schema.optionalWith(Schema.Number.pipe(Schema.finite()), { exact: true }),
-    name: Schema.optionalWith(Schema.String, { exact: true }),
-    productId: Schema.optionalWith(Schema.String, { exact: true }),
-    quantity: Schema.optionalWith(Schema.Number.pipe(Schema.finite(), Schema.int()), { exact: true }),
-    retailerProductId: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    actualAmount: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isFinite()))),
+    expectedAmount: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isFinite()))),
+    name: Schema.optionalKey(Schema.String),
+    productId: Schema.optionalKey(Schema.String),
+    quantity: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isFinite()), Schema.check(Schema.isInt()))),
+    retailerProductId: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type CartImpactProduct = Schema.Schema.Type<typeof CartImpactProductSchema>
 
-export const CartPropositionCheckoutGroupSchema = Schema.asSchema(
+export const CartPropositionCheckoutGroupSchema = Schema.revealCodec(
   Schema.Struct({
-    limitedItems: Schema.optionalWith(Schema.Array(CartImpactProductSchema), { exact: true }),
-    products: Schema.optionalWith(Schema.Array(CartImpactProductSchema), { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    limitedItems: Schema.optionalKey(Schema.Array(CartImpactProductSchema)),
+    products: Schema.optionalKey(Schema.Array(CartImpactProductSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type CartPropositionCheckoutGroup = Schema.Schema.Type<typeof CartPropositionCheckoutGroupSchema>
 
-export const CartPropositionSchema = Schema.asSchema(
+export const CartPropositionSchema = Schema.revealCodec(
   Schema.Struct({
-    assignedCheckoutGroups: Schema.optionalWith(Schema.Array(CartPropositionCheckoutGroupSchema), { exact: true }),
-    cartPropositionId: Schema.optionalWith(Schema.String, { exact: true }),
-    regionId: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    assignedCheckoutGroups: Schema.optionalKey(Schema.Array(CartPropositionCheckoutGroupSchema)),
+    cartPropositionId: Schema.optionalKey(Schema.String),
+    regionId: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type CartProposition = Schema.Schema.Type<typeof CartPropositionSchema>
 
-export const DeliveryContextPreviewResponseSchema = Schema.asSchema(
+export const DeliveryContextPreviewResponseSchema = Schema.revealCodec(
   Schema.Struct({
     destinationCartProposition: CartPropositionSchema,
-    originCartProposition: Schema.optionalWith(CartPropositionSchema, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    originCartProposition: Schema.optionalKey(CartPropositionSchema)
+  }).pipe(withUnknownStringFields)
 )
 
 export type DeliveryContextPreviewResponse = Schema.Schema.Type<typeof DeliveryContextPreviewResponseSchema>
 
 export const CartImpactWarningSchema = Schema.Struct({
-  kind: Schema.Literal("origin-cart-items", "destination-cart-items", "limited-cart-items"),
+  kind: Schema.Literals(["origin-cart-items", "destination-cart-items", "limited-cart-items"]),
   products: Schema.Array(CartImpactProductSchema)
 })
 
@@ -139,26 +134,26 @@ export type CartImpactWarning = Schema.Schema.Type<typeof CartImpactWarningSchem
 
 export const NormalizedDeliveryContextPreviewSchema = Schema.Struct({
   cartImpactWarnings: Schema.Array(CartImpactWarningSchema),
-  destinationCartPropositionId: Schema.optionalWith(Schema.String, { exact: true }),
-  destinationRegionId: Schema.optionalWith(Schema.String, { exact: true }),
-  originCartPropositionId: Schema.optionalWith(Schema.String, { exact: true }),
-  originRegionId: Schema.optionalWith(Schema.String, { exact: true }),
+  destinationCartPropositionId: Schema.optionalKey(Schema.String),
+  destinationRegionId: Schema.optionalKey(Schema.String),
+  originCartPropositionId: Schema.optionalKey(Schema.String),
+  originRegionId: Schema.optionalKey(Schema.String),
   requiresConfirmation: Schema.Boolean
 })
 
 export type NormalizedDeliveryContextPreview = Schema.Schema.Type<typeof NormalizedDeliveryContextPreviewSchema>
 
 export const NormalizedActiveShoppingContextSchema = Schema.Struct({
-  cartPropositionId: Schema.optionalWith(Schema.String, { exact: true }),
-  deliveryDestinationId: Schema.optionalWith(Schema.String, { exact: true }),
-  deliveryMethod: Schema.optionalWith(DeliveryMethodSchema, { exact: true }),
-  propositionType: Schema.optionalWith(Schema.String, { exact: true }),
-  regionId: Schema.optionalWith(Schema.String, { exact: true }),
-  type: Schema.optionalWith(Schema.String, { exact: true })
+  cartPropositionId: Schema.optionalKey(Schema.String),
+  deliveryDestinationId: Schema.optionalKey(Schema.String),
+  deliveryMethod: Schema.optionalKey(DeliveryMethodSchema),
+  propositionType: Schema.optionalKey(Schema.String),
+  regionId: Schema.optionalKey(Schema.String),
+  type: Schema.optionalKey(Schema.String)
 })
 
-export const ActiveShoppingContextResponseSchema = Schema.asSchema(
-  NormalizedActiveShoppingContextSchema.pipe(Schema.extend(UnknownStringRecordSchema))
+export const ActiveShoppingContextResponseSchema = Schema.revealCodec(
+  NormalizedActiveShoppingContextSchema.pipe(withUnknownStringFields)
 )
 
 export type ActiveShoppingContextResponse = Schema.Schema.Type<typeof ActiveShoppingContextResponseSchema>
@@ -184,9 +179,9 @@ export type DeliveryContextRequiresConfirmationResult = Schema.Schema.Type<
   typeof DeliveryContextRequiresConfirmationResultSchema
 >
 
-export const DeliveryContextChangeResultSchema = Schema.Union(
+export const DeliveryContextChangeResultSchema = Schema.Union([
   DeliveryContextAppliedResultSchema,
   DeliveryContextRequiresConfirmationResultSchema
-)
+])
 
 export type DeliveryContextChangeResult = Schema.Schema.Type<typeof DeliveryContextChangeResultSchema>

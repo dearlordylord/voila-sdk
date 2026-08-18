@@ -1,4 +1,4 @@
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -78,17 +78,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeCompletedOrdersResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -101,15 +101,15 @@ describe("completed order history", () => {
   it("normalizes completed order GraphQL responses", () => {
     const parsed = parseUnknown(RawCompletedOrdersGraphqlResponseSchema, JSON.parse(fixtureText))
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
     if (
-      Either.isRight(parsed) &&
-      parsed.right.data !== undefined &&
-      parsed.right.data !== null &&
-      parsed.right.data.completedOrders !== null
+      Result.isSuccess(parsed) &&
+      parsed.success.data !== undefined &&
+      parsed.success.data !== null &&
+      parsed.success.data.completedOrders !== null
     ) {
-      const result = normalizeCompletedOrdersResponse(parsed.right.data.completedOrders)
+      const result = normalizeCompletedOrdersResponse(parsed.success.data.completedOrders)
 
       expect(result.pagination).toEqual({
         hasNextPage: true,
@@ -169,15 +169,15 @@ describe("completed order history", () => {
       }
     })
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
     if (
-      Either.isRight(parsed) &&
-      parsed.right.data !== undefined &&
-      parsed.right.data !== null &&
-      parsed.right.data.completedOrders !== null
+      Result.isSuccess(parsed) &&
+      parsed.success.data !== undefined &&
+      parsed.success.data !== null &&
+      parsed.success.data.completedOrders !== null
     ) {
-      const result = normalizeCompletedOrdersResponse(parsed.right.data.completedOrders)
+      const result = normalizeCompletedOrdersResponse(parsed.success.data.completedOrders)
 
       expect(result.orders).toHaveLength(1)
       expect(result.orders[0]).toMatchObject({
@@ -195,9 +195,9 @@ describe("completed order history", () => {
     const fake = respondingTransport(makeCompletedOrdersResponse())
     const result = await runWith(getCompletedOrders(makeSession(), { pageSize: 2, pageToken: "previous-cursor" }), fake)
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
@@ -208,8 +208,8 @@ describe("completed order history", () => {
         operationName: "GetCompletedOrders",
         variables: { after: "previous-cursor", first: 2 }
       })
-      expect(result.right.value.orders).toHaveLength(2)
-      expect(result.right.value.pagination.nextPageToken).toBe("sanitized-next-order-cursor")
+      expect(result.success.value.orders).toHaveLength(2)
+      expect(result.success.value.pagination.nextPageToken).toBe("sanitized-next-order-cursor")
     }
   })
 
@@ -217,11 +217,11 @@ describe("completed order history", () => {
     const fake = respondingTransport(makeCompletedOrdersResponse())
     const result = await runWith(getCompletedOrders(makeSession(), { pageSize: 0 }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CompletedOrdersInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CompletedOrdersInputInvalid")
     }
   })
 
@@ -233,11 +233,11 @@ describe("completed order history", () => {
       )
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(JSON.stringify(result)).not.toContain("secret-account-required-detail")
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CompletedOrdersGraphqlError")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CompletedOrdersGraphqlError")
     }
   })
 
@@ -247,10 +247,10 @@ describe("completed order history", () => {
       respondingTransport(makeCompletedOrdersResponse(JSON.stringify({ data: { completedOrders: null } })))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CompletedOrdersUnavailable")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CompletedOrdersUnavailable")
     }
   })
 
@@ -260,10 +260,10 @@ describe("completed order history", () => {
       respondingTransport(makeCompletedOrdersResponse())
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaMissingCsrfToken")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaMissingCsrfToken")
     }
   })
 })

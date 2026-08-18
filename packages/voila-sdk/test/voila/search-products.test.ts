@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -28,17 +28,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeSearchResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -50,11 +50,11 @@ const makeSearchResponse = (body: string = fixtureText, status: number = 200): V
 const getSessionCookies = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected session cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 describe("searchProducts", () => {
@@ -70,9 +70,9 @@ describe("searchProducts", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("GET")
@@ -82,11 +82,11 @@ describe("searchProducts", () => {
       expect(request?.url.searchParams.get("retailerCategoryId")).toBe("retailer-category-id")
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
-      expect(result.right.value.products[0]?.productId).toBe("b952bad2-3d09-4b7f-831a-87ad31eaad3f")
-      expect(result.right.value.products[0]?.retailerProductId).toBe("243255EA")
-      expect(result.right.value.products[0]?.price.amount).toBe("5.69")
-      expect(result.right.value.pagination.nextPageToken).toBe("sanitized-next-page-token")
-      expect(getSessionCookies(result.right.session)).toContain("fresh-search-cookie=after")
+      expect(result.success.value.products[0]?.productId).toBe("b952bad2-3d09-4b7f-831a-87ad31eaad3f")
+      expect(result.success.value.products[0]?.retailerProductId).toBe("243255EA")
+      expect(result.success.value.products[0]?.price.amount).toBe("5.69")
+      expect(result.success.value.pagination.nextPageToken).toBe("sanitized-next-page-token")
+      expect(getSessionCookies(result.success.session)).toContain("fresh-search-cookie=after")
     }
   })
 
@@ -94,11 +94,11 @@ describe("searchProducts", () => {
     const fake = respondingTransport(makeSearchResponse())
     const result = await runWith(searchProducts(makeSession(), { pageSize: 0, query: "" }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("SearchInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("SearchInputInvalid")
     }
   })
 
@@ -108,10 +108,10 @@ describe("searchProducts", () => {
       respondingTransport(makeSearchResponse())
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaMissingCsrfToken")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaMissingCsrfToken")
     }
   })
 
@@ -124,10 +124,10 @@ describe("searchProducts", () => {
 
     const result = await runWith(searchProducts(makeSession(), { pageSize: 24, query: "milk" }), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
     }
   })
 
@@ -137,10 +137,10 @@ describe("searchProducts", () => {
       respondingTransport(makeSearchResponse("{}", 500))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 })

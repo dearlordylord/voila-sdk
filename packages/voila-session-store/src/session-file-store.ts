@@ -13,16 +13,10 @@
  * (a guest session costs one request to rebuild; an authenticated one costs an
  * interactive browser login).
  */
-import {
-  type CarriedModifyOutcome,
-  keep,
-  modifySchemaCarrying,
-  persist,
-  type SchemaCycleStep,
-  type StateFileLocks,
-  type StateFilePath,
-  type WriteDecision
-} from "atomic-file-store/effect"
+import { keep, persist, type WriteDecision } from "./atomic-file-store-engine.js"
+import { modifySchemaCarrying, type CarriedModifyOutcome, type SchemaCycleStep } from "./atomic-file-store-schema.js"
+import type { StateFileLocks } from "./atomic-file-store-locks.js"
+import type { StateFilePath } from "./atomic-file-store-path.js"
 import { type SdkSessionSnapshot, SdkSessionSnapshotSchema } from "@firfi/voila-sdk"
 import { Effect } from "effect"
 
@@ -41,7 +35,7 @@ import {
  *
  * The store has a decision type of its own, and this one deliberately does not
  * alias it: callers of this package work in snapshots and speak session
- * vocabulary, and the store underneath stays replaceable.
+ * vocabulary, and the file adapter stays behind this boundary.
  */
 export type SessionFileUpdate =
   | { readonly _tag: "persist"; readonly session: SdkSessionSnapshot }
@@ -105,8 +99,8 @@ const decide = (
     : Effect.succeed(persist(update.session))
 }
 
-// the store's own step shape, named here so this module's session vocabulary
-// stays separate from the store's byte/schema vocabulary
+// the file adapter's own step shape, named here so this module's session
+// vocabulary stays separate from its byte/schema vocabulary
 const toCycleStep = <C>(
   carried: C,
   decision: WriteDecision<SdkSessionSnapshot>
@@ -149,7 +143,7 @@ export const updateSessionFileCarrying = <C, E = never, R = never>(
 
       return toCycleStep(step.carried, yield* decide(current, step.update))
     })
-  ).pipe(Effect.map(toCarriedOutcome), Effect.catchAll(unwrapFailure))
+  ).pipe(Effect.map(toCarriedOutcome), Effect.catch(unwrapFailure))
 
 const toUpdateOutcome = <C>(outcome: SessionFileCarriedOutcome<C>): SessionFileUpdateOutcome => {
   if (outcome._tag === "unchanged") {

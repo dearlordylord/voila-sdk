@@ -1,4 +1,3 @@
-import { FetchHttpClient, HttpClient } from "@effect/platform"
 import {
   bootstrapGuestSession,
   searchProducts,
@@ -6,7 +5,8 @@ import {
   type VoilaRequestBlocked,
   type VoilaTransportError
 } from "@firfi/voila-sdk"
-import { Effect, Either, Layer } from "effect"
+import { Effect, Layer, Result } from "effect"
+import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { readFile } from "node:fs/promises"
 import topDesktopUserAgents from "top-user-agents/desktop"
 
@@ -57,11 +57,13 @@ const recordingTransportLayer = (recorded: Array<Readonly<Record<string, string>
       Layer.effect(
         HttpClient.HttpClient,
         Effect.map(HttpClient.HttpClient, (client) =>
-          HttpClient.transform(client, (response, request) => {
-            recorded.push(request.headers)
+          HttpClient.transform(client, (response, request) =>
+            Effect.map(response, (resolved) => {
+              recorded.push(request.headers)
 
-            return response
-          })
+              return resolved
+            })
+          )
         )
       ),
       FetchHttpClient.layer
@@ -100,7 +102,7 @@ const hasSafeBlockedDiagnostic = (error: VoilaRequestBlocked): boolean =>
 
 const homepageIdentity = (
   recorded: Array<Readonly<Record<string, string>>>
-): Effect.Effect<Either.Either<undefined, LiveIdentitySmokeFailure>, VoilaTransportError> =>
+): Effect.Effect<Result.Result<undefined, LiveIdentitySmokeFailure>, VoilaTransportError> =>
   Effect.map(
     Effect.flatMap(VoilaTransport, (transport) =>
       transport.request({ headers: {}, method: "GET", url: voilaHomepage })
@@ -109,7 +111,7 @@ const homepageIdentity = (
       if (response.status < okStatusFloor || response.status >= okStatusCeiling) {
         const failed: LiveIdentitySmokeFailure = { _tag: "LiveIdentityHomepageFailed", status: response.status }
 
-        return Either.left(failed)
+        return Result.fail(failed)
       }
 
       const identity = identityFrom(recorded)
@@ -119,55 +121,55 @@ const homepageIdentity = (
       }
 
       return identity.userAgent === firstDesktopUserAgent() && identity.requestCount === singleRequest
-        ? Either.right(undefined)
-        : Either.left(mismatched)
+        ? Result.succeed(undefined)
+        : Result.fail(mismatched)
     }
   )
 
 const blockedDiagnostic = (
   homepageFixture: string
-): Effect.Effect<Either.Either<undefined, LiveIdentitySmokeFailure>> =>
+): Effect.Effect<Result.Result<undefined, LiveIdentitySmokeFailure>> =>
   Effect.gen(function* () {
-    const bootstrap = yield* Effect.either(
+    const bootstrap = yield* Effect.result(
       Effect.provide(bootstrapGuestSession(), fixtureBootstrapTransportLayer(homepageFixture))
     )
 
-    if (Either.isLeft(bootstrap)) {
+    if (Result.isFailure(bootstrap)) {
       const failed: LiveIdentitySmokeFailure = {
         _tag: "LiveIdentityFixtureBootstrapFailed",
-        causeTag: bootstrap.left._tag
+        causeTag: bootstrap.failure._tag
       }
 
-      return Either.left(failed)
+      return Result.fail(failed)
     }
 
-    const blocked = yield* Effect.either(
-      Effect.provide(searchProducts(bootstrap.right.session, { pageSize, query: harmlessQuery }), blockedTransportLayer)
+    const blocked = yield* Effect.result(
+      Effect.provide(
+        searchProducts(bootstrap.success.session, { pageSize, query: harmlessQuery }),
+        blockedTransportLayer
+      )
     )
 
     const mismatched: LiveIdentitySmokeFailure = { _tag: "LiveIdentityBlockedDiagnosticMismatch" }
 
-    return Either.isLeft(blocked) &&
-      blocked.left._tag === "VoilaRequestBlocked" &&
-      hasSafeBlockedDiagnostic(blocked.left)
-      ? Either.right(undefined)
-      : Either.left(mismatched)
+    return Result.isFailure(blocked) &&
+      blocked.failure._tag === "VoilaRequestBlocked" &&
+      hasSafeBlockedDiagnostic(blocked.failure)
+      ? Result.succeed(undefined)
+      : Result.fail(mismatched)
   })
 
-const runSmoke = async (): Promise<Either.Either<undefined, LiveIdentitySmokeFailure>> => {
+const runSmoke = async (): Promise<Result.Result<undefined, LiveIdentitySmokeFailure>> => {
   const recorded: Array<Readonly<Record<string, string>>> = []
   const homepage = await Effect.runPromise(
-    Effect.catchAll(
-      homepageIdentity(recorded),
-      (): Effect.Effect<Either.Either<undefined, LiveIdentitySmokeFailure>> => {
-        const failed: LiveIdentitySmokeFailure = { _tag: "LiveIdentityHomepageFailed" }
+    Effect.catch(homepageIdentity(recorded), (): Effect.Effect<Result.Result<undefined, LiveIdentitySmokeFailure>> => {
+      const failed: LiveIdentitySmokeFailure = { _tag: "LiveIdentityHomepageFailed" }
 
-        return Effect.succeed(Either.left(failed))
-      }
-    )
+      return Effect.succeed(Result.fail(failed))
+    })
   )
 
-  if (Either.isLeft(homepage)) return homepage
+  if (Result.isFailure(homepage)) return homepage
 
   const homepageFixture = await readFile(
     new URL("../../../voila-sdk/test/fixtures/voila-homepage.html", import.meta.url),
@@ -183,11 +185,11 @@ if (process.env[liveSmokeFlag] !== enabledValue) {
 } else {
   const result = await runSmoke()
 
-  if (Either.isRight(result)) {
+  if (Result.isSuccess(result)) {
     process.stdout.write("Live request identity and sanitized blocked-diagnostic smoke passed.\n")
     process.exit(successStatus)
   } else {
-    process.stderr.write(`Live request identity smoke returned typed failure: ${JSON.stringify(result.left)}\n`)
+    process.stderr.write(`Live request identity smoke returned typed failure: ${JSON.stringify(result.failure)}\n`)
     process.exit(failureStatus)
   }
 }

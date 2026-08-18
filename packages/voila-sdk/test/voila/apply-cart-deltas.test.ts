@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
@@ -39,17 +39,17 @@ const makeSession = (token: string = csrfToken): SessionSnapshot => {
 
   const cookieJar = serializeCookieJar(jar)
 
-  if (Either.isLeft(cookieJar)) {
+  if (Result.isFailure(cookieJar)) {
     throw new Error("Expected cookie jar serialization to succeed")
   }
 
-  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.right)
+  const snapshot = makeSessionSnapshot(sampleMetadata, { token }, cookieJar.success)
 
-  if (Either.isLeft(snapshot)) {
+  if (Result.isFailure(snapshot)) {
     throw new Error("Expected session snapshot creation to succeed")
   }
 
-  return snapshot.right
+  return snapshot.success
 }
 
 const makeMutationResponse = (body: string = fixtureText, status: number = 200): VoilaTransportResponse => ({
@@ -61,21 +61,21 @@ const makeMutationResponse = (body: string = fixtureText, status: number = 200):
 const getSessionCookies = (session: SessionSnapshot): string => {
   const jar = toughCookieJarPort.deserialize(session.cookieJar)
 
-  if (Either.isLeft(jar)) {
+  if (Result.isFailure(jar)) {
     throw new Error("Expected session cookie jar to deserialize")
   }
 
-  return jar.right.getCookieStringSync(VOILA_BASE_URL)
+  return jar.success.getCookieStringSync(VOILA_BASE_URL)
 }
 
 const makeDelta = (productId: string, quantity: number) => {
   const result = makeCartQuantityDelta(productId, quantity)
 
-  if (Either.isLeft(result)) {
+  if (Result.isFailure(result)) {
     throw new Error("Expected cart delta creation to succeed")
   }
 
-  return result.right
+  return result.success
 }
 
 describe("applyCartDeltas", () => {
@@ -86,9 +86,9 @@ describe("applyCartDeltas", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.method).toBe("POST")
@@ -99,11 +99,11 @@ describe("applyCartDeltas", () => {
       )
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
-      expect(result.right.value.itemCount).toBe(2)
-      expect(result.right.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
-      expect(result.right.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
-      expect(result.right.value.pricingNotifications[0]?.code).toBe("PROMO_APPLIED")
-      expect(getSessionCookies(result.right.session)).toContain("fresh-mutation-cookie=after")
+      expect(result.success.value.itemCount).toBe(2)
+      expect(result.success.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
+      expect(result.success.value.pricingNotifications[0]?.code).toBe("PROMO_APPLIED")
+      expect(getSessionCookies(result.success.session)).toContain("fresh-mutation-cookie=after")
     }
   })
 
@@ -112,11 +112,11 @@ describe("applyCartDeltas", () => {
     const invalidDelta = { productId: "243255EA", quantity: 1 }
     const result = await runWith(applyCartDeltas(makeSession(), [invalidDelta]), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CartQuantityInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CartQuantityInputInvalid")
     }
   })
 
@@ -124,11 +124,11 @@ describe("applyCartDeltas", () => {
     const fake = respondingTransport(makeMutationResponse())
     const result = await runWith(applyCartDeltas(makeSession(), []), fake)
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CartQuantityInputInvalid")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CartQuantityInputInvalid")
     }
   })
 
@@ -136,16 +136,16 @@ describe("applyCartDeltas", () => {
     const fake = respondingTransport(makeMutationResponse())
     const delta = makeAddToCartDelta(productUuid, 1)
 
-    expect(Either.isRight(delta)).toBe(true)
+    expect(Result.isSuccess(delta)).toBe(true)
 
-    if (Either.isRight(delta)) {
-      const result = await runWith(applyCartDeltas(makeSession(" "), [delta.right]), fake)
+    if (Result.isSuccess(delta)) {
+      const result = await runWith(applyCartDeltas(makeSession(" "), [delta.success]), fake)
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
       expect(fake.requests).toHaveLength(0)
 
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("VoilaMissingCsrfToken")
+      if (Result.isFailure(result)) {
+        expect(result.failure._tag).toBe("VoilaMissingCsrfToken")
       }
     }
   })
@@ -156,10 +156,10 @@ describe("applyCartDeltas", () => {
       connectionFailureTransport()
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaConnectionFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
     }
   })
 
@@ -169,10 +169,10 @@ describe("applyCartDeltas", () => {
       deadlineExceededTransport()
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaRequestDeadlineExceeded")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaRequestDeadlineExceeded")
     }
   })
 
@@ -192,10 +192,10 @@ describe("applyCartDeltas", () => {
       )
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaSchemaDecodeFailure")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaSchemaDecodeFailure")
     }
   })
 
@@ -205,10 +205,10 @@ describe("applyCartDeltas", () => {
       respondingTransport(makeMutationResponse("{}", 500))
     )
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("VoilaNon2xxResponse")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaNon2xxResponse")
     }
   })
 })
@@ -224,16 +224,16 @@ describe("cart item convenience operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.body).toBe(
         `[{"productId":"${productUuid}","quantity":2},{"productId":"${secondProductUuid}","quantity":1}]`
       )
-      expect(result.right.value.itemCount).toBe(2)
-      expect(result.right.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
+      expect(result.success.value.itemCount).toBe(2)
+      expect(result.success.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
     }
   })
 
@@ -247,15 +247,15 @@ describe("cart item convenience operations", () => {
       fake
     )
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
+    if (Result.isSuccess(result)) {
       const [request] = fake.requests
 
       expect(request?.body).toBe(
         `[{"productId":"${productUuid}","quantity":-2},{"productId":"${secondProductUuid}","quantity":-1}]`
       )
-      expect(result.right.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
     }
   })
 
@@ -264,13 +264,13 @@ describe("cart item convenience operations", () => {
     const addResult = await runWith(addCartItems(makeSession(), [{ productId: "243255EA", quantity: 1 }]), fake)
     const removeResult = await runWith(removeCartItems(makeSession(), [{ productId: productUuid, quantity: 0 }]), fake)
 
-    expect(Either.isLeft(addResult)).toBe(true)
-    expect(Either.isLeft(removeResult)).toBe(true)
+    expect(Result.isFailure(addResult)).toBe(true)
+    expect(Result.isFailure(removeResult)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(addResult) && Either.isLeft(removeResult)) {
-      expect(addResult.left._tag).toBe("CartQuantityDeltaInvalid")
-      expect(removeResult.left._tag).toBe("CartItemsInputInvalid")
+    if (Result.isFailure(addResult) && Result.isFailure(removeResult)) {
+      expect(addResult.failure._tag).toBe("CartQuantityDeltaInvalid")
+      expect(removeResult.failure._tag).toBe("CartItemsInputInvalid")
     }
   })
 
@@ -279,13 +279,13 @@ describe("cart item convenience operations", () => {
     const addResult = await runWith(addCartItems(makeSession(), [null]), fake)
     const removeResult = await runWith(removeCartItems(makeSession(), "not-items"), fake)
 
-    expect(Either.isLeft(addResult)).toBe(true)
-    expect(Either.isLeft(removeResult)).toBe(true)
+    expect(Result.isFailure(addResult)).toBe(true)
+    expect(Result.isFailure(removeResult)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(addResult) && Either.isLeft(removeResult)) {
-      expect(addResult.left._tag).toBe("CartItemsInputInvalid")
-      expect(removeResult.left._tag).toBe("CartItemsInputInvalid")
+    if (Result.isFailure(addResult) && Result.isFailure(removeResult)) {
+      expect(addResult.failure._tag).toBe("CartItemsInputInvalid")
+      expect(removeResult.failure._tag).toBe("CartItemsInputInvalid")
     }
   })
 
@@ -294,13 +294,13 @@ describe("cart item convenience operations", () => {
     const addResult = await runWith(addCartItems(makeSession(), []), fake)
     const removeResult = await runWith(removeCartItems(makeSession(), []), fake)
 
-    expect(Either.isLeft(addResult)).toBe(true)
-    expect(Either.isLeft(removeResult)).toBe(true)
+    expect(Result.isFailure(addResult)).toBe(true)
+    expect(Result.isFailure(removeResult)).toBe(true)
     expect(fake.requests).toHaveLength(0)
 
-    if (Either.isLeft(addResult) && Either.isLeft(removeResult)) {
-      expect(addResult.left._tag).toBe("CartQuantityInputInvalid")
-      expect(removeResult.left._tag).toBe("CartQuantityInputInvalid")
+    if (Result.isFailure(addResult) && Result.isFailure(removeResult)) {
+      expect(addResult.failure._tag).toBe("CartQuantityInputInvalid")
+      expect(removeResult.failure._tag).toBe("CartQuantityInputInvalid")
     }
   })
 })

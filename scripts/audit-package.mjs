@@ -1,5 +1,8 @@
 import { execFileSync } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { chdir, cwd } from "node:process"
+
+import { EFFECT_COHORT_VERSION, REDIS_VERSION, SUPPORTED_NODE_ENGINE } from "./verify-effect-cohort.mjs"
 
 const packageDirectory = process.argv[2] ?? "."
 const packageKind = process.argv[3] ?? "sdk"
@@ -27,6 +30,36 @@ if (!Object.hasOwn(requiredByKind, packageKind)) {
 chdir(packageDirectory)
 
 try {
+  const manifest = JSON.parse(readFileSync("package.json", "utf8"))
+  const packageDependencies = { ...manifest.dependencies, ...manifest.devDependencies }
+  const prohibitedDependencies = [
+    "@effect/ai",
+    "@effect/cli",
+    "@effect/experimental",
+    "@effect/platform",
+    "@effect/rpc"
+  ]
+
+  if (manifest.engines?.node !== SUPPORTED_NODE_ENGINE) {
+    throw new Error(`Package declares unsupported Node engine: expected ${SUPPORTED_NODE_ENGINE}`)
+  }
+
+  if (manifest.dependencies?.effect !== EFFECT_COHORT_VERSION) {
+    throw new Error(`Package must depend on exact Effect ${EFFECT_COHORT_VERSION}`)
+  }
+
+  if (
+    manifest.dependencies?.["@effect/platform-node"] === EFFECT_COHORT_VERSION &&
+    manifest.dependencies?.redis !== REDIS_VERSION
+  ) {
+    throw new Error(`Package using @effect/platform-node must provide exact redis ${REDIS_VERSION}`)
+  }
+
+  const prohibited = prohibitedDependencies.filter((name) => Object.hasOwn(packageDependencies, name))
+  if (prohibited.length > 0) {
+    throw new Error(`Package contains removed Effect dependencies: ${prohibited.join(", ")}`)
+  }
+
   const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { encoding: "utf8" })
   const [pack] = JSON.parse(output)
   const paths = pack.files.map((file) => file.path)

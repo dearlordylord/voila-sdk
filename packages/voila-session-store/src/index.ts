@@ -5,13 +5,13 @@ export {
   type SessionFileReadFailure,
   type SessionFileWriteFailure
 } from "./session-file-errors.js"
-export { type StateFilePath, StateFilePathSchema } from "atomic-file-store/effect"
+export { type StateFilePath, StateFilePathSchema } from "./atomic-file-store-path.js"
 export {
   makeStateFileLocks,
   StateFileLocks,
   type StateFileLocksService,
   StateFileLocksLive
-} from "atomic-file-store/effect"
+} from "./atomic-file-store-locks.js"
 export {
   keepSessionFile,
   persistSession,

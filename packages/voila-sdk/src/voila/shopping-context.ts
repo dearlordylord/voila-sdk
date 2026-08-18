@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect"
+import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
@@ -150,11 +150,11 @@ export const normalizeDeliveryContextPreviewResponse = (
 
 export const parseActiveShoppingContextResponse = (
   input: unknown
-): Either.Either<NormalizedActiveShoppingContext, ShoppingContextNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(ActiveShoppingContextResponseSchema, input), shoppingContextSchemaMismatch),
+): Result.Result<NormalizedActiveShoppingContext, ShoppingContextNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(ActiveShoppingContextResponseSchema, input), shoppingContextSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedActiveShoppingContextSchema, normalizeActiveShoppingContext(response)),
         shoppingContextSchemaMismatch
       )
@@ -162,11 +162,11 @@ export const parseActiveShoppingContextResponse = (
 
 export const parseDeliveryPropositionDetailsResponse = (
   input: unknown
-): Either.Either<NormalizedDeliveryPropositionDetails, ShoppingContextNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(DeliveryPropositionDetailsResponseSchema, input), shoppingContextSchemaMismatch),
+): Result.Result<NormalizedDeliveryPropositionDetails, ShoppingContextNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(DeliveryPropositionDetailsResponseSchema, input), shoppingContextSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedDeliveryPropositionDetailsSchema, normalizeDeliveryPropositionDetailsResponse(response)),
         shoppingContextSchemaMismatch
       )
@@ -174,11 +174,11 @@ export const parseDeliveryPropositionDetailsResponse = (
 
 export const parseDeliveryContextPreviewResponse = (
   input: unknown
-): Either.Either<NormalizedDeliveryContextPreview, ShoppingContextNormalizationError> =>
-  Either.flatMap(
-    Either.mapLeft(parseUnknown(DeliveryContextPreviewResponseSchema, input), shoppingContextSchemaMismatch),
+): Result.Result<NormalizedDeliveryContextPreview, ShoppingContextNormalizationError> =>
+  Result.flatMap(
+    Result.mapError(parseUnknown(DeliveryContextPreviewResponseSchema, input), shoppingContextSchemaMismatch),
     (response) =>
-      Either.mapLeft(
+      Result.mapError(
         parseUnknown(NormalizedDeliveryContextPreviewSchema, normalizeDeliveryContextPreviewResponse(response)),
         shoppingContextSchemaMismatch
       )
@@ -189,7 +189,7 @@ export const getActiveShoppingContext = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetActiveShoppingContextResult, GetActiveShoppingContextError, VoilaTransport> =>
-  Effect.flatMap(makeActiveShoppingContextRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeActiveShoppingContextRequest(input)), (request) =>
     requestNormalizedActiveShoppingContext(session, request, cookieJarPort)
   )
 
@@ -208,7 +208,7 @@ export const getDeliveryPropositionDetails = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetDeliveryPropositionDetailsResult, GetDeliveryPropositionDetailsError, VoilaTransport> =>
-  Effect.flatMap(makeDeliveryPropositionDetailsRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeDeliveryPropositionDetailsRequest(input)), (request) =>
     Effect.map(
       requestVoilaJson(DeliveryPropositionDetailsResponseSchema, session, request, cookieJarPort),
       (result) => ({ session: result.session, value: normalizeDeliveryPropositionDetailsResponse(result.value) })
@@ -220,7 +220,7 @@ export const previewDeliveryContextChange = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<PreviewDeliveryContextChangeResult, PreviewDeliveryContextChangeError, VoilaTransport> =>
-  Effect.flatMap(makeDeliveryContextPreviewRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeDeliveryContextPreviewRequest(input)), (request) =>
     Effect.map(requestVoilaJson(DeliveryContextPreviewResponseSchema, session, request, cookieJarPort), (result) => ({
       session: result.session,
       value: normalizeDeliveryContextPreviewResponse(result.value)
@@ -232,7 +232,7 @@ export const setActiveDeliveryDestinationContext = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<SetActiveShoppingContextResult, SetActiveDeliveryDestinationContextError, VoilaTransport> =>
-  Effect.flatMap(makeSetActiveDeliveryDestinationRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeSetActiveDeliveryDestinationRequest(input)), (request) =>
     requestNormalizedActiveShoppingContext(session, request, cookieJarPort)
   )
 
@@ -241,16 +241,16 @@ export const setActiveCartPropositionContext = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<SetActiveShoppingContextResult, SetActiveCartPropositionContextError, VoilaTransport> =>
-  Effect.flatMap(makeSetActiveCartPropositionRequest(input), (request) =>
+  Effect.flatMap(Effect.fromResult(makeSetActiveCartPropositionRequest(input)), (request) =>
     requestNormalizedActiveShoppingContext(session, request, cookieJarPort)
   )
 
 const makeRequiresConfirmationResult = (
   session: SessionSnapshot,
   preview: NormalizedDeliveryContextPreview
-): Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError> =>
-  Either.map(
-    Either.mapLeft(
+): Result.Result<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError> =>
+  Result.map(
+    Result.mapError(
       parseUnknown(DeliveryContextChangeResultSchema, { applied: false, preview, status: "requires-confirmation" }),
       shoppingContextSchemaMismatch
     ),
@@ -261,9 +261,9 @@ const makeAppliedResult = (
   session: SessionSnapshot,
   preview: NormalizedDeliveryContextPreview,
   context: NormalizedActiveShoppingContext
-): Either.Either<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError> =>
-  Either.map(
-    Either.mapLeft(
+): Result.Result<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError> =>
+  Result.map(
+    Result.mapError(
       parseUnknown(DeliveryContextChangeResultSchema, { applied: true, context, preview, status: "applied" }),
       shoppingContextSchemaMismatch
     ),
@@ -282,7 +282,7 @@ export const applyDeliveryContextChange = (
   input: unknown,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<ApplyDeliveryContextChangeResult, ApplyDeliveryContextChangeError, VoilaTransport> =>
-  Effect.flatMap(parseApplyDeliveryContextChangeInput(input), (parsedInput) =>
+  Effect.flatMap(Effect.fromResult(parseApplyDeliveryContextChangeInput(input)), (parsedInput) =>
     Effect.flatMap(
       previewDeliveryContextChange(
         session,
@@ -294,7 +294,7 @@ export const applyDeliveryContextChange = (
       ),
       (preview) => {
         if (preview.value.requiresConfirmation && !parsedInput.allowCartImpact) {
-          return makeRequiresConfirmationResult(preview.session, preview.value)
+          return Effect.fromResult(makeRequiresConfirmationResult(preview.session, preview.value))
         }
 
         const accountContext = {
@@ -323,7 +323,9 @@ export const applyDeliveryContextChange = (
                 cookieJarPort
               )
 
-        return Effect.flatMap(applied, (context) => makeAppliedResult(context.session, preview.value, context.value))
+        return Effect.flatMap(applied, (context) =>
+          Effect.fromResult(makeAppliedResult(context.session, preview.value, context.value))
+        )
       }
     )
   )

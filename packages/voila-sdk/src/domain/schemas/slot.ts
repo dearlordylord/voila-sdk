@@ -1,100 +1,101 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 import { MoneySchema } from "./money.js"
 
-const UnknownStringRecordSchema = Schema.Record({ key: Schema.String, value: Schema.Unknown })
-const NonEmptyStringSchema = Schema.String.pipe(Schema.trimmed(), Schema.minLength(1))
-const PositiveIntegerSchema = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.positive())
+import { withUnknownStringFields } from "./unknown-fields.js"
 
-export const SlotDisplayConfigurationSchema = Schema.Literal("CARRIER", "DELIVERY_METHOD")
+const UnknownStringRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
+const NonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isTrimmed()), Schema.check(Schema.isMinLength(1)))
+const PositiveIntegerSchema = Schema.Number.pipe(
+  Schema.check(Schema.isFinite()),
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isGreaterThan(0))
+)
+
+export const SlotDisplayConfigurationSchema = Schema.Literals(["CARRIER", "DELIVERY_METHOD"])
 
 export type SlotDisplayConfiguration = Schema.Schema.Type<typeof SlotDisplayConfigurationSchema>
 
 export const SlotListingInputSchema = Schema.Struct({
   deliveryDestinationId: NonEmptyStringSchema,
-  displayConfiguration: Schema.optionalWith(SlotDisplayConfigurationSchema, {
-    default: () => "DELIVERY_METHOD" as const
-  }),
-  numberOfDays: Schema.optionalWith(PositiveIntegerSchema, { exact: true }),
-  pageViewId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
+  displayConfiguration: SlotDisplayConfigurationSchema.pipe(
+    Schema.withDecodingDefaultType(Effect.succeed<SlotDisplayConfiguration>("DELIVERY_METHOD"))
+  ),
+  numberOfDays: Schema.optionalKey(PositiveIntegerSchema),
+  pageViewId: Schema.optionalKey(NonEmptyStringSchema),
   regionId: NonEmptyStringSchema,
-  sessionId: Schema.optionalWith(NonEmptyStringSchema, { exact: true }),
+  sessionId: Schema.optionalKey(NonEmptyStringSchema),
   shippingGroupType: NonEmptyStringSchema,
-  viewingLocation: Schema.optionalWith(NonEmptyStringSchema, { exact: true })
+  viewingLocation: Schema.optionalKey(NonEmptyStringSchema)
 })
 
 export type SlotListingInput = Schema.Schema.Type<typeof SlotListingInputSchema>
 
-export const SlotWindowSchema = Schema.asSchema(
-  Schema.Struct({ endTime: Schema.String, startTime: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))
+export const SlotWindowSchema = Schema.revealCodec(
+  Schema.Struct({ endTime: Schema.String, startTime: Schema.String }).pipe(withUnknownStringFields)
 )
 
 export type SlotWindow = Schema.Schema.Type<typeof SlotWindowSchema>
 
-export const OnDemandSlotPropertiesSchema = Schema.asSchema(
+export const OnDemandSlotPropertiesSchema = Schema.revealCodec(
   Schema.Struct({
-    collectionTimeInMinutes: Schema.optionalWith(Schema.Number.pipe(Schema.finite()), { exact: true }),
-    deliveryTimeInMinutes: Schema.optionalWith(Schema.Number.pipe(Schema.finite()), { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    collectionTimeInMinutes: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isFinite()))),
+    deliveryTimeInMinutes: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isFinite())))
+  }).pipe(withUnknownStringFields)
 )
 
 export type OnDemandSlotProperties = Schema.Schema.Type<typeof OnDemandSlotPropertiesSchema>
 
-export const RawSlotSchema = Schema.asSchema(
+export const RawSlotSchema = Schema.revealCodec(
   Schema.Struct({
-    attributes: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
-    deliveryPrice: Schema.optionalWith(MoneySchema, { exact: true }),
-    onDemandProperties: Schema.optionalWith(OnDemandSlotPropertiesSchema, { exact: true }),
-    slotId: Schema.optionalWith(Schema.String, { exact: true }),
-    slotWindow: Schema.optionalWith(SlotWindowSchema, { exact: true }),
-    timeZoneId: Schema.optionalWith(Schema.String, { exact: true }),
-    title: Schema.optionalWith(Schema.String, { exact: true }),
-    type: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    attributes: Schema.optionalKey(Schema.Array(Schema.String)),
+    deliveryPrice: Schema.optionalKey(MoneySchema),
+    onDemandProperties: Schema.optionalKey(OnDemandSlotPropertiesSchema),
+    slotId: Schema.optionalKey(Schema.String),
+    slotWindow: Schema.optionalKey(SlotWindowSchema),
+    timeZoneId: Schema.optionalKey(Schema.String),
+    title: Schema.optionalKey(Schema.String),
+    type: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawSlot = Schema.Schema.Type<typeof RawSlotSchema>
 
-export const RawSlotGridDaySchema = Schema.asSchema(
-  Schema.Struct({ day: Schema.String, slots: Schema.Array(RawSlotSchema) }).pipe(
-    Schema.extend(UnknownStringRecordSchema)
-  )
+export const RawSlotGridDaySchema = Schema.revealCodec(
+  Schema.Struct({ day: Schema.String, slots: Schema.Array(RawSlotSchema) }).pipe(withUnknownStringFields)
 )
 
 export type RawSlotGridDay = Schema.Schema.Type<typeof RawSlotGridDaySchema>
 
-export const RawSlotDayMappingSchema = Schema.asSchema(
+export const RawSlotDayMappingSchema = Schema.revealCodec(
   Schema.Struct({
     day: Schema.String,
-    slotIds: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
-    slotListingId: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    slotIds: Schema.optionalKey(Schema.Array(Schema.String)),
+    slotListingId: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawSlotDayMapping = Schema.Schema.Type<typeof RawSlotDayMappingSchema>
 
-export const RawSlotCarrierSchema = Schema.asSchema(
+export const RawSlotCarrierSchema = Schema.revealCodec(
   Schema.Struct({
-    carrierDetails: Schema.optionalWith(Schema.Array(Schema.Unknown), { exact: true }),
-    carrierId: Schema.optionalWith(Schema.String, { exact: true }),
-    carrierName: Schema.optionalWith(Schema.String, { exact: true }),
-    daysMapping: Schema.optionalWith(Schema.Array(RawSlotDayMappingSchema), { exact: true }),
-    featuredSlots: Schema.optionalWith(Schema.Array(RawSlotSchema), { exact: true }),
-    gridSlots: Schema.optionalWith(Schema.Array(RawSlotGridDaySchema), { exact: true }),
-    title: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    carrierDetails: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+    carrierId: Schema.optionalKey(Schema.String),
+    carrierName: Schema.optionalKey(Schema.String),
+    daysMapping: Schema.optionalKey(Schema.Array(RawSlotDayMappingSchema)),
+    featuredSlots: Schema.optionalKey(Schema.Array(RawSlotSchema)),
+    gridSlots: Schema.optionalKey(Schema.Array(RawSlotGridDaySchema)),
+    title: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawSlotCarrier = Schema.Schema.Type<typeof RawSlotCarrierSchema>
 
-export const RawSlotListingResponseSchema = Schema.asSchema(
+export const RawSlotListingResponseSchema = Schema.revealCodec(
   Schema.Struct({
     carriers: Schema.Array(RawSlotCarrierSchema),
-    days: Schema.optionalWith(
-      Schema.Array(Schema.Struct({ date: Schema.String }).pipe(Schema.extend(UnknownStringRecordSchema))),
-      { exact: true }
-    )
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    days: Schema.optionalKey(Schema.Array(Schema.Struct({ date: Schema.String }).pipe(withUnknownStringFields)))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawSlotListingResponse = Schema.Schema.Type<typeof RawSlotListingResponseSchema>
@@ -102,32 +103,36 @@ export type RawSlotListingResponse = Schema.Schema.Type<typeof RawSlotListingRes
 export const NormalizedSlotSchema = Schema.Struct({
   attributes: Schema.Array(Schema.String),
   available: Schema.Boolean,
-  date: Schema.optionalWith(Schema.String, { exact: true }),
-  carrierId: Schema.optionalWith(Schema.String, { exact: true }),
-  slotListingId: Schema.optionalWith(Schema.String, { exact: true }),
-  slotId: Schema.optionalWith(Schema.String, { exact: true }),
-  startTime: Schema.optionalWith(Schema.String, { exact: true }),
-  endTime: Schema.optionalWith(Schema.String, { exact: true }),
-  type: Schema.optionalWith(Schema.String, { exact: true }),
-  title: Schema.optionalWith(Schema.String, { exact: true }),
-  timeZoneId: Schema.optionalWith(Schema.String, { exact: true }),
-  onDemandProperties: Schema.optionalWith(OnDemandSlotPropertiesSchema, { exact: true }),
-  deliveryPrice: Schema.optionalWith(MoneySchema, { exact: true })
+  date: Schema.optionalKey(Schema.String),
+  carrierId: Schema.optionalKey(Schema.String),
+  slotListingId: Schema.optionalKey(Schema.String),
+  slotId: Schema.optionalKey(Schema.String),
+  startTime: Schema.optionalKey(Schema.String),
+  endTime: Schema.optionalKey(Schema.String),
+  type: Schema.optionalKey(Schema.String),
+  title: Schema.optionalKey(Schema.String),
+  timeZoneId: Schema.optionalKey(Schema.String),
+  onDemandProperties: Schema.optionalKey(OnDemandSlotPropertiesSchema),
+  deliveryPrice: Schema.optionalKey(MoneySchema)
 })
 
 export type NormalizedSlot = Schema.Schema.Type<typeof NormalizedSlotSchema>
 
 export const NormalizedSlotCarrierSchema = Schema.Struct({
-  carrierId: Schema.optionalWith(Schema.String, { exact: true }),
-  carrierName: Schema.optionalWith(Schema.String, { exact: true }),
+  carrierId: Schema.optionalKey(Schema.String),
+  carrierName: Schema.optionalKey(Schema.String),
   days: Schema.Array(RawSlotDayMappingSchema),
-  title: Schema.optionalWith(Schema.String, { exact: true })
+  title: Schema.optionalKey(Schema.String)
 })
 
 export type NormalizedSlotCarrier = Schema.Schema.Type<typeof NormalizedSlotCarrierSchema>
 
 export const NormalizedSlotListingSchema = Schema.Struct({
-  availableSlotCount: Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.nonNegative()),
+  availableSlotCount: Schema.Number.pipe(
+    Schema.check(Schema.isFinite()),
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  ),
   carriers: Schema.Array(NormalizedSlotCarrierSchema),
   slots: Schema.Array(NormalizedSlotSchema)
 })
@@ -138,7 +143,7 @@ export const SlotReservationInputSchema = Schema.Struct({
   allowReservationOverwrite: Schema.Literal(true),
   confirmSlotReservation: Schema.Literal(true),
   deliveryDestinationId: NonEmptyStringSchema,
-  externalAddress: Schema.optionalWith(UnknownStringRecordSchema, { exact: true }),
+  externalAddress: Schema.optionalKey(UnknownStringRecordSchema),
   regionId: NonEmptyStringSchema,
   slotId: NonEmptyStringSchema
 })
@@ -149,54 +154,54 @@ export const SlotReservationSelectionInputSchema = Schema.Struct({
   allowReservationOverwrite: Schema.Literal(true),
   confirmSlotReservation: Schema.Literal(true),
   deliveryDestinationId: NonEmptyStringSchema,
-  externalAddress: Schema.optionalWith(UnknownStringRecordSchema, { exact: true }),
+  externalAddress: Schema.optionalKey(UnknownStringRecordSchema),
   regionId: NonEmptyStringSchema,
   slot: NormalizedSlotSchema
 })
 
 export type SlotReservationSelectionInput = Schema.Schema.Type<typeof SlotReservationSelectionInputSchema>
 
-export const ReservedSlotSchema = Schema.asSchema(
+export const ReservedSlotSchema = Schema.revealCodec(
   Schema.Struct({
-    expiryTime: Schema.optionalWith(Schema.String, { exact: true }),
-    minimumCheckoutThreshold: Schema.optionalWith(MoneySchema, { exact: true }),
-    originalMinimumCheckoutThreshold: Schema.optionalWith(MoneySchema, { exact: true }),
-    slotId: Schema.optionalWith(Schema.String, { exact: true }),
-    timeZoneId: Schema.optionalWith(Schema.String, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    expiryTime: Schema.optionalKey(Schema.String),
+    minimumCheckoutThreshold: Schema.optionalKey(MoneySchema),
+    originalMinimumCheckoutThreshold: Schema.optionalKey(MoneySchema),
+    slotId: Schema.optionalKey(Schema.String),
+    timeZoneId: Schema.optionalKey(Schema.String)
+  }).pipe(withUnknownStringFields)
 )
 
 export type ReservedSlot = Schema.Schema.Type<typeof ReservedSlotSchema>
 
-export const SlotReservationConfirmationDataSchema = Schema.asSchema(
+export const SlotReservationConfirmationDataSchema = Schema.revealCodec(
   Schema.Struct({
-    draftBasketId: Schema.optionalWith(Schema.String, { exact: true }),
-    invalidVouchers: Schema.optionalWith(Schema.Array(Schema.Unknown), { exact: true }),
-    regionChanged: Schema.optionalWith(Schema.Boolean, { exact: true }),
-    slotRegionId: Schema.optionalWith(Schema.String, { exact: true }),
-    totalChanged: Schema.optionalWith(Schema.Boolean, { exact: true })
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+    draftBasketId: Schema.optionalKey(Schema.String),
+    invalidVouchers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+    regionChanged: Schema.optionalKey(Schema.Boolean),
+    slotRegionId: Schema.optionalKey(Schema.String),
+    totalChanged: Schema.optionalKey(Schema.Boolean)
+  }).pipe(withUnknownStringFields)
 )
 
 export type SlotReservationConfirmationData = Schema.Schema.Type<typeof SlotReservationConfirmationDataSchema>
 
-export const RawSlotReservationResponseSchema = Schema.asSchema(
+export const RawSlotReservationResponseSchema = Schema.revealCodec(
   Schema.Struct({
-    confirmationData: Schema.optionalWith(SlotReservationConfirmationDataSchema, { exact: true }),
+    confirmationData: Schema.optionalKey(SlotReservationConfirmationDataSchema),
     slot: ReservedSlotSchema
-  }).pipe(Schema.extend(UnknownStringRecordSchema))
+  }).pipe(withUnknownStringFields)
 )
 
 export type RawSlotReservationResponse = Schema.Schema.Type<typeof RawSlotReservationResponseSchema>
 
 export const NormalizedSlotReservationSchema = Schema.Struct({
-  confirmationData: Schema.optionalWith(SlotReservationConfirmationDataSchema, { exact: true }),
-  expiryTime: Schema.optionalWith(Schema.String, { exact: true }),
-  minimumCheckoutThreshold: Schema.optionalWith(MoneySchema, { exact: true }),
-  originalMinimumCheckoutThreshold: Schema.optionalWith(MoneySchema, { exact: true }),
+  confirmationData: Schema.optionalKey(SlotReservationConfirmationDataSchema),
+  expiryTime: Schema.optionalKey(Schema.String),
+  minimumCheckoutThreshold: Schema.optionalKey(MoneySchema),
+  originalMinimumCheckoutThreshold: Schema.optionalKey(MoneySchema),
   reserved: Schema.Literal(true),
-  slotId: Schema.optionalWith(Schema.String, { exact: true }),
-  timeZoneId: Schema.optionalWith(Schema.String, { exact: true })
+  slotId: Schema.optionalKey(Schema.String),
+  timeZoneId: Schema.optionalKey(Schema.String)
 })
 
 export type NormalizedSlotReservation = Schema.Schema.Type<typeof NormalizedSlotReservationSchema>

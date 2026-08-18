@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect"
+import { Result, Schema } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import type {
@@ -34,7 +34,7 @@ const DELIVERY_DESTINATIONS_PATH = "/api/ecomdeliverydestinations/v4/delivery-ad
 const DELIVERY_PROPOSITIONS_PATH = "/api/ecomdeliverydestinations/v1/propositions"
 const TAG_WEB = "web"
 const filterSeparator = ":"
-const CartQuantityDeltaArraySchema = Schema.Array(CartQuantityDeltaSchema).pipe(Schema.minItems(1))
+const CartQuantityDeltaArraySchema = Schema.Array(CartQuantityDeltaSchema).pipe(Schema.check(Schema.isMinLength(1)))
 
 export interface SearchRequest {
   readonly method: "GET"
@@ -282,17 +282,17 @@ const makeAccountContextHeaders = (input: AccountContextHeadersInput): Readonly<
   return Object.keys(headers).length === 0 ? undefined : headers
 }
 
-export const makeSearchRequest = (input: unknown): Either.Either<SearchRequest, SearchRequestError> =>
-  Either.map(Either.mapLeft(parseUnknown(SearchInputSchema, input), searchInputInvalid), (searchInput) => ({
+export const makeSearchRequest = (input: unknown): Result.Result<SearchRequest, SearchRequestError> =>
+  Result.map(Result.mapError(parseUnknown(SearchInputSchema, input), searchInputInvalid), (searchInput) => ({
     method: "GET",
     url: buildSearchUrl(searchInput)
   }))
 
 export const makeCategoryProductsRequest = (
   input: unknown
-): Either.Either<CategoryProductsRequest, CategoryProductsRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(CategoryPageInputSchema, input), categoryPageInputInvalid),
+): Result.Result<CategoryProductsRequest, CategoryProductsRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(CategoryPageInputSchema, input), categoryPageInputInvalid),
     (categoryPageInput) => ({
       method: "GET",
       url: addCategoryProductParameters(new URL(CATEGORY_PRODUCTS_PATH, VOILA_BASE_URL), categoryPageInput)
@@ -311,25 +311,25 @@ export const makeActiveCustomerSessionRequest = (): ActiveCustomerSessionRequest
 
 export const makeActiveShoppingContextRequest = (
   input: unknown = {}
-): Either.Either<ActiveShoppingContextRequest, ActiveShoppingContextRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(ActiveShoppingContextInputSchema, input), activeShoppingContextInputInvalid),
+): Result.Result<ActiveShoppingContextRequest, ActiveShoppingContextRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(ActiveShoppingContextInputSchema, input), activeShoppingContextInputInvalid),
     (activeShoppingContextInput) => ({ method: "GET", url: buildActiveShoppingContextUrl(activeShoppingContextInput) })
   )
 
 export const makeDeliveryDestinationsRequest = (
   input: unknown = {}
-): Either.Either<DeliveryDestinationsRequest, DeliveryDestinationsRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(DeliveryDestinationsInputSchema, input), deliveryDestinationsInputInvalid),
+): Result.Result<DeliveryDestinationsRequest, DeliveryDestinationsRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(DeliveryDestinationsInputSchema, input), deliveryDestinationsInputInvalid),
     (deliveryDestinationsInput) => ({ method: "GET", url: buildDeliveryDestinationsUrl(deliveryDestinationsInput) })
   )
 
 export const makeDeliveryDestinationRequest = (
   input: unknown
-): Either.Either<DeliveryDestinationRequest, DeliveryDestinationRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(DeliveryDestinationByIdInputSchema, input), deliveryDestinationInputInvalid),
+): Result.Result<DeliveryDestinationRequest, DeliveryDestinationRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(DeliveryDestinationByIdInputSchema, input), deliveryDestinationInputInvalid),
     ({ deliveryDestinationId }) => ({
       method: "GET",
       url: new URL(`${DELIVERY_DESTINATIONS_PATH}/${encodeURIComponent(deliveryDestinationId)}`, VOILA_BASE_URL)
@@ -338,9 +338,9 @@ export const makeDeliveryDestinationRequest = (
 
 export const makeDeliveryPropositionDetailsRequest = (
   input: unknown
-): Either.Either<DeliveryPropositionDetailsRequest, DeliveryPropositionDetailsRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(DeliveryPropositionDetailsInputSchema, input), deliveryPropositionDetailsInputInvalid),
+): Result.Result<DeliveryPropositionDetailsRequest, DeliveryPropositionDetailsRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(DeliveryPropositionDetailsInputSchema, input), deliveryPropositionDetailsInputInvalid),
     (deliveryPropositionDetailsInput) => ({
       method: "GET",
       url: buildDeliveryPropositionDetailsUrl(deliveryPropositionDetailsInput)
@@ -349,9 +349,9 @@ export const makeDeliveryPropositionDetailsRequest = (
 
 export const makeDeliveryContextPreviewRequest = (
   input: unknown
-): Either.Either<DeliveryContextPreviewRequest, DeliveryContextPreviewRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(DeliveryContextPreviewInputSchema, input), deliveryContextPreviewInputInvalid),
+): Result.Result<DeliveryContextPreviewRequest, DeliveryContextPreviewRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(DeliveryContextPreviewInputSchema, input), deliveryContextPreviewInputInvalid),
     (previewInput) => ({
       body: JSON.stringify({
         deliveryDestinationId: previewInput.deliveryDestinationId,
@@ -364,9 +364,9 @@ export const makeDeliveryContextPreviewRequest = (
 
 export const makeSetActiveDeliveryDestinationRequest = (
   input: unknown
-): Either.Either<SetActiveDeliveryDestinationRequest, SetActiveDeliveryDestinationRequestError> =>
-  Either.map(
-    Either.mapLeft(
+): Result.Result<SetActiveDeliveryDestinationRequest, SetActiveDeliveryDestinationRequestError> =>
+  Result.map(
+    Result.mapError(
       parseUnknown(SetActiveDeliveryDestinationInputSchema, input),
       setActiveDeliveryDestinationInputInvalid
     ),
@@ -384,9 +384,9 @@ export const makeSetActiveDeliveryDestinationRequest = (
 
 export const makeSetActiveCartPropositionRequest = (
   input: unknown
-): Either.Either<SetActiveCartPropositionRequest, SetActiveCartPropositionRequestError> =>
-  Either.map(
-    Either.mapLeft(parseUnknown(SetActiveCartPropositionInputSchema, input), setActiveCartPropositionInputInvalid),
+): Result.Result<SetActiveCartPropositionRequest, SetActiveCartPropositionRequestError> =>
+  Result.map(
+    Result.mapError(parseUnknown(SetActiveCartPropositionInputSchema, input), setActiveCartPropositionInputInvalid),
     (setInput) => {
       const headers = makeAccountContextHeaders(setInput)
 
@@ -404,20 +404,20 @@ export const makeSetActiveCartPropositionRequest = (
 
 export const parseApplyDeliveryContextChangeInput = (
   input: unknown
-): Either.Either<ApplyDeliveryContextChangeInput, ApplyDeliveryContextChangeRequestError> =>
-  Either.mapLeft(parseUnknown(ApplyDeliveryContextChangeInputSchema, input), applyDeliveryContextChangeInputInvalid)
+): Result.Result<ApplyDeliveryContextChangeInput, ApplyDeliveryContextChangeRequestError> =>
+  Result.mapError(parseUnknown(ApplyDeliveryContextChangeInputSchema, input), applyDeliveryContextChangeInputInvalid)
 
 export const makeApplyQuantityRequest = (
   deltas: unknown
-): Either.Either<Readonly<{ body: string; method: "POST"; url: URL }>, CartQuantityRequestError> => {
-  const parsedDeltas = Either.mapLeft(parseUnknown(CartQuantityDeltaArraySchema, deltas), cartQuantityInputInvalid)
+): Result.Result<Readonly<{ body: string; method: "POST"; url: URL }>, CartQuantityRequestError> => {
+  const parsedDeltas = Result.mapError(parseUnknown(CartQuantityDeltaArraySchema, deltas), cartQuantityInputInvalid)
 
-  if (Either.isLeft(parsedDeltas)) {
-    return Either.left(parsedDeltas.left)
+  if (Result.isFailure(parsedDeltas)) {
+    return Result.fail(parsedDeltas.failure)
   }
 
   const url = new URL(CART_APPLY_QUANTITY_PATH, VOILA_BASE_URL)
   url.searchParams.set("cartProductSorting", "CATEGORIES")
 
-  return Either.right({ body: JSON.stringify(parsedDeltas.right), method: "POST", url })
+  return Result.succeed({ body: JSON.stringify(parsedDeltas.success), method: "POST", url })
 }

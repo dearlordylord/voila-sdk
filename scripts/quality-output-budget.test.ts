@@ -1,6 +1,5 @@
 import { expect, test } from "vitest"
 
-// @ts-expect-error The production quality-gate helper is an executable JavaScript module.
 import { addSuccessfulOutputLines } from "./quality-output-budget.mjs"
 
 test("accepts output exactly at the budget", () => {

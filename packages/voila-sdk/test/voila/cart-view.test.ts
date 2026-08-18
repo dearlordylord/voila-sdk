@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 
-import { Either } from "effect"
+import { Result } from "effect"
 import { describe, expect, it } from "vitest"
 
 import { parseJson } from "../../src/domain/parse.js"
@@ -12,52 +12,52 @@ const readFixture = (fixtureName: string): unknown => {
   const fixtureText = readFileSync(new URL(`../fixtures/${fixtureName}`, import.meta.url), "utf8")
   const parsed = parseJson(fixtureText)
 
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     throw new Error("Expected fixture JSON to parse")
   }
 
-  return parsed.right
+  return parsed.success
 }
 
 describe("cart view normalization", () => {
   it("normalizes an empty cart view and preserves checkout restrictions", () => {
     const result = parseCartViewResponse(readFixture("cart-view-empty.json"))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.basketId).toBe("sanitized-empty-basket-id")
-      expect(result.right.itemCount).toBe(0)
-      expect(result.right.items).toEqual([])
-      expect(result.right.totals.itemPriceAfterPromos).toEqual({ amount: "0.00", currency: "CAD" })
-      expect(result.right.checkoutRestrictions[0]).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.basketId).toBe("sanitized-empty-basket-id")
+      expect(result.success.itemCount).toBe(0)
+      expect(result.success.items).toEqual([])
+      expect(result.success.totals.itemPriceAfterPromos).toEqual({ amount: "0.00", currency: "CAD" })
+      expect(result.success.checkoutRestrictions[0]).toEqual({
         code: "EMPTY_CART",
         message: "Cart must contain items before checkout",
         severity: "BLOCKING"
       })
-      expect(result.right.limitedItems).toEqual([])
-      expect(result.right.pricingNotifications).toEqual([])
-      expect(result.right.unavailableData).toEqual([])
+      expect(result.success.limitedItems).toEqual([])
+      expect(result.success.pricingNotifications).toEqual([])
+      expect(result.success.unavailableData).toEqual([])
     }
   })
 
   it("normalizes product rows, server totals, and cart warning signals", () => {
     const result = parseCartViewResponse(readFixture("cart-view-non-empty.json"))
 
-    expect(Either.isRight(result)).toBe(true)
+    expect(Result.isSuccess(result)).toBe(true)
 
-    if (Either.isRight(result)) {
-      expect(result.right.basketId).toBe("sanitized-basket-id")
-      expect(result.right.itemCount).toBe(3)
-      expect(result.right.totals).toEqual({
+    if (Result.isSuccess(result)) {
+      expect(result.success.basketId).toBe("sanitized-basket-id")
+      expect(result.success.itemCount).toBe(3)
+      expect(result.success.totals).toEqual({
         itemPriceAfterPromos: { amount: "8.88", currency: "CAD" },
         itemsRetailPrice: { amount: "12.34", currency: "CAD" },
         savingsPrice: { amount: "3.46", currency: "CAD" },
         taxation: "TAX_EXCLUDED"
       })
-      expect(result.right.items).toHaveLength(2)
+      expect(result.success.items).toHaveLength(2)
 
-      const [strawberries, blueberries] = result.right.items
+      const [strawberries, blueberries] = result.success.items
 
       expect(strawberries?.groupName).toBe("Fruits & Vegetables")
       expect(strawberries?.productId).toBe("sanitized-strawberries-product-id")
@@ -76,10 +76,10 @@ describe("cart view normalization", () => {
       expect(blueberries?.unavailable).toBe(true)
       expect(blueberries?.maxQuantityReached).toBe(true)
 
-      expect(result.right.checkoutRestrictions).toEqual([
+      expect(result.success.checkoutRestrictions).toEqual([
         { code: "DELIVERY_SLOT_REQUIRED", message: "Select a delivery slot before checkout", severity: "BLOCKING" }
       ])
-      expect(result.right.limitedItems).toEqual([
+      expect(result.success.limitedItems).toEqual([
         {
           code: "MAX_QUANTITY",
           message: "Blueberries are limited to one item",
@@ -87,7 +87,7 @@ describe("cart view normalization", () => {
           severity: "WARNING"
         }
       ])
-      expect(result.right.pricingNotifications).toEqual([
+      expect(result.success.pricingNotifications).toEqual([
         {
           code: "PRICE_CHANGED",
           message: "A product price changed since it was added",
@@ -95,7 +95,7 @@ describe("cart view normalization", () => {
           severity: "INFO"
         }
       ])
-      expect(result.right.unavailableData).toEqual([
+      expect(result.success.unavailableData).toEqual([
         {
           code: "UNAVAILABLE",
           message: "Blueberries are unavailable",
@@ -109,11 +109,11 @@ describe("cart view normalization", () => {
   it("keeps normalized cart views under the public cart view schema", () => {
     const parsed = parseCartViewResponse(readFixture("cart-view-non-empty.json"))
 
-    expect(Either.isRight(parsed)).toBe(true)
+    expect(Result.isSuccess(parsed)).toBe(true)
 
-    if (Either.isRight(parsed)) {
-      const decoded = assertDecodeSuccess(NormalizedCartViewSchema, parsed.right)
-      expect(assertEncodeSuccess(NormalizedCartViewSchema, decoded)).toEqual(parsed.right)
+    if (Result.isSuccess(parsed)) {
+      const decoded = assertDecodeSuccess(NormalizedCartViewSchema, parsed.success)
+      expect(assertEncodeSuccess(NormalizedCartViewSchema, decoded)).toEqual(parsed.success)
     }
   })
 
@@ -158,11 +158,11 @@ describe("cart view normalization", () => {
   it("fails at the schema boundary when totals are missing", () => {
     const result = parseCartViewResponse({ basket: { basketId: "basket-id" } })
 
-    expect(Either.isLeft(result)).toBe(true)
+    expect(Result.isFailure(result)).toBe(true)
 
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("CartViewResponseSchemaMismatch")
-      expect(JSON.stringify(result.left)).not.toContain("basket-id")
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CartViewResponseSchemaMismatch")
+      expect(JSON.stringify(result.failure)).not.toContain("basket-id")
     }
   })
 
@@ -181,7 +181,7 @@ describe("cart view normalization", () => {
         }
       })
 
-      expect(Either.isLeft(result)).toBe(true)
+      expect(Result.isFailure(result)).toBe(true)
     }
   })
 })
