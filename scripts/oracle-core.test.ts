@@ -53,7 +53,7 @@ describe("oracle core", () => {
     const group = {
       count: members.length,
       diffHash: canonicalDifferenceHash(members),
-      evidence: ["docs/migrations/effect-4/migration-ledger.md#lookup-decisions"],
+      evidence: ["https://github.com/dearlordylord/voila-sdk/issues/19"],
       prefix: "$.artifact.files",
       rationale: "The reviewed group covers only the generated artifact leaves."
     }
@@ -71,7 +71,7 @@ describe("oracle core", () => {
     const makeGroup = (prefix: string, members: typeof all) => ({
       count: members.length,
       diffHash: canonicalDifferenceHash(members),
-      evidence: ["docs/migrations/effect-4/reference-provenance.md"],
+      evidence: ["https://github.com/dearlordylord/voila-sdk/issues/19"],
       prefix,
       rationale: "Reviewed generated artifact differences."
     })
@@ -101,14 +101,14 @@ describe("oracle core", () => {
     const group = {
       count: 1,
       diffHash: canonicalDifferenceHash([difference]),
-      evidence: ["docs/migrations/effect-4/migration-ledger.md"],
+      evidence: ["https://github.com/dearlordylord/voila-sdk/issues/19"],
       prefix: "$.artifact.files",
       rationale: "Reviewed generated artifact differences."
     }
     const entry = {
       after: difference.after,
       before: difference.before,
-      evidence: ["docs/migrations/effect-4/migration-ledger.md"],
+      evidence: ["https://github.com/dearlordylord/voila-sdk/issues/19"],
       path: difference.path,
       rationale: "An exact entry intentionally overlaps."
     }

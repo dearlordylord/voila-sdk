@@ -9,7 +9,7 @@ import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
 
 const execFileAsync = promisify(execFile)
 const sourceRoot = resolve(fileURLToPath(new URL("..", import.meta.url)))
-export const defaultSupplementalOraclePath = resolve(sourceRoot, "docs/migrations/effect-4/oracle/baseline-v2.json")
+export const defaultSupplementalOraclePath = resolve(sourceRoot, "scripts/oracle-baselines/baseline-v2.json")
 
 export const supplementalProvenance = async (rootPath = oracleWorkspaceRoot) => {
   const artifacts = await artifactManifest(rootPath)

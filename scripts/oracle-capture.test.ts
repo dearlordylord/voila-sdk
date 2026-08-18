@@ -30,8 +30,8 @@ test("rejects the post-cutover workspace as an Effect 3 capture source", async (
 })
 
 test("keeps the original and supplemental envelopes independently immutable", async () => {
-  const originalPath = "docs/migrations/effect-4/oracle/baseline.json"
-  const supplementalPath = "docs/migrations/effect-4/oracle/baseline-v2.json"
+  const originalPath = "scripts/oracle-baselines/baseline.json"
+  const supplementalPath = "scripts/oracle-baselines/baseline-v2.json"
   const originalHash = await readContentHash(originalPath)
   const supplementalHash = await readContentHash(supplementalPath)
 

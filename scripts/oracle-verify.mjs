@@ -8,8 +8,8 @@ import { assertReviewedParity, readOracle, validateAllowlist, writeJson } from "
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
 
 const root = oracleWorkspaceRoot
-export const defaultOraclePath = resolve(root, "docs/migrations/effect-4/oracle/baseline.json")
-export const defaultAllowlistPath = resolve(root, "docs/migrations/effect-4/oracle/allowlist.json")
+export const defaultOraclePath = resolve(root, "scripts/oracle-baselines/baseline.json")
+export const defaultAllowlistPath = resolve(root, "scripts/oracle-baselines/allowlist.json")
 
 const parseArgs = (args) => ({
   allowlist: resolve(args[args.indexOf("--allowlist") + 1] ?? defaultAllowlistPath),

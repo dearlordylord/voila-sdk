@@ -8,7 +8,7 @@ import { artifactManifest, assertFreshBuiltArtifacts } from "./oracle-artifacts.
 import { oracleWorkspaceRoot } from "./oracle-workspace.mjs"
 
 const root = oracleWorkspaceRoot
-export const defaultOraclePath = resolve(root, "docs/migrations/effect-4/oracle/baseline.json")
+export const defaultOraclePath = resolve(root, "scripts/oracle-baselines/baseline.json")
 export const exactEffect3Version = "3.22.1"
 
 const parseOutput = (args) => {
