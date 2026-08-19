@@ -66,14 +66,15 @@ Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeRawCateg
 
 ## Keepalive
 
-The MCP package exports the Effect-native keepalive runner. `runKeepaliveTick`
-checks the authenticated session snapshot once, `runKeepaliveLoop` performs
-the interruptible healthy interval and capped, jittered retry loop, and
-`runKeepalive` is the foreground CLI bridge. The foreground bridge listens for
-`SIGINT` and `SIGTERM`, interrupts the loop, removes both listeners, and
-returns the `"cancelled"` stop reason. A re-authentication verdict returns
-`"expired"`; an absent or guest-shaped configured session snapshot returns
-`"misconfigured"`.
+The MCP package exports the foreground `runKeepalive` bridge,
+`makeKeepaliveConfig`, and the `KeepaliveConfig` type used to configure it. Foreground
+execution defaults to stopping on expiry. It listens for `SIGINT` and
+`SIGTERM`, interrupts the loop, removes both listeners, and returns the
+`"cancelled"` stop reason. A re-authentication verdict returns `"expired"`;
+an absent or guest-shaped configured session snapshot returns
+`"misconfigured"`. The tick and background-loop implementations, their
+defaults, and typed tick failures are internal MCP server details rather than
+publishable contracts.
 
 The MCP server starts a background keepalive only when
 `VOILA_AUTH_SESSION_PATH` is explicitly configured and `VOILA_GUEST` is not

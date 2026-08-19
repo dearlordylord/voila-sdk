@@ -8,12 +8,12 @@ import {
   type SessionFileUpdate,
   StateFileLocks,
   type StateFilePath,
-  StateFilePathSchema,
   updateSessionFileCarrying
 } from "@firfi/voila-session-store"
 import { Effect, type Layer, Option, Ref, Result, Schema, Semaphore } from "effect"
 
 import { makeAuthGuidance } from "./auth-guidance.js"
+import { NodeEnvironmentSchema, type NodeEnvironmentConfig } from "./startup-config.js"
 import {
   makeGuestSessionSnapshot,
   type OperationEnvironment,
@@ -27,13 +27,7 @@ import { nodeVoilaTransportLayer } from "./node-transport.js"
 // One configured path, parsed here at the environment boundary: the read path
 // and the write path cannot differ, because a write compared against a file
 // nobody reads guarantees nothing.
-const EnvSchema = Schema.Struct({
-  VOILA_AUTH_SESSION_PATH: Schema.optionalKey(StateFilePathSchema),
-  VOILA_GUEST: Schema.optionalKey(Schema.Literal("1")),
-  VOILA_USER_AGENT: Schema.optionalKey(Schema.Trimmed.check(Schema.isNonEmpty()))
-})
-
-type EnvConfig = Schema.Schema.Type<typeof EnvSchema>
+type EnvConfig = NodeEnvironmentConfig
 
 const envInvalid = (): OperationFailure => ({
   _tag: "VoilaEnvironmentInvalid",
@@ -180,18 +174,15 @@ export const makeNodeOperationEnvironment = (
   env: Readonly<Record<string, string | undefined>> = process.env,
   transport?: Layer.Layer<VoilaTransport>
 ): Result.Result<OperationEnvironment, OperationFailure> =>
-  Result.map(Result.mapError(Schema.decodeUnknownResult(EnvSchema)(env), envInvalid), (config) => ({
-    ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-    session: makeSessionPort(config),
-    transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
-  }))
+  Result.map(Result.mapError(Schema.decodeUnknownResult(NodeEnvironmentSchema)(env), envInvalid), (config) =>
+    makeNodeOperationEnvironmentFromConfig(config, transport)
+  )
 
-export const defaultNodeOperationEnvironment = (): OperationEnvironment => {
-  const env = makeNodeOperationEnvironment()
-
-  if (Result.isFailure(env)) {
-    throw new Error(env.failure.message)
-  }
-
-  return env.success
-}
+export const makeNodeOperationEnvironmentFromConfig = (
+  config: EnvConfig,
+  transport?: Layer.Layer<VoilaTransport>
+): OperationEnvironment => ({
+  ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
+  session: makeSessionPort(config),
+  transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
+})

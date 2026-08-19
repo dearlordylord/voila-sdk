@@ -6,7 +6,7 @@ import {
   type VoilaTransportError
 } from "@firfi/voila-sdk"
 import { it as effectTest } from "@effect/vitest"
-import { Deferred, Effect, Exit, Fiber, Layer, Random, Result, Schema } from "effect"
+import { Deferred, Effect, Exit, Fiber, Layer, Random } from "effect"
 import { TestClock } from "effect/testing"
 import { describe, expect, it } from "vitest"
 
@@ -14,8 +14,6 @@ import {
   type KeepaliveSignal,
   type KeepaliveSignalPort,
   type KeepaliveConfig,
-  KeepaliveMisconfiguredErrorSchema,
-  defaultForegroundKeepaliveConfig,
   makeKeepaliveConfig,
   runKeepalive,
   runKeepaliveLoop,
@@ -190,7 +188,6 @@ describe("keepalive runner", () => {
   it("uses an expiry-stopping foreground default", async () => {
     const { env } = makeStubEnvironment(() => Effect.succeed(unauthorizedResponse()))
 
-    expect(defaultForegroundKeepaliveConfig.stopOnExpired).toBe(true)
     await expect(runKeepalive(env, undefined, () => undefined, noSignals)).resolves.toBe("expired")
   })
 
@@ -207,18 +204,6 @@ describe("keepalive runner", () => {
         noSignals
       )
     ).rejects.toThrow("Voila keepalive failed")
-  })
-
-  it("owns the misconfiguration failure with a runtime schema", () => {
-    const decoded = Schema.decodeUnknownResult(KeepaliveMisconfiguredErrorSchema)({
-      _tag: "KeepaliveMisconfigured",
-      message: "Configured authenticated session snapshot is missing"
-    })
-
-    expect(Result.isSuccess(decoded)).toBe(true)
-    expect(Result.isFailure(Schema.decodeUnknownResult(KeepaliveMisconfiguredErrorSchema)({ _tag: "Other" }))).toBe(
-      true
-    )
   })
 
   effectTest.effect("never schedules a jittered retry beyond maxRetryDelayMs", () =>

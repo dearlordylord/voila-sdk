@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest"
+import { Schema } from "effect"
 
-import { keepaliveConfigFor, keepaliveEligibleFor } from "../src/startup-config.js"
+import { keepaliveConfigFor, keepaliveEligibleFor, NodeEnvironmentSchema } from "../src/startup-config.js"
+
+const nodeConfig = (input: Record<string, string>) => Schema.decodeUnknownSync(NodeEnvironmentSchema)(input)
 
 describe("MCP keepalive startup eligibility", () => {
   it("requires an explicit authenticated session path and rejects guest mode", () => {
-    expect(keepaliveEligibleFor({ VOILA_AUTH_SESSION_PATH: "/tmp/session.json" })).toBe(true)
-    expect(keepaliveEligibleFor({})).toBe(false)
-    expect(keepaliveEligibleFor({ VOILA_AUTH_SESSION_PATH: "/tmp/session.json", VOILA_GUEST: "1" })).toBe(false)
+    expect(keepaliveEligibleFor(nodeConfig({ VOILA_AUTH_SESSION_PATH: "/tmp/session.json" }))).toBe(true)
+    expect(keepaliveEligibleFor(nodeConfig({}))).toBe(false)
+    expect(keepaliveEligibleFor(nodeConfig({ VOILA_AUTH_SESSION_PATH: "/tmp/session.json", VOILA_GUEST: "1" }))).toBe(
+      false
+    )
   })
 
   it("keeps disabled startup from constructing a loop configuration", () => {

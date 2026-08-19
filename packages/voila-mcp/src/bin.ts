@@ -7,10 +7,15 @@ import type { ServeError } from "effect/unstable/http/HttpServerError"
 import { runKeepaliveLoop } from "./keepalive-runner.js"
 import { voilaHttpServerLayer } from "./mcp-http-server.js"
 import { voilaStdioServerLayer, VoilaOperations } from "./mcp-server.js"
-import { makeNodeOperationEnvironment } from "./node-env.js"
+import { makeNodeOperationEnvironmentFromConfig } from "./node-env.js"
 import { type OperationEnvironment } from "./operations.js"
 import { packageVersion } from "./package-version.js"
-import { keepaliveConfigFor, keepaliveEligibleFor } from "./startup-config.js"
+import {
+  keepaliveConfigFor,
+  keepaliveEligibleFor,
+  NodeEnvironmentSchema,
+  type NodeEnvironmentConfig
+} from "./startup-config.js"
 
 const defaultHttpHost = "127.0.0.1"
 // the router's own path type: a route that does not start with "/" is not a
@@ -189,17 +194,21 @@ const runServer = (
 
 const main = Effect.gen(function* () {
   const runtime = makeRuntimeConfig()
-  const env = makeNodeOperationEnvironment()
+  const nodeEnvironment = Result.mapError(Schema.decodeUnknownResult(NodeEnvironmentSchema)(process.env), () => ({
+    _tag: "VoilaEnvironmentInvalid",
+    message: "Voila MCP environment variables are invalid"
+  }))
 
   if (Result.isFailure(runtime)) {
     return yield* reportStartupFailure(runtime.failure)
   }
 
-  if (Result.isFailure(env)) {
-    return yield* reportStartupFailure(env.failure)
+  if (Result.isFailure(nodeEnvironment)) {
+    return yield* reportStartupFailure(nodeEnvironment.failure)
   }
 
-  return yield* runServer(runtime.success, env.success, keepaliveEligibleFor(process.env))
+  const env: NodeEnvironmentConfig = nodeEnvironment.success
+  return yield* runServer(runtime.success, makeNodeOperationEnvironmentFromConfig(env), keepaliveEligibleFor(env))
 })
 
 NodeRuntime.runMain(main)

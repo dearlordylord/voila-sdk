@@ -29,14 +29,14 @@ export interface KeepaliveConfig {
   readonly stopOnExpired: boolean
 }
 
-export const defaultKeepaliveConfig: KeepaliveConfig = {
+const defaultKeepaliveConfig: KeepaliveConfig = {
   healthyIntervalMs: secondsPerDay * millisecondsPerSecond,
   maxRetryDelayMs: maxRetryDelayMinutes * secondsPerMinute * millisecondsPerSecond,
   retryDelayMs: retryDelaySeconds * millisecondsPerSecond,
   stopOnExpired: false
 }
 
-export const defaultForegroundKeepaliveConfig: KeepaliveConfig = { ...defaultKeepaliveConfig, stopOnExpired: true }
+const defaultForegroundKeepaliveConfig: KeepaliveConfig = { ...defaultKeepaliveConfig, stopOnExpired: true }
 
 const makeConfig = (overrides: Partial<KeepaliveConfig> = {}): KeepaliveConfig => ({
   ...defaultKeepaliveConfig,
@@ -59,12 +59,12 @@ const redactedCause = (error: unknown): string => {
 
 const checkFailed = (error: unknown): KeepaliveOutcome => ({ _tag: "check-failed", cause: redactedCause(error) })
 
-export const KeepaliveMisconfiguredErrorSchema = Schema.Struct({
+const KeepaliveMisconfiguredErrorSchema = Schema.Struct({
   _tag: Schema.Literal("KeepaliveMisconfigured"),
   message: Schema.String
 })
 
-export type KeepaliveMisconfiguredError = Schema.Schema.Type<typeof KeepaliveMisconfiguredErrorSchema>
+type KeepaliveMisconfiguredError = Schema.Schema.Type<typeof KeepaliveMisconfiguredErrorSchema>
 
 type KeepaliveTickResult = KeepaliveOutcome | { readonly _tag: "misconfigured" }
 
