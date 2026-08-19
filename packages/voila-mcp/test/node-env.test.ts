@@ -89,7 +89,7 @@ describe("Node operation environment", () => {
 
     if (Result.isSuccess(environment)) {
       expect(environment.success.authGuidance?.mcpEnv.VOILA_AUTH_SESSION_PATH).toBe(sessionPath)
-      expect(environment.success.keepaliveEligible).toBe(true)
+      expect(Object.hasOwn(environment.success, "keepaliveEligible")).toBe(false)
     }
   })
 
@@ -154,11 +154,11 @@ describe("Node operation environment", () => {
 
     if (Result.isSuccess(environment)) {
       expect(environment.success.authGuidance).toBeUndefined()
-      expect(environment.success.keepaliveEligible).toBeUndefined()
+      expect(Object.hasOwn(environment.success, "keepaliveEligible")).toBe(false)
     }
   })
 
-  it("starts keepalive only for an explicit non-guest session snapshot path", () => {
+  it("does not leak startup keepalive eligibility through the operation environment", () => {
     const configured = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: sessionPath })
     const ordinaryGuest = makeNodeOperationEnvironment({})
     const forcedGuest = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: sessionPath, VOILA_GUEST: "1" })
@@ -167,9 +167,9 @@ describe("Node operation environment", () => {
       throw new Error("Expected valid operation environments")
     }
 
-    expect(configured.success.keepaliveEligible).toBe(true)
-    expect(ordinaryGuest.success.keepaliveEligible).toBeUndefined()
-    expect(forcedGuest.success.keepaliveEligible).toBeUndefined()
+    expect(Object.hasOwn(configured.success, "keepaliveEligible")).toBe(false)
+    expect(Object.hasOwn(ordinaryGuest.success, "keepaliveEligible")).toBe(false)
+    expect(Object.hasOwn(forcedGuest.success, "keepaliveEligible")).toBe(false)
   })
 
   it("does not bootstrap a guest when an authenticated session snapshot disappears", async () => {
@@ -300,4 +300,68 @@ describe("Node operation environment", () => {
       }
     }
   )
+
+  it("bounds repeated authenticated CAS conflicts and hands off to retry", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "voila-keepalive-conflict-"))
+    const path = join(directory, "session.json")
+    const firstEntered = Deferred.makeUnsafe<void>()
+    const firstRelease = Deferred.makeUnsafe<void>()
+    const secondEntered = Deferred.makeUnsafe<void>()
+    const secondRelease = Deferred.makeUnsafe<void>()
+    const retried = Deferred.makeUnsafe<void>()
+    let requests = 0
+
+    try {
+      await writeSnapshot(path, makeAuthenticatedSnapshot("boot"))
+      const transport = stubTransportLayer(() => {
+        requests += 1
+
+        if (requests === 1 || requests === 2) {
+          const entered = requests === 1 ? firstEntered : secondEntered
+          const release = requests === 1 ? firstRelease : secondRelease
+          return Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined)
+            yield* Deferred.await(release)
+            return healthyResponse
+          })
+        }
+
+        return Effect.succeed(healthyResponse)
+      })
+      const environment = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: path }, transport)
+
+      if (Result.isFailure(environment)) {
+        throw new Error("Expected a valid operation environment")
+      }
+
+      const fiber = Effect.runFork(
+        Effect.provide(
+          runKeepaliveLoop(
+            environment.success,
+            makeKeepaliveConfig({ healthyIntervalMs: 60_000, retryDelayMs: 60_000, maxRetryDelayMs: 60_000 }),
+            (line) => {
+              if (line.includes("VoilaSessionSnapshotConflict")) {
+                Effect.runSync(Deferred.succeed(retried, undefined))
+              }
+            }
+          ),
+          environment.success.transport
+        )
+      )
+
+      await Effect.runPromise(Deferred.await(firstEntered))
+      await writeSnapshot(path, makeAuthenticatedSnapshot("first-winner"))
+      Effect.runSync(Deferred.succeed(firstRelease, undefined))
+      await Effect.runPromise(Deferred.await(secondEntered))
+      await writeSnapshot(path, makeAuthenticatedSnapshot("second-winner"))
+      Effect.runSync(Deferred.succeed(secondRelease, undefined))
+
+      await Effect.runPromise(Deferred.await(retried))
+      expect(requests).toBe(2)
+      Effect.runSync(Fiber.interrupt(fiber))
+      await Effect.runPromise(Fiber.await(fiber))
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
 })

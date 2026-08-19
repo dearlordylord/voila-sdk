@@ -4,12 +4,13 @@ import { Cause, Effect, Exit, Fiber, Layer, Result, Schema } from "effect"
 import type { HttpRouter } from "effect/unstable/http"
 import type { ServeError } from "effect/unstable/http/HttpServerError"
 
-import { makeKeepaliveConfig, runKeepaliveLoop } from "./keepalive-runner.js"
+import { runKeepaliveLoop } from "./keepalive-runner.js"
 import { voilaHttpServerLayer } from "./mcp-http-server.js"
 import { voilaStdioServerLayer, VoilaOperations } from "./mcp-server.js"
 import { makeNodeOperationEnvironment } from "./node-env.js"
 import { type OperationEnvironment } from "./operations.js"
 import { packageVersion } from "./package-version.js"
+import { keepaliveConfigFor, keepaliveEligibleFor } from "./startup-config.js"
 
 const defaultHttpHost = "127.0.0.1"
 // the router's own path type: a route that does not start with "/" is not a
@@ -129,16 +130,6 @@ const writeStderr = (line: string): void => {
   process.stderr.write(line)
 }
 
-const keepaliveConfigFor = (runtime: RuntimeConfig, env: OperationEnvironment): KeepaliveConfig | undefined => {
-  if (runtime.keepaliveDisabled || env.keepaliveEligible !== true) {
-    return undefined
-  }
-
-  return makeKeepaliveConfig({
-    ...(runtime.keepaliveIntervalMs === undefined ? {} : { healthyIntervalMs: runtime.keepaliveIntervalMs })
-  })
-}
-
 const makeServerLayer = (runtime: RuntimeConfig): Layer.Layer<never, ServeError, VoilaOperations> =>
   runtime.transport === "http"
     ? voilaHttpServerLayer({ host: runtime.httpHost, path: runtime.httpPath, port: runtime.httpPort }, packageVersion)
@@ -169,10 +160,14 @@ const keepaliveEffect = (env: OperationEnvironment, config: KeepaliveConfig): Ef
  * Shutdown, finalizer ordering, and non-zero exit come from the Effect runtime
  * rather than from hand-rolled signal handlers.
  */
-const runServer = (runtime: RuntimeConfig, env: OperationEnvironment): Effect.Effect<void, ServeError> =>
+const runServer = (
+  runtime: RuntimeConfig,
+  env: OperationEnvironment,
+  keepaliveEligible: boolean
+): Effect.Effect<void, ServeError> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const config = keepaliveConfigFor(runtime, env)
+      const config = keepaliveConfigFor(runtime, keepaliveEligible)
 
       if (config === undefined) {
         writeStderr("voila keepalive: skipped (no authenticated session or disabled via VOILA_KEEPALIVE=0)\n")
@@ -204,7 +199,7 @@ const main = Effect.gen(function* () {
     return yield* reportStartupFailure(env.failure)
   }
 
-  return yield* runServer(runtime.success, env.success)
+  return yield* runServer(runtime.success, env.success, keepaliveEligibleFor(process.env))
 })
 
 NodeRuntime.runMain(main)

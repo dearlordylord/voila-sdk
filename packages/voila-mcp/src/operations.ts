@@ -147,8 +147,6 @@ export interface OperationSessionPort {
  */
 export interface OperationEnvironment {
   readonly authGuidance?: OperationAuthGuidance
-  /** True only when an explicit authenticated state file path enables keepalive. */
-  readonly keepaliveEligible?: boolean
   readonly session: OperationSessionPort
   readonly transport: Layer.Layer<VoilaTransport>
 }

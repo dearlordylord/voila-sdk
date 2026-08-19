@@ -45,6 +45,11 @@ const sessionSnapshotMissing = (): OperationFailure => ({
   message: "Configured authenticated session snapshot is missing or not authenticated"
 })
 
+const sessionSnapshotConflict = (): OperationFailure => ({
+  _tag: "VoilaSessionSnapshotConflict",
+  message: "Authenticated session snapshot changed during keepalive check"
+})
+
 /**
  * A guest snapshot is never written to disk: it is rebuildable with one
  * request, and persisting it is exactly what lets a guest bootstrap land on top
@@ -106,7 +111,8 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
   const runWithSessionFile = <A>(
     file: StateFilePath,
     operation: SessionOperation<A>,
-    authenticatedOnly = false
+    authenticatedOnly = false,
+    reconciliationAttempts = 0
   ): Effect.Effect<A, OperationFailure, VoilaTransport> => {
     const runCycle = (): Effect.Effect<A, OperationFailure, VoilaTransport | StateFileLocks> =>
       Effect.gen(function* () {
@@ -138,7 +144,11 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
           // the authenticated winner before returning any health verdict, so a
           // concurrent login or deletion can never leave keepalive sleeping on
           // a stale result.
-          return yield* runCycle()
+          if (reconciliationAttempts > 0) {
+            return yield* Effect.fail(sessionSnapshotConflict())
+          }
+
+          return yield* runWithSessionFile(file, operation, true, reconciliationAttempts + 1)
         }
 
         // A refreshed guest session is kept in memory for the same reason it is
@@ -172,7 +182,6 @@ export const makeNodeOperationEnvironment = (
 ): Result.Result<OperationEnvironment, OperationFailure> =>
   Result.map(Result.mapError(Schema.decodeUnknownResult(EnvSchema)(env), envInvalid), (config) => ({
     ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-    ...(config.VOILA_GUEST === "1" || config.VOILA_AUTH_SESSION_PATH === undefined ? {} : { keepaliveEligible: true }),
     session: makeSessionPort(config),
     transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
   }))
