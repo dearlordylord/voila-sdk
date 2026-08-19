@@ -6,7 +6,7 @@ import {
   type KeepaliveStopReason,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import { Duration, Effect, Exit, Fiber, Schedule } from "effect"
+import { Cause, Duration, Effect, Exit, Fiber, Schedule, Schema } from "effect"
 
 import { type OperationEnvironment, type OperationFailure } from "./operations.js"
 
@@ -36,6 +36,8 @@ export const defaultKeepaliveConfig: KeepaliveConfig = {
   stopOnExpired: false
 }
 
+export const defaultForegroundKeepaliveConfig: KeepaliveConfig = { ...defaultKeepaliveConfig, stopOnExpired: true }
+
 const makeConfig = (overrides: Partial<KeepaliveConfig> = {}): KeepaliveConfig => ({
   ...defaultKeepaliveConfig,
   ...overrides
@@ -57,7 +59,12 @@ const redactedCause = (error: unknown): string => {
 
 const checkFailed = (error: unknown): KeepaliveOutcome => ({ _tag: "check-failed", cause: redactedCause(error) })
 
-type KeepaliveMisconfiguredError = { readonly _tag: "KeepaliveMisconfigured"; readonly message: string }
+export const KeepaliveMisconfiguredErrorSchema = Schema.Struct({
+  _tag: Schema.Literal("KeepaliveMisconfigured"),
+  message: Schema.String
+})
+
+export type KeepaliveMisconfiguredError = Schema.Schema.Type<typeof KeepaliveMisconfiguredErrorSchema>
 
 type KeepaliveTickResult = KeepaliveOutcome | { readonly _tag: "misconfigured" }
 
@@ -211,7 +218,7 @@ const processKeepaliveSignals: KeepaliveSignalPort = {
  */
 export const runKeepalive = async (
   env: OperationEnvironment,
-  config: KeepaliveConfig = defaultKeepaliveConfig,
+  config: KeepaliveConfig = defaultForegroundKeepaliveConfig,
   writeLine: (line: string) => void = (line) => void process.stderr.write(line),
   signals: KeepaliveSignalPort = processKeepaliveSignals
 ): Promise<KeepaliveStopReason> => {
@@ -234,7 +241,11 @@ export const runKeepalive = async (
       return exit.value
     }
 
-    return "cancelled"
+    if (Cause.hasInterruptsOnly(exit.cause)) {
+      return "cancelled"
+    }
+
+    throw new Error("Voila keepalive failed")
   } finally {
     if (sigintAdded) {
       signals.remove("SIGINT", onSignal)

@@ -119,8 +119,8 @@
       "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
     },
     {
-      "count": 132,
-      "diffHash": "f5f2793ec515669e1cb3438913551805c748dd84acb914617fe0cef619cc3394",
+      "count": 128,
+      "diffHash": "967c6c8d645ae31513edaacdf189118ca14dd2c177009e6eae2f75c56b0c92dd",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"
@@ -160,7 +160,7 @@
     },
     {
       "count": 70,
-      "diffHash": "d50851967e8e3837ad42ad2eb82b0863ade108f8cebc31bad42ba43553f45b35",
+      "diffHash": "54c0a25a5494d72be5c09a9a4265067e4e37ab58def63eb7063b7a6cb776c1d0",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"

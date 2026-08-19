@@ -6,7 +6,7 @@ import {
   type VoilaTransportError
 } from "@firfi/voila-sdk"
 import { it as effectTest } from "@effect/vitest"
-import { Deferred, Effect, Exit, Fiber, Layer, Random } from "effect"
+import { Deferred, Effect, Exit, Fiber, Layer, Random, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { describe, expect, it } from "vitest"
 
@@ -14,6 +14,8 @@ import {
   type KeepaliveSignal,
   type KeepaliveSignalPort,
   type KeepaliveConfig,
+  KeepaliveMisconfiguredErrorSchema,
+  defaultForegroundKeepaliveConfig,
   makeKeepaliveConfig,
   runKeepalive,
   runKeepaliveLoop,
@@ -63,6 +65,8 @@ const runLoop = (
   Effect.runPromise(Effect.provide(runKeepaliveLoop(env, config, writeLine), env.transport))
 
 describe("keepalive runner", () => {
+  const noSignals: KeepaliveSignalPort = { add: () => undefined, remove: () => undefined }
+
   it("classifies an active session as healthy", async () => {
     const { env } = makeStubEnvironment(() => Effect.succeed(healthyResponse()))
 
@@ -181,6 +185,40 @@ describe("keepalive runner", () => {
     await expect(running).resolves.toBe("cancelled")
     expect(removed).toEqual(["SIGINT", "SIGTERM"])
     expect(listeners.size).toBe(0)
+  })
+
+  it("uses an expiry-stopping foreground default", async () => {
+    const { env } = makeStubEnvironment(() => Effect.succeed(unauthorizedResponse()))
+
+    expect(defaultForegroundKeepaliveConfig.stopOnExpired).toBe(true)
+    await expect(runKeepalive(env, undefined, () => undefined, noSignals)).resolves.toBe("expired")
+  })
+
+  it("rejects defect exits instead of reporting cancellation", async () => {
+    const { env } = makeStubEnvironment(() => Effect.succeed(healthyResponse()))
+
+    await expect(
+      runKeepalive(
+        env,
+        makeKeepaliveConfig({ healthyIntervalMs: 60_000 }),
+        () => {
+          throw new Error("secret defect")
+        },
+        noSignals
+      )
+    ).rejects.toThrow("Voila keepalive failed")
+  })
+
+  it("owns the misconfiguration failure with a runtime schema", () => {
+    const decoded = Schema.decodeUnknownResult(KeepaliveMisconfiguredErrorSchema)({
+      _tag: "KeepaliveMisconfigured",
+      message: "Configured authenticated session snapshot is missing"
+    })
+
+    expect(Result.isSuccess(decoded)).toBe(true)
+    expect(Result.isFailure(Schema.decodeUnknownResult(KeepaliveMisconfiguredErrorSchema)({ _tag: "Other" }))).toBe(
+      true
+    )
   })
 
   effectTest.effect("never schedules a jittered retry beyond maxRetryDelayMs", () =>

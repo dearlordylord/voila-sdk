@@ -1,5 +1,14 @@
-import { VoilaTransport } from "@firfi/voila-sdk"
-import { Effect, Result } from "effect"
+import {
+  makeAuthenticatedSdkSessionSnapshot,
+  makeGuestSdkSessionSnapshot,
+  makeSessionSnapshot,
+  serializeCookieJar,
+  type SdkSessionSnapshot,
+  toughCookieJarPort,
+  VoilaTransport
+} from "@firfi/voila-sdk"
+import { persistSession, StateFileLocksLive, StateFilePathSchema, updateSessionFile } from "@firfi/voila-session-store"
+import { Deferred, Effect, Fiber, Result } from "effect"
 import { createServer } from "node:http"
 import { mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
@@ -8,10 +17,66 @@ import { describe, expect, it } from "vitest"
 
 import { makeKeepaliveConfig, runKeepaliveLoop } from "../src/keepalive-runner.js"
 import { makeNodeOperationEnvironment } from "../src/node-env.js"
-import { keepaliveConfigFor } from "../src/keepalive-config.js"
-import { unusedTransportLayer } from "./helpers/operations.js"
+import { stubTransportLayer, unusedTransportLayer } from "./helpers/operations.js"
 
 const sessionPath = "/tmp/voila-node-env-test.json"
+
+const makeSessionForTest = () => {
+  const jar = toughCookieJarPort.create()
+  jar.setCookieSync("voila-session=sanitized-cookie; Path=/; Secure; HttpOnly", "https://voila.ca/")
+  const cookies = serializeCookieJar(jar)
+
+  if (Result.isFailure(cookies)) {
+    throw new Error("Expected cookie jar serialization")
+  }
+
+  const session = makeSessionSnapshot(
+    { assetVersion: "asset", clientRouteId: "route", pageViewId: "page", regionId: "region" },
+    { token: "csrf" },
+    cookies.success
+  )
+
+  if (Result.isFailure(session)) {
+    throw new Error("Expected session snapshot")
+  }
+
+  return session.success
+}
+
+const makeAuthenticatedSnapshot = (regionId: string) => {
+  const base = makeSessionForTest()
+  const snapshot = makeAuthenticatedSdkSessionSnapshot(
+    { ...base, metadata: { ...base.metadata, regionId } },
+    "authenticated"
+  )
+
+  if (Result.isFailure(snapshot)) {
+    throw new Error("Expected authenticated session snapshot")
+  }
+
+  return snapshot.success
+}
+
+const makeGuestSnapshot = () => {
+  const snapshot = makeGuestSdkSessionSnapshot(makeSessionForTest())
+
+  if (Result.isFailure(snapshot)) {
+    throw new Error("Expected guest session snapshot")
+  }
+
+  return snapshot.success
+}
+
+const writeSnapshot = async (path: string, snapshot: SdkSessionSnapshot) => {
+  await Effect.runPromise(
+    Effect.provide(
+      updateSessionFile(StateFilePathSchema.make(path), () => Effect.succeed(persistSession(snapshot))),
+      StateFileLocksLive
+    )
+  )
+}
+
+const healthyResponse = { body: JSON.stringify({ authenticated: true }), headers: {}, status: 200 }
 
 describe("Node operation environment", () => {
   it("accepts a configured user-agent and session path", () => {
@@ -24,7 +89,7 @@ describe("Node operation environment", () => {
 
     if (Result.isSuccess(environment)) {
       expect(environment.success.authGuidance?.mcpEnv.VOILA_AUTH_SESSION_PATH).toBe(sessionPath)
-      expect(environment.success.sessionSnapshotPath).toBe(sessionPath)
+      expect(environment.success.keepaliveEligible).toBe(true)
     }
   })
 
@@ -89,12 +154,11 @@ describe("Node operation environment", () => {
 
     if (Result.isSuccess(environment)) {
       expect(environment.success.authGuidance).toBeUndefined()
-      expect(environment.success.sessionSnapshotPath).toBeUndefined()
+      expect(environment.success.keepaliveEligible).toBeUndefined()
     }
   })
 
   it("starts keepalive only for an explicit non-guest session snapshot path", () => {
-    const runtime = { keepaliveDisabled: false, keepaliveIntervalMs: 7_200_000 }
     const configured = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: sessionPath })
     const ordinaryGuest = makeNodeOperationEnvironment({})
     const forcedGuest = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: sessionPath, VOILA_GUEST: "1" })
@@ -103,10 +167,9 @@ describe("Node operation environment", () => {
       throw new Error("Expected valid operation environments")
     }
 
-    expect(keepaliveConfigFor(runtime, configured.success)?.healthyIntervalMs).toBe(7_200_000)
-    expect(keepaliveConfigFor(runtime, ordinaryGuest.success)).toBeUndefined()
-    expect(keepaliveConfigFor(runtime, forcedGuest.success)).toBeUndefined()
-    expect(keepaliveConfigFor({ ...runtime, keepaliveDisabled: true }, configured.success)).toBeUndefined()
+    expect(configured.success.keepaliveEligible).toBe(true)
+    expect(ordinaryGuest.success.keepaliveEligible).toBeUndefined()
+    expect(forcedGuest.success.keepaliveEligible).toBeUndefined()
   })
 
   it("does not bootstrap a guest when an authenticated session snapshot disappears", async () => {
@@ -135,4 +198,106 @@ describe("Node operation environment", () => {
       await rm(directory, { force: true, recursive: true })
     }
   })
+
+  it("rechecks an authenticated CAS winner before returning keepalive health", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "voila-keepalive-conflict-"))
+    const path = join(directory, "session.json")
+    const entered = Deferred.makeUnsafe<void>()
+    const release = Deferred.makeUnsafe<void>()
+    let requests = 0
+
+    try {
+      await writeSnapshot(path, makeAuthenticatedSnapshot("boot"))
+      const transport = stubTransportLayer(() => {
+        requests += 1
+
+        if (requests === 1) {
+          return Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined)
+            yield* Deferred.await(release)
+            return healthyResponse
+          })
+        }
+
+        return Effect.succeed({ body: "{}", headers: {}, status: 401 })
+      })
+      const environment = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: path }, transport)
+
+      if (Result.isFailure(environment)) {
+        throw new Error("Expected a valid operation environment")
+      }
+
+      const fiber = Effect.runFork(
+        Effect.provide(
+          runKeepaliveLoop(
+            environment.success,
+            makeKeepaliveConfig({ healthyIntervalMs: 60_000, stopOnExpired: true })
+          ),
+          environment.success.transport
+        )
+      )
+
+      await Effect.runPromise(Deferred.await(entered))
+      await writeSnapshot(path, makeAuthenticatedSnapshot("fresh-login"))
+      Effect.runSync(Deferred.succeed(release, undefined))
+
+      expect(await Effect.runPromise(Fiber.join(fiber))).toBe("expired")
+      expect(requests).toBe(2)
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  it.each(["deleted", "guest"] as const)(
+    "stops as misconfigured when an authenticated keepalive loses to a %s winner",
+    async (winner) => {
+      const directory = await mkdtemp(join(tmpdir(), "voila-keepalive-conflict-"))
+      const path = join(directory, "session.json")
+      const entered = Deferred.makeUnsafe<void>()
+      const release = Deferred.makeUnsafe<void>()
+      let requests = 0
+
+      try {
+        await writeSnapshot(path, makeAuthenticatedSnapshot("boot"))
+        const transport = stubTransportLayer(() => {
+          requests += 1
+
+          return Effect.gen(function* () {
+            yield* Deferred.succeed(entered, undefined)
+            yield* Deferred.await(release)
+            return healthyResponse
+          })
+        })
+        const environment = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: path }, transport)
+
+        if (Result.isFailure(environment)) {
+          throw new Error("Expected a valid operation environment")
+        }
+
+        const fiber = Effect.runFork(
+          Effect.provide(
+            runKeepaliveLoop(
+              environment.success,
+              makeKeepaliveConfig({ healthyIntervalMs: 60_000, stopOnExpired: true })
+            ),
+            environment.success.transport
+          )
+        )
+
+        await Effect.runPromise(Deferred.await(entered))
+        if (winner === "deleted") {
+          await rm(path)
+        } else {
+          await rm(path)
+          await writeSnapshot(path, makeGuestSnapshot())
+        }
+        Effect.runSync(Deferred.succeed(release, undefined))
+
+        expect(await Effect.runPromise(Fiber.join(fiber))).toBe("misconfigured")
+        expect(requests).toBe(1)
+      } finally {
+        await rm(directory, { force: true, recursive: true })
+      }
+    }
+  )
 })

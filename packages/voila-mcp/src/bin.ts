@@ -4,8 +4,7 @@ import { Cause, Effect, Exit, Fiber, Layer, Result, Schema } from "effect"
 import type { HttpRouter } from "effect/unstable/http"
 import type { ServeError } from "effect/unstable/http/HttpServerError"
 
-import { runKeepaliveLoop } from "./keepalive-runner.js"
-import { keepaliveConfigFor } from "./keepalive-config.js"
+import { makeKeepaliveConfig, runKeepaliveLoop } from "./keepalive-runner.js"
 import { voilaHttpServerLayer } from "./mcp-http-server.js"
 import { voilaStdioServerLayer, VoilaOperations } from "./mcp-server.js"
 import { makeNodeOperationEnvironment } from "./node-env.js"
@@ -128,6 +127,16 @@ const makeRuntimeConfig = (
 
 const writeStderr = (line: string): void => {
   process.stderr.write(line)
+}
+
+const keepaliveConfigFor = (runtime: RuntimeConfig, env: OperationEnvironment): KeepaliveConfig | undefined => {
+  if (runtime.keepaliveDisabled || env.keepaliveEligible !== true) {
+    return undefined
+  }
+
+  return makeKeepaliveConfig({
+    ...(runtime.keepaliveIntervalMs === undefined ? {} : { healthyIntervalMs: runtime.keepaliveIntervalMs })
+  })
 }
 
 const makeServerLayer = (runtime: RuntimeConfig): Layer.Layer<never, ServeError, VoilaOperations> =>

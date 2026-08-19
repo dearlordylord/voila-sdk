@@ -8,8 +8,6 @@ import {
 import { type KeepaliveStopReason } from "@firfi/voila-sdk"
 import { Effect, Result } from "effect"
 
-import { access } from "node:fs/promises"
-
 import { loginWithPlaywright } from "./auth-login.js"
 import type { CliKeepaliveOptions, CliOperationOptions, CliPorts } from "./cli.js"
 
@@ -40,25 +38,7 @@ const runNodeOperation = async (
   return Result.isFailure(executed) ? executed.failure : executed.success
 }
 
-const fileExists = async (path: string): Promise<boolean> => {
-  try {
-    await access(path)
-
-    return true
-  } catch {
-    return false
-  }
-}
-
 const runNodeKeepalive = async (options: CliKeepaliveOptions): Promise<KeepaliveStopReason> => {
-  // A missing session file is not an authentication problem — it is a
-  // misconfiguration, surfaced before the loop pings Voila as a guest.
-  if (!(await fileExists(options.sessionPath))) {
-    process.stderr.write("voila keepalive: no session file found. Run `voila auth login` first.\n")
-
-    return "misconfigured"
-  }
-
   const env = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: options.sessionPath })
 
   if (Result.isFailure(env)) {

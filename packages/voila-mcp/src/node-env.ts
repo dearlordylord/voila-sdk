@@ -107,38 +107,54 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
     file: StateFilePath,
     operation: SessionOperation<A>,
     authenticatedOnly = false
-  ): Effect.Effect<A, OperationFailure, VoilaTransport> =>
-    Effect.gen(function* () {
-      // A dropped update needs no adoption here: the losing snapshot is never
-      // kept, and the next cycle reads whatever the winner wrote. The
-      // operation's own result comes back on the outcome's carry channel —
-      // on every variant, including a dropped conflict.
-      const outcome: SessionFileCarriedOutcome<SessionOperationOutcome<A>> = yield* updateSessionFileCarrying(
-        file,
-        (current) => {
-          const session = authenticatedOnly
-            ? current === undefined || current.kind === "guest"
-              ? Effect.fail(sessionSnapshotMissing())
-              : Effect.succeed(current)
-            : current === undefined
-              ? bootstrapGuest
-              : Effect.succeed(current)
+  ): Effect.Effect<A, OperationFailure, VoilaTransport> => {
+    const runCycle = (): Effect.Effect<A, OperationFailure, VoilaTransport | StateFileLocks> =>
+      Effect.gen(function* () {
+        // A dropped update needs no adoption here: the losing snapshot is never
+        // kept, and the next cycle reads whatever the winner wrote. The
+        // operation's own result comes back on the outcome's carry channel —
+        // on every variant, including a dropped conflict.
+        const outcome: SessionFileCarriedOutcome<SessionOperationOutcome<A>> = yield* updateSessionFileCarrying(
+          file,
+          (current) => {
+            const session = authenticatedOnly
+              ? current === undefined || current.kind === "guest"
+                ? Effect.fail(sessionSnapshotMissing())
+                : Effect.succeed(current)
+              : current === undefined
+                ? bootstrapGuest
+                : Effect.succeed(current)
 
-          return Effect.map(Effect.flatMap(session, operation), cycleStep)
+            return Effect.map(Effect.flatMap(session, operation), cycleStep)
+          }
+        )
+
+        if (authenticatedOnly && outcome._tag === "dropped-conflict") {
+          if (outcome.session === undefined || outcome.session.kind === "guest") {
+            return yield* Effect.fail(sessionSnapshotMissing())
+          }
+
+          // The operation ran against a stale authenticated snapshot. Recheck
+          // the authenticated winner before returning any health verdict, so a
+          // concurrent login or deletion can never leave keepalive sleeping on
+          // a stale result.
+          return yield* runCycle()
         }
-      )
 
-      // A refreshed guest session is kept in memory for the same reason it is
-      // not written: it is the session this process keeps using, and dropping
-      // the refresh would replay a stale bootstrap on every call.
-      const refreshed = outcome.carried.refreshed
+        // A refreshed guest session is kept in memory for the same reason it is
+        // not written: it is the session this process keeps using, and dropping
+        // the refresh would replay a stale bootstrap on every call.
+        const refreshed = outcome.carried.refreshed
 
-      if (refreshed?.kind === "guest") {
-        yield* Ref.set(guest, Option.some(refreshed))
-      }
+        if (refreshed?.kind === "guest") {
+          yield* Ref.set(guest, Option.some(refreshed))
+        }
 
-      return outcome.carried.value
-    }).pipe(Effect.provideService(StateFileLocks, locks))
+        return outcome.carried.value
+      })
+
+    return runCycle().pipe(Effect.provideService(StateFileLocks, locks))
+  }
 
   return {
     withAuthenticatedSession: (operation) =>
@@ -156,9 +172,7 @@ export const makeNodeOperationEnvironment = (
 ): Result.Result<OperationEnvironment, OperationFailure> =>
   Result.map(Result.mapError(Schema.decodeUnknownResult(EnvSchema)(env), envInvalid), (config) => ({
     ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-    ...(config.VOILA_GUEST === "1" || config.VOILA_AUTH_SESSION_PATH === undefined
-      ? {}
-      : { sessionSnapshotPath: config.VOILA_AUTH_SESSION_PATH }),
+    ...(config.VOILA_GUEST === "1" || config.VOILA_AUTH_SESSION_PATH === undefined ? {} : { keepaliveEligible: true }),
     session: makeSessionPort(config),
     transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
   }))

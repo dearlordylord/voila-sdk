@@ -48,6 +48,10 @@ const failureExitCode = 1
 const usageExitCode = 2
 const minKeepaliveIntervalSeconds = 3600
 
+const assertNever = (value: never): never => {
+  throw new Error(`Unexpected keepalive stop reason: ${JSON.stringify(value)}`)
+}
+
 const helpText = `Usage:
   voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]
   voila auth status [--session <path>] [--json]
@@ -270,11 +274,13 @@ const renderKeepalive = (reason: KeepaliveStopReason): CliRunResult => {
     case "misconfigured":
       return {
         exitCode: usageExitCode,
-        stderr: "No session file found or the environment is invalid. Run: voila auth login\n",
+        stderr: "No authenticated session snapshot is configured. Run: voila auth login\n",
         stdout: ""
       }
-    default:
+    case "cancelled":
       return ok("Keepalive stopped.\n")
+    default:
+      return assertNever(reason)
   }
 }
 
