@@ -137,6 +137,11 @@ const trackingSessionPort = (initialSession: SdkSessionSnapshot, ran: { current:
     ran.current = true
 
     return Effect.map(operation(initialSession), (outcome) => outcome.value)
+  },
+  withAuthenticatedSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure, VoilaTransport> => {
+    ran.current = true
+
+    return Effect.map(operation(initialSession), (outcome) => outcome.value)
   }
 })
 
@@ -284,6 +289,8 @@ describe("Voila MCP operations", () => {
       authGuidance: makeAuthGuidance(sessionPath),
       session: {
         withSession: () =>
+          Effect.fail({ _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" }),
+        withAuthenticatedSession: () =>
           Effect.fail({ _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" })
       },
       transport: unusedTransportLayer

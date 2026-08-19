@@ -51,6 +51,10 @@ searchProducts(
 - Session bootstrap and storage: `bootstrapGuestSession(cookieJarPort?)`, `makeGuestSdkSessionSnapshot`, `makeAuthenticatedSdkSessionSnapshot`, `loadSdkSessionSnapshot(storage)`. Storage is read-only; writes go through `@firfi/voila-session-store`.
 - Auth: `loginWithBrowser`, `createInteractiveBrowserLoginPort`, browser-login port types. Browser login needs no transport.
 - Session health: `checkSessionHealth(snapshot, cookieJarPort?)`.
+- Keepalive classification: `classifyHealthStatus(status)` and
+  `describeKeepaliveOutcome(outcome)` are pure helpers. The public runtime
+  contracts are `KeepaliveOutcomeSchema` and `KeepaliveStopReasonSchema`, with
+  `KeepaliveOutcome` and `KeepaliveStopReason` derived from those schemas.
 - Catalog: `searchProducts`, `getCategoryProducts`, `getDiscountedProducts`, `getInitialStateCategories`, `normalizeRawCategories`.
 - Cart: `getCart`, `applyCartDeltas`, `addCartItems`, `removeCartItems`.
 - Delivery context: `getDeliveryDestinations`, `getDeliveryDestination`, `getActiveShoppingContext`, `getDeliveryPropositionDetails`, `previewDeliveryContextChange`, `applyDeliveryContextChange`.
@@ -59,6 +63,25 @@ searchProducts(
 - Order history: `getCompletedOrders`, `getOrderDetails`, `getCompletedOrderItems`.
 
 Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeRawCategories`, `makeSlotReservationInputFromSlot` — are ordinary functions with no Effect and no transport.
+
+## Keepalive
+
+The MCP package exports the Effect-native keepalive runner. `runKeepaliveTick`
+checks the authenticated session snapshot once, `runKeepaliveLoop` performs
+the interruptible healthy interval and capped, jittered retry loop, and
+`runKeepalive` is the foreground CLI bridge. The foreground bridge listens for
+`SIGINT` and `SIGTERM`, interrupts the loop, removes both listeners, and
+returns the `"cancelled"` stop reason. A re-authentication verdict returns
+`"expired"`; an absent or guest-shaped configured session snapshot returns
+`"misconfigured"`.
+
+The MCP server starts a background keepalive only when
+`VOILA_AUTH_SESSION_PATH` is explicitly configured and `VOILA_GUEST` is not
+`"1"`. It never bootstraps a guest for keepalive. A missing configured state
+file path is a misconfiguration for keepalive, while ordinary MCP operations
+without a configured path retain their in-memory guest behavior.
+Set `VOILA_KEEPALIVE=0` to disable it; `VOILA_KEEPALIVE_INTERVAL_SECONDS`
+controls the healthy interval (default `86400`, minimum `3600`).
 
 ## Errors
 

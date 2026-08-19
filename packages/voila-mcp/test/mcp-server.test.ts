@@ -17,7 +17,10 @@ const olderProtocolVersion = "2024-11-05"
  * session gives every tool call a deterministic, typed failure to report.
  */
 const inertEnvironment: OperationEnvironment = {
-  session: { withSession: () => Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: testSessionFailure }) },
+  session: {
+    withAuthenticatedSession: () => Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: testSessionFailure }),
+    withSession: () => Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: testSessionFailure })
+  },
   transport: unusedTransportLayer
 }
 

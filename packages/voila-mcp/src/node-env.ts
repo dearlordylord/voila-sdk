@@ -40,6 +40,11 @@ const envInvalid = (): OperationFailure => ({
   message: "Voila MCP environment variables are invalid"
 })
 
+const sessionSnapshotMissing = (): OperationFailure => ({
+  _tag: "VoilaSessionSnapshotMissing",
+  message: "Configured authenticated session snapshot is missing or not authenticated"
+})
+
 /**
  * A guest snapshot is never written to disk: it is rebuildable with one
  * request, and persisting it is exactly what lets a guest bootstrap land on top
@@ -100,7 +105,8 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
 
   const runWithSessionFile = <A>(
     file: StateFilePath,
-    operation: SessionOperation<A>
+    operation: SessionOperation<A>,
+    authenticatedOnly = false
   ): Effect.Effect<A, OperationFailure, VoilaTransport> =>
     Effect.gen(function* () {
       // A dropped update needs no adoption here: the losing snapshot is never
@@ -109,11 +115,17 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
       // on every variant, including a dropped conflict.
       const outcome: SessionFileCarriedOutcome<SessionOperationOutcome<A>> = yield* updateSessionFileCarrying(
         file,
-        (current) =>
-          Effect.map(
-            Effect.flatMap(current === undefined ? bootstrapGuest : Effect.succeed(current), operation),
-            cycleStep
-          )
+        (current) => {
+          const session = authenticatedOnly
+            ? current === undefined || current.kind === "guest"
+              ? Effect.fail(sessionSnapshotMissing())
+              : Effect.succeed(current)
+            : current === undefined
+              ? bootstrapGuest
+              : Effect.succeed(current)
+
+          return Effect.map(Effect.flatMap(session, operation), cycleStep)
+        }
       )
 
       // A refreshed guest session is kept in memory for the same reason it is
@@ -129,6 +141,10 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
     }).pipe(Effect.provideService(StateFileLocks, locks))
 
   return {
+    withAuthenticatedSession: (operation) =>
+      sessionFile === undefined
+        ? Effect.fail(sessionSnapshotMissing())
+        : runWithSessionFile(sessionFile, operation, true),
     withSession: (operation) =>
       sessionFile === undefined ? runWithGuest(operation) : runWithSessionFile(sessionFile, operation)
   }
@@ -140,6 +156,9 @@ export const makeNodeOperationEnvironment = (
 ): Result.Result<OperationEnvironment, OperationFailure> =>
   Result.map(Result.mapError(Schema.decodeUnknownResult(EnvSchema)(env), envInvalid), (config) => ({
     ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
+    ...(config.VOILA_GUEST === "1" || config.VOILA_AUTH_SESSION_PATH === undefined
+      ? {}
+      : { sessionSnapshotPath: config.VOILA_AUTH_SESSION_PATH }),
     session: makeSessionPort(config),
     transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
   }))

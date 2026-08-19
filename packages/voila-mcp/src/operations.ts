@@ -22,6 +22,7 @@ import {
   type VoilaJsonResult,
   type VoilaTransport
 } from "@firfi/voila-sdk"
+import type { StateFilePath } from "@firfi/voila-session-store"
 import type { Layer } from "effect"
 import { Effect, Result, Schema } from "effect"
 
@@ -127,6 +128,16 @@ export type SessionOperation<A> = (
  */
 export interface OperationSessionPort {
   readonly withSession: <A>(operation: SessionOperation<A>) => Effect.Effect<A, OperationFailure, VoilaTransport>
+  /**
+   * Run an operation only against the configured authenticated session
+   * snapshot. Unlike `withSession`, this port never bootstraps a guest when
+   * the snapshot is absent or guest-shaped; keepalive uses it so a deleted or
+   * downgraded state file stops as misconfigured instead of reporting health
+   * for a new guest.
+   */
+  readonly withAuthenticatedSession: <A>(
+    operation: SessionOperation<A>
+  ) => Effect.Effect<A, OperationFailure, VoilaTransport>
 }
 
 /**
@@ -137,6 +148,7 @@ export interface OperationSessionPort {
  */
 export interface OperationEnvironment {
   readonly authGuidance?: OperationAuthGuidance
+  readonly sessionSnapshotPath?: StateFilePath
   readonly session: OperationSessionPort
   readonly transport: Layer.Layer<VoilaTransport>
 }

@@ -35,6 +35,8 @@ Environment:
 - `VOILA_AUTH_SESSION_PATH`: absolute path to a session snapshot, read and written as one path.
 - `VOILA_GUEST=1`: force guest behavior. Guest sessions live in memory and are never written to the session file.
 - `VOILA_USER_AGENT`: optional browser identity override.
+- `VOILA_KEEPALIVE=0`: disable the background authenticated-session keepalive. When unset, keepalive is enabled only when an explicit `VOILA_AUTH_SESSION_PATH` is configured and guest mode is off.
+- `VOILA_KEEPALIVE_INTERVAL_SECONDS`: healthy keepalive interval in seconds (default `86400`, minimum `3600`). Invalid values fail startup.
 - `MCP_TRANSPORT`: `stdio` by default, or `http`.
 - `MCP_HTTP_HOST` (default `127.0.0.1`), `MCP_HTTP_PORT` / `PORT` (default `3000`), `MCP_HTTP_PATH` (default `/mcp`). The HTTP transport also answers liveness on `/` and `/health`.
 
@@ -53,6 +55,17 @@ Client config:
   }
 }
 ```
+
+## Keepalive lifecycle
+
+The background keepalive checks `GET /sessions/active` inside the configured
+session snapshot update cycle and persists rotated cookies. It never bootstraps
+or polls a guest. If the configured session snapshot disappears or is guest-
+shaped, it stops with the typed `"misconfigured"` outcome; it does not silently
+report a healthy guest. Server-scope shutdown interrupts the loop and cleans up
+its Effect resources. The foreground `voila auth keepalive` command treats
+`SIGINT` and `SIGTERM` as cancellation, removes its signal listeners, and exits
+with status `0`; expiry and misconfiguration remain non-zero outcomes.
 
 ## Tools
 

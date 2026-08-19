@@ -1,3 +1,5 @@
+import { Schema } from "effect"
+
 import type { SessionHealth } from "../domain/schemas/index.js"
 
 /**
@@ -28,12 +30,15 @@ export type SessionHealthStatus = SessionHealth["status"]
  * message arrives already stripped to a fixed `_tag`/`message` pair by the
  * operation layer's `redactError`.
  */
-export type KeepaliveOutcome =
-  | { readonly _tag: "healthy" }
-  | { readonly _tag: "transient" }
-  | { readonly _tag: "schema-changed" }
-  | { readonly _tag: "expired" }
-  | { readonly _tag: "check-failed"; readonly cause?: string }
+export const KeepaliveOutcomeSchema = Schema.Union([
+  Schema.Struct({ _tag: Schema.Literal("healthy") }),
+  Schema.Struct({ _tag: Schema.Literal("transient") }),
+  Schema.Struct({ _tag: Schema.Literal("schema-changed") }),
+  Schema.Struct({ _tag: Schema.Literal("expired") }),
+  Schema.Struct({ _tag: Schema.Literal("check-failed"), cause: Schema.optionalKey(Schema.String) })
+])
+
+export type KeepaliveOutcome = Schema.Schema.Type<typeof KeepaliveOutcomeSchema>
 
 /**
  * Why the loop stopped. `"expired"` means the session needs re-authentication;
@@ -41,7 +46,9 @@ export type KeepaliveOutcome =
  * `"misconfigured"` means it never started cleanly — the session file is absent
  * or the environment is invalid, neither of which is fixed by re-authenticating.
  */
-export type KeepaliveStopReason = "expired" | "cancelled" | "misconfigured"
+export const KeepaliveStopReasonSchema = Schema.Literals(["expired", "cancelled", "misconfigured"])
+
+export type KeepaliveStopReason = Schema.Schema.Type<typeof KeepaliveStopReasonSchema>
 
 const assertNever = (value: never): never => {
   throw new Error(`Keepalive reached an unexpected state: ${JSON.stringify(value)}`)

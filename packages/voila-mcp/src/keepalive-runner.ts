@@ -6,9 +6,9 @@ import {
   type KeepaliveStopReason,
   type VoilaTransport
 } from "@firfi/voila-sdk"
-import { type Duration, Effect, Exit, Schedule } from "effect"
+import { Duration, Effect, Exit, Fiber, Schedule } from "effect"
 
-import { type OperationEnvironment } from "./operations.js"
+import { type OperationEnvironment, type OperationFailure } from "./operations.js"
 
 const millisecondsPerSecond = 1_000
 const secondsPerDay = 86_400
@@ -57,29 +57,50 @@ const redactedCause = (error: unknown): string => {
 
 const checkFailed = (error: unknown): KeepaliveOutcome => ({ _tag: "check-failed", cause: redactedCause(error) })
 
+type KeepaliveMisconfiguredError = { readonly _tag: "KeepaliveMisconfigured"; readonly message: string }
+
+type KeepaliveTickResult = KeepaliveOutcome | { readonly _tag: "misconfigured" }
+
+const keepaliveMisconfigured = (): KeepaliveMisconfiguredError => ({
+  _tag: "KeepaliveMisconfigured",
+  message: "Configured authenticated session snapshot is missing or not authenticated"
+})
+
+const isMissingAuthenticatedSnapshot = (error: OperationFailure): boolean =>
+  error._tag === "VoilaSessionSnapshotMissing"
+
 const isRetryable = (outcome: KeepaliveOutcome): boolean =>
   outcome._tag === "transient" || outcome._tag === "check-failed"
 
 /**
  * One keepalive tick: run the active-session health check inside the session
  * port's atomic read-modify-write cycle, so the rotated cookies persist through
- * the same guarded path every operation uses. The tick never fails: a
- * `withSession` cycle failure or a health-check failure is folded into a
- * `check-failed` outcome carrying a redacted cause, so the loop's retry logic
- * only ever sees a `KeepaliveOutcome`.
+ * the same guarded path every operation uses. A session-cycle failure or a
+ * health-check failure is folded into a `check-failed` outcome carrying a
+ * redacted cause; a missing or guest-shaped configured snapshot remains a typed
+ * misconfiguration failure.
  */
-export const runKeepaliveTick = (env: OperationEnvironment): Effect.Effect<KeepaliveOutcome, never, VoilaTransport> =>
-  // The inner match folds the health check's two channels into a session-cycle
-  // outcome; the outer `catch` folds a session-cycle failure into a check-failed
-  // outcome on the success channel, so the loop only ever sees a KeepaliveOutcome.
-  Effect.catch(
-    env.session.withSession((current) =>
+export const runKeepaliveTick = (
+  env: OperationEnvironment
+): Effect.Effect<KeepaliveOutcome, KeepaliveMisconfiguredError, VoilaTransport> =>
+  // The match folds ordinary session-cycle and health-check failures into a
+  // retryable outcome, while the dedicated missing-snapshot failure remains a
+  // typed error so the loop can stop as misconfigured instead of bootstrapping
+  // a guest.
+  Effect.matchEffect(
+    env.session.withAuthenticatedSession((current) =>
       Effect.match(checkSessionHealth(current), {
         onFailure: (error) => ({ value: checkFailed(error) }),
         onSuccess: (health) => ({ refreshed: health.session, value: classifyHealthStatus(health.status) })
       })
     ),
-    (cycleError) => Effect.succeed(checkFailed(cycleError))
+    {
+      onFailure: (error) =>
+        isMissingAuthenticatedSnapshot(error)
+          ? Effect.fail(keepaliveMisconfigured())
+          : Effect.succeed(checkFailed(error)),
+      onSuccess: Effect.succeed
+    }
   )
 
 const retrySchedule = (config: KeepaliveConfig): Schedule.Schedule<Duration.Duration, KeepaliveOutcome> =>
@@ -89,7 +110,13 @@ const retrySchedule = (config: KeepaliveConfig): Schedule.Schedule<Duration.Dura
   // The schedule is driven fresh on every settled episode, so a session that
   // recovers does not inherit the previous outage's delay.
   Schedule.min([Schedule.exponential(config.retryDelayMs), Schedule.spaced(config.maxRetryDelayMs)]).pipe(
-    Schedule.jittered
+    Schedule.jittered,
+    // `Schedule.jittered` scales by 0.8..1.2, so applying it after the cap can
+    // exceed `maxRetryDelayMs`. Clamp the actual post-jitter duration again at
+    // the schedule boundary; this is the delay Effect.sleep observes.
+    Schedule.modifyDelay(({ duration }) =>
+      Effect.succeed(Duration.millis(Math.min(Duration.toMillis(duration), config.maxRetryDelayMs)))
+    )
   )
 
 /**
@@ -107,15 +134,38 @@ export const runKeepaliveLoop = (
   const log = (outcome: KeepaliveOutcome): Effect.Effect<void> =>
     Effect.sync(() => writeLine(`voila keepalive: ${describeKeepaliveOutcome(outcome)}\n`))
 
-  const tickAndLog = runKeepaliveTick(env).pipe(Effect.tap(log))
+  const misconfigured: KeepaliveTickResult = { _tag: "misconfigured" }
+  const tickAndLog: Effect.Effect<KeepaliveTickResult, never, VoilaTransport> = Effect.matchEffect(
+    runKeepaliveTick(env),
+    {
+      onFailure: () =>
+        Effect.sync(() => writeLine("voila keepalive: configured authenticated session snapshot is missing\n")).pipe(
+          Effect.as(misconfigured)
+        ),
+      onSuccess: (outcome) => Effect.map(log(outcome), () => outcome)
+    }
+  )
 
-  const settledTick = tickAndLog.pipe(
-    Effect.flatMap((outcome) => (isRetryable(outcome) ? Effect.fail(outcome) : Effect.succeed(outcome))),
-    Effect.retry(retrySchedule(config)),
-    // The schedule recurs forever, so this is unreachable; folding the residual
-    // error back to a settled outcome keeps the loop's error channel honest and
-    // documents what a (never-occurring) exhaustion would surface.
-    Effect.catch((outcome: KeepaliveOutcome) => Effect.succeed(outcome))
+  const retryableTick: Effect.Effect<KeepaliveTickResult, KeepaliveOutcome, VoilaTransport> = Effect.flatMap(
+    tickAndLog,
+    (outcome): Effect.Effect<KeepaliveTickResult, KeepaliveOutcome> =>
+      outcome._tag === "misconfigured"
+        ? Effect.succeed(outcome)
+        : isRetryable(outcome)
+          ? Effect.fail(outcome)
+          : Effect.succeed(outcome)
+  )
+
+  const retriedTick = Effect.retry<Duration.Duration, KeepaliveOutcome, never, never>(retrySchedule(config))(
+    retryableTick
+  )
+
+  // The schedule recurs forever, so this is unreachable; folding the residual
+  // error back to a settled outcome keeps the loop's error channel honest and
+  // documents what a (never-occurring) exhaustion would surface.
+  const settledTick: Effect.Effect<KeepaliveTickResult, never, VoilaTransport> = Effect.catch(
+    retriedTick,
+    (outcome: KeepaliveOutcome) => Effect.succeed<KeepaliveTickResult>(outcome)
   )
 
   return Effect.gen(function* () {
@@ -124,6 +174,10 @@ export const runKeepaliveLoop = (
     for (;;) {
       const settled = yield* settledTick
 
+      if (settled._tag === "misconfigured") {
+        return "misconfigured"
+      }
+
       if (settled._tag === "expired" && config.stopOnExpired) {
         return expired
       }
@@ -131,6 +185,22 @@ export const runKeepaliveLoop = (
       yield* Effect.sleep(config.healthyIntervalMs)
     }
   })
+}
+
+export type KeepaliveSignal = "SIGINT" | "SIGTERM"
+
+export interface KeepaliveSignalPort {
+  readonly add: (signal: KeepaliveSignal, listener: () => void) => void
+  readonly remove: (signal: KeepaliveSignal, listener: () => void) => void
+}
+
+const processKeepaliveSignals: KeepaliveSignalPort = {
+  add: (signal, listener) => {
+    process.on(signal, listener)
+  },
+  remove: (signal, listener) => {
+    process.off(signal, listener)
+  }
 }
 
 /**
@@ -142,15 +212,40 @@ export const runKeepaliveLoop = (
 export const runKeepalive = async (
   env: OperationEnvironment,
   config: KeepaliveConfig = defaultKeepaliveConfig,
-  writeLine: (line: string) => void = (line) => void process.stderr.write(line)
+  writeLine: (line: string) => void = (line) => void process.stderr.write(line),
+  signals: KeepaliveSignalPort = processKeepaliveSignals
 ): Promise<KeepaliveStopReason> => {
-  const exit = await Effect.runPromiseExit(runKeepaliveLoop(env, config, writeLine).pipe(Effect.provide(env.transport)))
-
-  if (Exit.isSuccess(exit)) {
-    return exit.value
+  const loopFiber = Effect.runFork(runKeepaliveLoop(env, config, writeLine).pipe(Effect.provide(env.transport)))
+  const onSignal = (): void => {
+    Effect.runFork(Fiber.interrupt(loopFiber))
   }
 
-  return "cancelled"
+  let sigintAdded = false
+  let sigtermAdded = false
+  try {
+    signals.add("SIGINT", onSignal)
+    sigintAdded = true
+    signals.add("SIGTERM", onSignal)
+    sigtermAdded = true
+
+    const exit = await Effect.runPromiseExit(Fiber.join(loopFiber))
+
+    if (Exit.isSuccess(exit)) {
+      return exit.value
+    }
+
+    return "cancelled"
+  } finally {
+    if (sigintAdded) {
+      signals.remove("SIGINT", onSignal)
+    }
+
+    if (sigtermAdded) {
+      signals.remove("SIGTERM", onSignal)
+    }
+
+    await Effect.runPromise(Fiber.interrupt(loopFiber))
+  }
 }
 
 export { makeConfig as makeKeepaliveConfig }

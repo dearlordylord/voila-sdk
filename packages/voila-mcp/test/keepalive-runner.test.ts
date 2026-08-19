@@ -5,17 +5,22 @@ import {
   type VoilaTransport,
   type VoilaTransportError
 } from "@firfi/voila-sdk"
-import { Effect, Exit, Fiber, Layer } from "effect"
+import { it as effectTest } from "@effect/vitest"
+import { Deferred, Effect, Exit, Fiber, Layer, Random } from "effect"
+import { TestClock } from "effect/testing"
 import { describe, expect, it } from "vitest"
 
 import {
+  type KeepaliveSignal,
+  type KeepaliveSignalPort,
   type KeepaliveConfig,
   makeKeepaliveConfig,
+  runKeepalive,
   runKeepaliveLoop,
   runKeepaliveTick
 } from "../src/keepalive-runner.js"
 import type { OperationEnvironment, OperationFailure, SessionOperation } from "../src/operations.js"
-import { makeStubEnvironment, unusedTransportLayer } from "./helpers/operations.js"
+import { makeStubEnvironment, stubTransportLayer, unusedTransportLayer } from "./helpers/operations.js"
 
 const okBody = (
   body: unknown
@@ -27,12 +32,12 @@ const okBody = (
 
 // A health-check response the runner classifies as healthy. The exact shape is
 // owned by the SDK's session-health schema; the stub transport only has to
-// return what that schema accepts for an active guest session.
+// return what that schema accepts for an active authenticated session.
 const healthyResponse = (): {
   readonly body: string
   readonly headers: Readonly<Record<string, string>>
   readonly status: number
-} => okBody({ authenticated: false })
+} => okBody({ authenticated: true })
 
 const unauthorizedResponse = (): {
   readonly body: string
@@ -56,12 +61,6 @@ const runLoop = (
   writeLine: (line: string) => void = () => undefined
 ): Promise<KeepaliveStopReason> =>
   Effect.runPromise(Effect.provide(runKeepaliveLoop(env, config, writeLine), env.transport))
-
-const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
-}
 
 describe("keepalive runner", () => {
   it("classifies an active session as healthy", async () => {
@@ -96,7 +95,10 @@ describe("keepalive runner", () => {
         // OperationFailure — surfaces as check-failed carrying only the failure
         // _tag, never the message (which may name a cookie or a path).
         withSession: <A>(_operation: SessionOperation<A>): Effect.Effect<A, OperationFailure, VoilaTransport> =>
-          Effect.fail(cycleFailure)
+          Effect.fail(cycleFailure),
+        withAuthenticatedSession: <A>(
+          _operation: SessionOperation<A>
+        ): Effect.Effect<A, OperationFailure, VoilaTransport> => Effect.fail(cycleFailure)
       },
       transport: unusedTransportLayer
     }
@@ -113,6 +115,7 @@ describe("keepalive runner", () => {
   it("can be interrupted at a sleep rather than zombieing the process", async () => {
     const { env } = makeStubEnvironment(() => Effect.succeed(healthyResponse()))
     const lines: Array<string> = []
+    const observed = Deferred.makeUnsafe<void>()
     const policy = makeKeepaliveConfig({
       healthyIntervalMs: 60_000,
       maxRetryDelayMs: 20,
@@ -122,18 +125,108 @@ describe("keepalive runner", () => {
 
     const fiber = Effect.runFork(
       Effect.provide(
-        runKeepaliveLoop(env, policy, (line) => void lines.push(line)),
+        runKeepaliveLoop(env, policy, (line) => {
+          lines.push(line)
+          Effect.runSync(Deferred.succeed(observed, undefined))
+        }),
         env.transport
       )
     )
 
-    await waitFor(() => lines.length > 0)
+    await Effect.runPromise(Deferred.await(observed))
     await Effect.runPromise(Fiber.interrupt(fiber))
     const exit = await Effect.runPromise(Fiber.await(fiber))
 
     expect(Exit.isFailure(exit)).toBe(true)
     expect(lines[0]).toContain("voila keepalive: session active")
   })
+
+  it("stops as misconfigured when the authenticated session snapshot is missing", async () => {
+    const missing: OperationFailure = {
+      _tag: "VoilaSessionSnapshotMissing",
+      message: "Configured authenticated session snapshot is missing or not authenticated"
+    }
+    const env: OperationEnvironment = {
+      session: { withAuthenticatedSession: () => Effect.fail(missing), withSession: () => Effect.fail(missing) },
+      transport: unusedTransportLayer
+    }
+
+    expect(await runLoop(env, smallConfig)).toBe("misconfigured")
+  })
+
+  it("bridges SIGINT into cancellation and removes both signal listeners", async () => {
+    const { env } = makeStubEnvironment(() => Effect.succeed(healthyResponse()))
+    const started = Deferred.makeUnsafe<void>()
+    const listeners = new Map<KeepaliveSignal, () => void>()
+    const removed: Array<KeepaliveSignal> = []
+    const signals: KeepaliveSignalPort = {
+      add: (signal, listener) => listeners.set(signal, listener),
+      remove: (signal) => {
+        removed.push(signal)
+        listeners.delete(signal)
+      }
+    }
+    const policy = makeKeepaliveConfig({
+      healthyIntervalMs: 60_000,
+      maxRetryDelayMs: 20,
+      retryDelayMs: 5,
+      stopOnExpired: false
+    })
+
+    const running = runKeepalive(env, policy, () => Effect.runSync(Deferred.succeed(started, undefined)), signals)
+
+    await Effect.runPromise(Deferred.await(started))
+    listeners.get("SIGINT")?.()
+
+    await expect(running).resolves.toBe("cancelled")
+    expect(removed).toEqual(["SIGINT", "SIGTERM"])
+    expect(listeners.size).toBe(0)
+  })
+
+  effectTest.effect("never schedules a jittered retry beyond maxRetryDelayMs", () =>
+    Effect.gen(function* () {
+      const firstAttempt = yield* Deferred.make<void>()
+      const secondAttempt = yield* Deferred.make<void>()
+      let requests = 0
+      const transport = stubTransportLayer(() =>
+        Effect.sync(() => {
+          requests += 1
+
+          if (requests === 1) {
+            Effect.runSync(Deferred.succeed(firstAttempt, undefined))
+
+            return { body: "{}", headers: {}, status: 503 }
+          }
+
+          Effect.runSync(Deferred.succeed(secondAttempt, undefined))
+
+          return { body: "{}", headers: {}, status: 401 }
+        })
+      )
+      const base = makeStubEnvironment(() => Effect.succeed(healthyResponse())).env
+      const env: OperationEnvironment = { ...base, transport }
+      const policy = makeKeepaliveConfig({
+        healthyIntervalMs: 60_000,
+        maxRetryDelayMs: 20,
+        retryDelayMs: 20,
+        stopOnExpired: true
+      })
+      const fiber = yield* Effect.forkChild(
+        runKeepaliveLoop(env, policy).pipe(Effect.provide(env.transport), Random.withSeed("seed-1"))
+      )
+
+      yield* Deferred.await(firstAttempt)
+      yield* TestClock.adjust("20 millis")
+      yield* Effect.yieldNow
+      const secondAttemptAtCap = Deferred.isDoneUnsafe(secondAttempt)
+
+      yield* TestClock.adjust("20 millis")
+      const reason = yield* Fiber.join(fiber)
+
+      expect(secondAttemptAtCap).toBe(true)
+      expect(reason).toBe("expired")
+    })
+  )
 
   it("keeps the stop reasons honest: re-auth, interruption, and misconfiguration are distinct", () => {
     const reasons: ReadonlyArray<KeepaliveStopReason> = ["expired", "cancelled", "misconfigured"]

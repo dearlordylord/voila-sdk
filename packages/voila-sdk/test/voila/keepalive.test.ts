@@ -1,10 +1,13 @@
 import {
   classifyHealthStatus,
   describeKeepaliveOutcome,
+  KeepaliveOutcomeSchema,
+  KeepaliveStopReasonSchema,
   type KeepaliveOutcome,
   type KeepaliveStopReason,
   type SessionHealthStatus
 } from "@firfi/voila-sdk"
+import { Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 const allStatuses: ReadonlyArray<SessionHealthStatus> = [
@@ -62,5 +65,31 @@ describe("keepalive core", () => {
   it("covers every known status so a new one cannot slip past the classifier", () => {
     expect(allStatuses).toHaveLength(5)
     expect(allOutcomes).toHaveLength(5)
+  })
+
+  it("exports runtime schemas for every public keepalive contract", () => {
+    const outcomeValues: ReadonlyArray<unknown> = [
+      { _tag: "healthy" },
+      { _tag: "transient" },
+      { _tag: "schema-changed" },
+      { _tag: "expired" },
+      { _tag: "check-failed" },
+      { _tag: "check-failed", cause: "VoilaOperationFailed" }
+    ]
+
+    for (const value of outcomeValues) {
+      expect(Result.isSuccess(Schema.decodeUnknownResult(KeepaliveOutcomeSchema)(value))).toBe(true)
+    }
+
+    expect(
+      Result.isFailure(Schema.decodeUnknownResult(KeepaliveOutcomeSchema)({ _tag: "check-failed", cause: 1 }))
+    ).toBe(true)
+    expect(Result.isFailure(Schema.decodeUnknownResult(KeepaliveOutcomeSchema)({ _tag: "unknown" }))).toBe(true)
+
+    for (const reason of ["expired", "cancelled", "misconfigured"]) {
+      expect(Result.isSuccess(Schema.decodeUnknownResult(KeepaliveStopReasonSchema)(reason))).toBe(true)
+    }
+
+    expect(Result.isFailure(Schema.decodeUnknownResult(KeepaliveStopReasonSchema)("healthy"))).toBe(true)
   })
 })

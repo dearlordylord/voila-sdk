@@ -39,6 +39,12 @@ Voila does not publish a documented third-party customer API. This server uses t
 
 If the session is missing, expired, or guest-only, tool results include `authGuidance` with the exact CLI login command to run. The MCP server itself does not launch a browser. A login performed while the server is running takes effect on its next tool call, without a restart.
 
+With an explicit `VOILA_AUTH_SESSION_PATH` and guest mode off, the MCP server
+also runs a read-only authenticated-session keepalive. Set `VOILA_KEEPALIVE=0`
+to disable it; `VOILA_KEEPALIVE_INTERVAL_SECONDS` defaults to `86400` seconds
+and must be at least `3600`. The keepalive never bootstraps a guest and stops
+as misconfigured if its configured session snapshot disappears.
+
 ## Tools
 
 - `voila_check_session_health`: report active, guest, expired, or retryable session state.
@@ -78,6 +84,7 @@ The HTTP endpoint is `/mcp` unless `MCP_HTTP_PATH` is set. `VOILA_GUEST=1` force
 ```bash
 voila auth login --session ~/.config/voila/session.json
 voila auth status --json
+voila auth keepalive --interval 86400
 voila search "milk"
 voila orders list
 voila orders details <order-id>
