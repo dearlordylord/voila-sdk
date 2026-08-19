@@ -40,6 +40,51 @@
         "https://github.com/dearlordylord/voila-sdk/issues/19"
       ],
       "rationale": "The RC.110 protocol adapter changes only this parse or missing-argument error-rendering leaf; the surrounding wire sample remains an exact parity requirement."
+    },
+    {
+      "path": "$.cli.results[0].result.stdout",
+      "before": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "after": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand (help text) and a startup message when keepalive is skipped; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "path": "$.cli.results[4].result.stderr",
+      "before": "Missing search query\n\nUsage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "after": "Missing search query\n\nUsage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand (help text) and a startup message when keepalive is skipped; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "path": "$.cli.results[5].result.stderr",
+      "before": "--quantity must be a positive integer\n\nUsage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "after": "--quantity must be a positive integer\n\nUsage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand (help text) and a startup message when keepalive is skipped; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "path": "$.cli.results[6].result.stderr",
+      "before": "Unknown command\n\nUsage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "after": "Unknown command\n\nUsage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand (help text) and a startup message when keepalive is skipped; wire MCP protocol samples remain exact outside explicit entries."
+    },
+    {
+      "path": "$.stdio.errorOutput",
+      "before": "",
+      "after": "voila keepalive: skipped (no authenticated session or disabled via VOILA_KEEPALIVE=0)\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand (help text) and a startup message when keepalive is skipped; wire MCP protocol samples remain exact outside explicit entries."
     }
   ],
   "groups": [
@@ -74,8 +119,8 @@
       "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
     },
     {
-      "count": 124,
-      "diffHash": "25b9aa9cc391dcf49ebdda47b63919335bfd251803e2cab8891c37db63595eac",
+      "count": 128,
+      "diffHash": "4db18817c25cd8db111c5397afede1eb6a9727cb6be7dc736842ef07880c3fac",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"
@@ -115,7 +160,7 @@
     },
     {
       "count": 70,
-      "diffHash": "26affd5ef883e026b7b8071126e2b5cf5ac771495c80b3605ef648efcb823e01",
+      "diffHash": "50a7b0e63533f61dca76d3e987b76050b10fa21f79c51beee59c5e467e111c21",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"
@@ -144,8 +189,8 @@
       "rationale": "Reviewed Effect 4 artifact, internal schema, or Result-rendering differences; wire MCP protocol samples remain exact outside explicit entries."
     },
     {
-      "count": 1065,
-      "diffHash": "00d5fdf032ddd8ed1c119bbfcdd000377bebe61315352d3e961fd591fee666f0",
+      "count": 1079,
+      "diffHash": "dcf140701e3de8d699fa3008460b35cb1150219270090deb11aa1a1c033ec8eb",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"
@@ -595,7 +640,7 @@
     },
     {
       "count": 1,
-      "diffHash": "35e66bedaedd4c64344fa5786f05a295b7115cf1520d592143943fc7cb760af3",
+      "diffHash": "6300ac4bc2ac6d3ccf6acd78449c299cacf68b089bf2d6f05478ee9a895008e7",
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/issues/19",
         "https://github.com/dearlordylord/voila-sdk/issues/19"

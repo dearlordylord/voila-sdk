@@ -15,10 +15,6 @@
     {
       "complexity": 9,
       "signature": "async (args: ReadonlyArray<string>, ports: CliPorts): Promise<CliRunResult> =>"
-    },
-    {
-      "complexity": 9,
-      "signature": "async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> =>"
     }
   ],
   "packages/voila-mcp/src/operations.ts": [

@@ -4,50 +4,55 @@ import type { SessionHealth } from "../domain/schemas/index.js"
  * Keepalive functional core.
  *
  * Voila sessions have no OAuth-style refresh token; authentication is carried by
- * the cookie jar (with server-side sliding expiry) plus the CSRF token. Every
- * request folds `Set-Cookie` back into the persisted snapshot, so periodically
- * re-running the active-session health check keeps the stored cookies warm and
- * detects when the account has dropped to a re-auth-required state.
+ * the cookie jar (with server-side sliding expiry) plus the CSRF token. Each
+ * keepalive tick re-runs the active-session health check inside the session
+ * port's atomic read-modify-write cycle, so the rotated cookies land on disk
+ * through the same guarded path every other operation uses — and a re-login
+ * that lands between two ticks is adopted rather than reverted.
  *
- * This module contains only pure decisions. All time and I/O are supplied by the
- * caller through the injected ports below, so the loop stays deterministic and
- * testable without touching the real clock.
+ * This module holds only the pure decisions that classify a session-health
+ * status and describe a tick outcome. The loop itself — sequencing, sleeps, and
+ * backoff — lives in the Effect-native runner, where Effect's `Schedule` can own
+ * the retry backoff and the loop can be run as a supervised, interruptible
+ * fiber. Keeping these classifiers pure means they stay deterministic and
+ * testable without touching the real clock or transport.
  */
 
 // Boundary-adjacent type: derived from the SDK SessionHealth contract rather than
 // re-declared, so keepalive classification cannot drift from the health schema.
 export type SessionHealthStatus = SessionHealth["status"]
 
+/**
+ * What one keepalive tick produced. `check-failed` carries a redacted cause so
+ * logs show why a retry is happening without leaking cookies or tokens: the
+ * message arrives already stripped to a fixed `_tag`/`message` pair by the
+ * operation layer's `redactError`.
+ */
 export type KeepaliveOutcome =
   | { readonly _tag: "healthy" }
   | { readonly _tag: "transient" }
   | { readonly _tag: "schema-changed" }
   | { readonly _tag: "expired" }
-  | { readonly _tag: "check-failed" }
+  | { readonly _tag: "check-failed"; readonly cause?: string }
 
-export interface KeepalivePolicy {
-  readonly healthyIntervalMs: number
-  readonly retryDelayMs: number
-  readonly stopOnExpired: boolean
+/**
+ * Why the loop stopped. `"expired"` means the session needs re-authentication;
+ * `"cancelled"` means the loop was interrupted (Ctrl-C, scope shutdown); and
+ * `"misconfigured"` means it never started cleanly — the session file is absent
+ * or the environment is invalid, neither of which is fixed by re-authenticating.
+ */
+export type KeepaliveStopReason = "expired" | "cancelled" | "misconfigured"
+
+const assertNever = (value: never): never => {
+  throw new Error(`Keepalive reached an unexpected state: ${JSON.stringify(value)}`)
 }
 
-export type KeepaliveStopReason = "expired" | "cancelled"
-
-export type KeepaliveDecision =
-  | { readonly _tag: "wait"; readonly delayMs: number }
-  | { readonly _tag: "stop"; readonly reason: "expired" }
-
-const secondsPerDay = 86_400
-const millisecondsPerSecond = 1_000
-const defaultHealthyIntervalMs = secondsPerDay * millisecondsPerSecond
-const defaultRetryDelayMs = 30_000
-
-export const defaultKeepalivePolicy: KeepalivePolicy = {
-  healthyIntervalMs: defaultHealthyIntervalMs,
-  retryDelayMs: defaultRetryDelayMs,
-  stopOnExpired: false
-}
-
+/**
+ * Map a session-health status to a keepalive outcome. This is the schema-drift
+ * boundary the project cares about: an exhaustive switch with an `assertNever`
+ * default means a future `SessionHealth["status"]` fails to compile here rather
+ * than silently returning `undefined` at runtime.
+ */
 export const classifyHealthStatus = (status: SessionHealthStatus): KeepaliveOutcome => {
   switch (status) {
     case "active":
@@ -59,24 +64,16 @@ export const classifyHealthStatus = (status: SessionHealthStatus): KeepaliveOutc
     case "reauth-required":
     case "unauthorized":
       return { _tag: "expired" }
+    default:
+      return assertNever(status)
   }
 }
 
-export const decideKeepaliveStep = (policy: KeepalivePolicy, outcome: KeepaliveOutcome): KeepaliveDecision => {
-  switch (outcome._tag) {
-    case "healthy":
-    case "schema-changed":
-      return { _tag: "wait", delayMs: policy.healthyIntervalMs }
-    case "transient":
-    case "check-failed":
-      return { _tag: "wait", delayMs: policy.retryDelayMs }
-    case "expired":
-      return policy.stopOnExpired
-        ? { _tag: "stop", reason: "expired" }
-        : { _tag: "wait", delayMs: policy.healthyIntervalMs }
-  }
-}
-
+/**
+ * Describe a tick outcome for the stderr log. The `check-failed` description
+ * folds in the redacted cause when present, so an operator can see why the loop
+ * is retrying without the cause having to cross this boundary as a raw error.
+ */
 export const describeKeepaliveOutcome = (outcome: KeepaliveOutcome): string => {
   switch (outcome._tag) {
     case "healthy":
@@ -88,36 +85,10 @@ export const describeKeepaliveOutcome = (outcome: KeepaliveOutcome): string => {
     case "expired":
       return "session requires re-authentication; run `voila auth login`"
     case "check-failed":
-      return "session keepalive check failed; will retry"
-  }
-}
-
-export interface KeepaliveLoopDeps {
-  readonly isCancelled: () => boolean
-  readonly log: (message: string) => void
-  readonly sleep: (delayMs: number) => Promise<void>
-  readonly tick: () => Promise<KeepaliveOutcome>
-}
-
-export const runKeepaliveLoop = async (
-  policy: KeepalivePolicy,
-  deps: KeepaliveLoopDeps
-): Promise<KeepaliveStopReason> => {
-  for (;;) {
-    if (deps.isCancelled()) {
-      return "cancelled"
-    }
-
-    const outcome = await deps.tick()
-    deps.log(describeKeepaliveOutcome(outcome))
-
-    const decision = decideKeepaliveStep(policy, outcome)
-
-    if (decision._tag === "stop") {
-      return decision.reason
-    }
-
-    // sleep resolves early when cancelled; the loop head re-checks isCancelled.
-    await deps.sleep(decision.delayMs)
+      return outcome.cause === undefined
+        ? "session keepalive check failed; will retry"
+        : `session keepalive check failed (${outcome.cause}); will retry`
+    default:
+      return assertNever(outcome)
   }
 }

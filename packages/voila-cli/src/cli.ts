@@ -18,7 +18,7 @@ export interface CliLoginOptions {
 
 export interface CliKeepaliveOptions {
   readonly intervalSeconds?: number
-  readonly sessionPath: string
+  readonly sessionPath: StateFilePath
 }
 
 export interface CliPorts {
@@ -259,10 +259,24 @@ const runOperation = async (
   return render(name, result, getJsonFlag(parsed))
 }
 
-const renderKeepalive = (reason: KeepaliveStopReason): CliRunResult =>
-  reason === "expired"
-    ? { exitCode: failureExitCode, stderr: "Session requires re-authentication. Run: voila auth login\n", stdout: "" }
-    : ok("Keepalive stopped.\n")
+const renderKeepalive = (reason: KeepaliveStopReason): CliRunResult => {
+  switch (reason) {
+    case "expired":
+      return {
+        exitCode: failureExitCode,
+        stderr: "Session requires re-authentication. Run: voila auth login\n",
+        stdout: ""
+      }
+    case "misconfigured":
+      return {
+        exitCode: usageExitCode,
+        stderr: "No session file found or the environment is invalid. Run: voila auth login\n",
+        stdout: ""
+      }
+    default:
+      return ok("Keepalive stopped.\n")
+  }
+}
 
 const runKeepalive = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const intervalOption = parsed.options.get("interval")
@@ -276,10 +290,16 @@ const runKeepalive = async (ports: CliPorts, parsed: ParsedOptions): Promise<Cli
     return usage(`--interval must be at least ${minKeepaliveIntervalSeconds} seconds`)
   }
 
-  const reason = await ports.keepalive({
-    sessionPath: getSessionPath(parsed),
-    ...(intervalSeconds === undefined ? {} : { intervalSeconds })
-  })
+  const sessionPath = getSessionPath(parsed)
+
+  // getSessionPath parses the path at the edge, where the argument arrives, and
+  // returns a usage error instead of a path when the value is not absolute; the
+  // keepalive command handles that error before it can reach the loop.
+  if (typeof sessionPath !== "string") {
+    return sessionPath
+  }
+
+  const reason = await ports.keepalive({ sessionPath, ...(intervalSeconds === undefined ? {} : { intervalSeconds }) })
 
   return renderKeepalive(reason)
 }
