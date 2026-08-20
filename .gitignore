@@ -11,3 +11,4 @@ coverage/
 .DS_Store
 CLAUDE.local.md
 local-session-snapshots/
+voila-auth-session.json

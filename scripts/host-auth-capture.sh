@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
-dist_index="${repo_root}/dist/src/index.js"
+dist_index="${repo_root}/packages/voila-sdk/dist/src/index.js"
 session_store_index="${repo_root}/packages/voila-session-store/dist/src/index.js"
 
 session_dir="${VOILA_SESSION_DIR:-${repo_root}/local-session-snapshots}"
@@ -63,13 +63,13 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${tmp_dir}/pkg/dist" "${tmp_dir}/session-store/dist"
-cp -R "${repo_root}/dist/src" "${tmp_dir}/pkg/dist/src"
+cp -R "${repo_root}/packages/voila-sdk/dist/src" "${tmp_dir}/pkg/dist/src"
 cp -R "${repo_root}/packages/voila-session-store/dist/src" "${tmp_dir}/session-store/dist/src"
 
 cat > "${tmp_dir}/pkg/package.json" <<'EOF'
 {
   "name": "@firfi/voila-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "./dist/src/index.js",

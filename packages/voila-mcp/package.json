@@ -1,6 +1,6 @@
 {
   "name": "@firfi/voila-mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Voila MCP server for safe personal grocery search, cart, slots, and order-history workflows",
   "mcpName": "io.github.dearlordylord/voila-mcp",
   "type": "module",
