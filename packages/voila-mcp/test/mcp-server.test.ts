@@ -225,7 +225,7 @@ describe("Voila MCP HTTP server", () => {
       const unknown = yield* jsonRpc({ id: 9, jsonrpc: "2.0", method: "unknown/method", params: {} })
       const statelessPing = yield* jsonRpc(
         { id: 10, jsonrpc: "2.0", method: "ping", params: {} },
-        { "mcp-protocol-version": olderProtocolVersion, "mcp-session-id": "ignored-effect-3-compatible-session" }
+        { "mcp-protocol-version": olderProtocolVersion, "mcp-session-id": "ignored-legacy-session" }
       )
 
       expect(older).toMatchObject({ id: 1, result: { protocolVersion: olderProtocolVersion } })

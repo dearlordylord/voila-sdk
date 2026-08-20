@@ -1,5 +1,7 @@
 import { it } from "@effect/vitest"
 import {
+  type ActiveAuthenticatedSdkSessionSnapshot,
+  ActiveAuthenticatedSdkSessionSnapshotSchema,
   makeAuthenticatedSdkSessionSnapshot,
   makeSessionSnapshot,
   type SdkSessionSnapshot,
@@ -15,8 +17,8 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { describe, expect } from "vitest"
 
-import type { LoginSessionSuperseded, LoginSessionWriteError } from "../src/auth-session-file.js"
-import { persistLoginSession, persistLoginSessionIfUnchanged } from "../src/auth-session-file.js"
+import type { LoginSessionWriteError } from "../src/auth-session-file.js"
+import { persistValidatedLoginSession } from "../src/auth-session-file.js"
 
 const voilaUrl = "https://voila.ca/"
 const secretCookieValue = "sanitized-cookie"
@@ -50,14 +52,14 @@ const makeBaseSession = (regionId: string): SessionSnapshot => {
   return session.success
 }
 
-const authenticated = (regionId: string): SdkSessionSnapshot => {
+const authenticated = (regionId: string): ActiveAuthenticatedSdkSessionSnapshot => {
   const snapshot = makeAuthenticatedSdkSessionSnapshot(makeBaseSession(regionId), "authenticated")
 
   if (Result.isFailure(snapshot)) {
     throw new Error("Expected authenticated SDK session snapshot")
   }
 
-  return snapshot.success
+  return Schema.decodeUnknownSync(ActiveAuthenticatedSdkSessionSnapshotSchema)(snapshot.success)
 }
 
 const encode = (snapshot: SdkSessionSnapshot): string =>
@@ -71,47 +73,53 @@ const readRaw = (file: string) => Effect.promise(() => fs.readFile(file, "utf8")
 
 const fileMode = (file: string) => Effect.promise(() => fs.stat(file).then((stats) => stats.mode & 0o777))
 
-describe("persistLoginSession", () => {
-  itLocks("creates the session file owner-only on a first login", () =>
+describe("persistValidatedLoginSession", () => {
+  itLocks("creates the session file owner-only after active validation", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
       const login = authenticated("first-login")
 
-      yield* persistLoginSession(file, login)
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: login, status: "active" }))
 
       expect(yield* readRaw(file)).toBe(encode(login))
       expect(yield* fileMode(file)).toBe(0o600)
     })
   )
 
-  itLocks("replaces whatever the cycle finds on disk", () =>
+  itLocks("replaces the current snapshot only after active validation", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
-      yield* Effect.promise(() => fs.writeFile(file, encode(authenticated("older-login")), { mode: 0o600 }))
+      const older = authenticated("older-login")
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: older, status: "active" }))
       const login = authenticated("newer-login")
 
-      yield* persistLoginSession(file, login)
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: login, status: "active" }))
 
       expect(yield* readRaw(file)).toBe(encode(login))
     })
   )
 
-  itLocks("keeps an already matching session snapshot unchanged", () =>
+  itLocks("leaves an existing authenticated snapshot untouched when validation is inactive", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
-      const login = authenticated("unchanged-login")
+      const existing = authenticated("existing-login")
+      const inactive = authenticated("inactive-capture")
 
-      yield* persistLoginSession(file, login)
-      yield* persistLoginSession(file, login)
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: existing, status: "active" }))
+      const health = yield* persistValidatedLoginSession(
+        file,
+        Effect.succeed({ reason: "server", session: inactive, status: "retry" })
+      )
 
-      expect(yield* readRaw(file)).toBe(encode(login))
+      expect(health.status).toBe("retry")
+      expect(yield* readRaw(file)).toBe(encode(existing))
     })
   )
 
-  itLocks("does not overwrite a newer session during conditional health persistence", () =>
+  itLocks("does not overwrite a newer session written while validation is in flight", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
@@ -119,13 +127,14 @@ describe("persistLoginSession", () => {
       const newer = authenticated("newer-during-health")
       const validated = authenticated("validated-after-health")
 
-      yield* persistLoginSession(file, checked)
-      yield* persistLoginSession(file, newer)
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: checked, status: "active" }))
 
-      const error: LoginSessionSuperseded | LoginSessionWriteError = yield* persistLoginSessionIfUnchanged(
+      const error: LoginSessionWriteError = yield* persistValidatedLoginSession(
         file,
-        checked,
-        validated
+        Effect.gen(function* () {
+          yield* Effect.promise(() => fs.writeFile(file, encode(newer), { mode: 0o600 }))
+          return { session: validated, status: "active" }
+        })
       ).pipe(Effect.flip)
 
       expect(error._tag).toBe("VoilaAuthSessionSuperseded")
@@ -133,16 +142,14 @@ describe("persistLoginSession", () => {
     })
   )
 
-  itLocks("saves and then keeps matching conditional health results", () =>
+  itLocks("keeps an already matching active validation unchanged", () =>
     Effect.gen(function* () {
       const dir = yield* makeTempDir
       const file = sessionFile(dir)
-      const checked = authenticated("checked")
       const validated = authenticated("validated")
 
-      yield* persistLoginSession(file, checked)
-      yield* persistLoginSessionIfUnchanged(file, checked, validated)
-      yield* persistLoginSessionIfUnchanged(file, validated, validated)
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: validated, status: "active" }))
+      yield* persistValidatedLoginSession(file, Effect.succeed({ session: validated, status: "active" }))
 
       expect(yield* readRaw(file)).toBe(encode(validated))
     })
@@ -158,9 +165,9 @@ describe("persistLoginSession", () => {
       // this one cannot, so it stands in for the losing half only.
       yield* Effect.promise(() => fs.symlink(path.join(dir, "nowhere.json"), file))
 
-      const error: LoginSessionSuperseded | LoginSessionWriteError = yield* persistLoginSession(
+      const error: LoginSessionWriteError = yield* persistValidatedLoginSession(
         file,
-        authenticated("login")
+        Effect.succeed({ session: authenticated("login"), status: "active" })
       ).pipe(Effect.flip)
 
       expect(error._tag).toBe("VoilaAuthSessionSuperseded")

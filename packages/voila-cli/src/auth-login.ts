@@ -15,7 +15,12 @@ import { type StateFilePath } from "@firfi/voila-session-store"
 import { Result, Schema } from "effect"
 import { randomUUID } from "node:crypto"
 
-import { type CapturedBrowserSession, observeVoilaBrowserTraffic, type SessionIdGenerator } from "./auth-capture.js"
+import {
+  type CapturedBrowserSession,
+  capturedSessionIsAuthenticated,
+  observeVoilaBrowserTraffic,
+  type SessionIdGenerator
+} from "./auth-capture.js"
 import {
   adapterTools,
   type AuthFailure,
@@ -87,8 +92,12 @@ const makeCapturedAuthState = (capture: CapturedBrowserSession): AuthSessionStat
 const makeSessionFromBrowserCapture = (
   capture: CapturedBrowserSession,
   ports: SessionCapturePort
-): Result.Result<SdkSessionSnapshot, AuthFailure> =>
-  Result.flatMap(makeCapturedCookieJar(capture, ports.cookieJar), (cookieJar) =>
+): Result.Result<SdkSessionSnapshot, AuthFailure> => {
+  if (!capturedSessionIsAuthenticated(capture)) {
+    return Result.fail(failure("VoilaAuthNotAuthenticated", "Voila authenticated cookie was not captured"))
+  }
+
+  return Result.flatMap(makeCapturedCookieJar(capture, ports.cookieJar), (cookieJar) =>
     Result.flatMap(
       Result.mapError(
         ports.constructors.makeSessionSnapshot(capture.material.metadata, makeCapturedCsrfState(capture), cookieJar),
@@ -103,18 +112,12 @@ const makeSessionFromBrowserCapture = (
         )
     )
   )
-
-const saveSession = async (
-  persistence: SessionPersistencePort,
-  path: StateFilePath,
-  snapshot: SdkSessionSnapshot
-): Promise<Result.Result<void, AuthFailure>> => persistence.save(path, snapshot)
+}
 
 /**
- * The saved session is validated against Voila before the login reports
- * success, and the validated snapshot is saved through the same cycle: the
- * health check can rotate cookies, and a login that reports success while the
- * file holds a session Voila rejects is worse than a login that failed.
+ * Validate and persist through one guarded file cycle. The health check may
+ * rotate cookies; inactive captures leave the existing snapshot untouched,
+ * and a concurrent newer write wins the cycle.
  */
 const validateSavedSession = async (
   healthPort: SessionHealthPort,
@@ -122,16 +125,10 @@ const validateSavedSession = async (
   path: StateFilePath,
   session: SdkSessionSnapshot
 ): Promise<OperationExecutionResult> => {
-  const health = await healthPort.check(session)
+  const health = await persistence.validateAndSave(path, () => healthPort.check(session))
 
   if (Result.isFailure(health)) {
-    return failure(health.failure._tag, health.failure.message)
-  }
-
-  const validated = await persistence.saveIfUnchanged(path, session, health.success.session)
-
-  if (Result.isFailure(validated)) {
-    return validated.failure
+    return health.failure
   }
 
   return health.success.status === "active"
@@ -183,12 +180,6 @@ const completeLogin = async (
     return session.failure
   }
 
-  const saved = await saveSession(runtime.persistence, options.sessionPath, session.success)
-
-  if (Result.isFailure(saved)) {
-    return saved.failure
-  }
-
   return validateSavedSession(runtime.health, runtime.persistence, options.sessionPath, session.success)
 }
 
@@ -207,7 +198,7 @@ const runLoginInContext = async (
     [
       "Opened Voila in Chromium.",
       "Log in manually, then close the browser window to save the authenticated session.",
-      "The CLI saves after Voila session material and cookies are captured, then validates the saved session.",
+      "The CLI validates captured session material with Voila, then saves only an active session.",
       ""
     ].join("\n")
   )

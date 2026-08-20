@@ -1,6 +1,5 @@
 import { type OperationExecutionResult } from "@firfi/voila-mcp"
 import {
-  type BrowserLoginBrowserCookie,
   BrowserLoginBrowserCookieArraySchema,
   type BrowserLoginTimeoutMs,
   extractInitialStatePayload,
@@ -99,8 +98,8 @@ type AuthFailure = Extract<OperationExecutionResult, { readonly ok: false }>
 
 const failure = (tag: string, message: string): AuthFailure => ({ error: { _tag: tag, message }, ok: false })
 
-const cookiesSayAuthenticated = (cookies: ReadonlyArray<BrowserLoginBrowserCookie>): boolean =>
-  cookies.some((cookie) => cookie.name === authenticatedCookieName)
+export const capturedSessionIsAuthenticated = (capture: CapturedBrowserSession): boolean =>
+  capture.cookies.some((cookie) => cookie.name === authenticatedCookieName && cookie.value.trim().length > 0)
 
 const pageIsClosed = (page: BrowserSessionPagePort): boolean => {
   try {
@@ -305,6 +304,16 @@ interface AuthenticatedCapturePollPort {
   readonly isClosed: () => boolean
 }
 
+const closeCapture = (capture: CapturedBrowserSession | undefined): CapturedBrowserSession | AuthFailure => {
+  if (capture === undefined) {
+    return failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
+  }
+
+  return capturedSessionIsAuthenticated(capture)
+    ? capture
+    : failure("VoilaAuthNotAuthenticated", "Voila authenticated cookie was not captured")
+}
+
 export const pollAuthenticatedCapture = async (
   port: AuthenticatedCapturePollPort,
   timeoutMs: BrowserLoginTimeoutMs,
@@ -317,9 +326,7 @@ export const pollAuthenticatedCapture = async (
 
   for (let remaining = attempts; remaining > 0; remaining -= 1) {
     if (port.isClosed()) {
-      return latestCapture === undefined
-        ? failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
-        : latestCapture
+      return closeCapture(latestCapture)
     }
 
     const capture = await port.capture()
@@ -330,9 +337,9 @@ export const pollAuthenticatedCapture = async (
 
     if ((attempts - remaining) % progressEveryAttempts === 0) {
       if (latestCapture !== undefined) {
-        const authStatus = cookiesSayAuthenticated(latestCapture.cookies)
+        const authStatus = capturedSessionIsAuthenticated(latestCapture)
           ? "Authenticated cookie observed."
-          : "Authenticated cookie not observed; saved session will be verified after close."
+          : "Authenticated cookie not observed; finish login before closing the browser."
         const csrfStatus =
           latestCapture.material.csrfToken === undefined ? "CSRF token not observed." : "CSRF token observed."
 

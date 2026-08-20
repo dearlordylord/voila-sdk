@@ -1,6 +1,5 @@
 node_modules
 .reference
-.references/
 dist/
 coverage/
 *.tsbuildinfo

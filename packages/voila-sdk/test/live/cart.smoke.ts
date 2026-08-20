@@ -1,7 +1,14 @@
 import { Result } from "effect"
 
-import type { NormalizedCartView, NormalizedSearchProduct } from "../../src/index.js"
-import { addCartItems, bootstrapGuestSession, getCart, removeCartItems, searchProducts } from "../../src/index.js"
+import type { CookieJarPort, NormalizedCartView, NormalizedSearchProduct, SessionSnapshot } from "../../src/index.js"
+import {
+  addCartItems,
+  bootstrapGuestSession,
+  getCart,
+  removeCartItems,
+  searchProducts,
+  toughCookieJarPort
+} from "../../src/index.js"
 import { runLive } from "./live-transport.js"
 
 const enabledValue = "1"
@@ -18,7 +25,8 @@ type LiveCartSmokeFailure =
   | { readonly _tag: "LiveCartSmokeNoAvailableProduct" }
   | { readonly _tag: "LiveCartSmokeAddFailed"; readonly causeTag: string }
   | { readonly _tag: "LiveCartSmokeReadFailed"; readonly causeTag: string }
-  | { readonly _tag: "LiveCartSmokeCleanupFailed"; readonly causeTag: string }
+  | { readonly _tag: "LiveCartSmokeCleanupUnverified"; readonly causeTag: string }
+  | { readonly _tag: "LiveCartSmokeDefect" }
   | { readonly _tag: "LiveCartSmokeVerificationFailed" }
 
 const toCauseTag = (error: { readonly _tag: string }): string => error._tag
@@ -29,6 +37,84 @@ const isCartProductCandidate = (product: NormalizedSearchProduct): boolean =>
 const cartQuantityForProduct = (cart: NormalizedCartView, productId: string): number =>
   cart.items.filter((item) => item.productId === productId).reduce((total, item) => total + item.quantity, 0)
 
+const makeSharedCookieJarPort = (session: SessionSnapshot): Result.Result<CookieJarPort, LiveCartSmokeFailure> =>
+  Result.mapError(
+    Result.map(toughCookieJarPort.deserialize(session.cookieJar), (sharedJar) => ({
+      create: () => sharedJar,
+      deserialize: () => Result.succeed(sharedJar),
+      serialize: toughCookieJarPort.serialize
+    })),
+    (error) => ({ _tag: "LiveCartSmokeCleanupUnverified", causeTag: error._tag })
+  )
+
+interface MutationObservation {
+  readonly failure: LiveCartSmokeFailure | undefined
+  readonly session: SessionSnapshot
+}
+
+const observeAdd = async (
+  session: SessionSnapshot,
+  productId: string,
+  cookieJarPort: CookieJarPort
+): Promise<MutationObservation> => {
+  const add = await runLive(addCartItems(session, [{ productId, quantity: 1 }], cookieJarPort))
+
+  if (Result.isFailure(add)) {
+    return { failure: { _tag: "LiveCartSmokeAddFailed", causeTag: toCauseTag(add.failure) }, session }
+  }
+
+  const read = await runLive(getCart(add.success.session, cookieJarPort))
+
+  if (Result.isFailure(read)) {
+    return {
+      failure: { _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(read.failure) },
+      session: add.success.session
+    }
+  }
+
+  const addedExactlyOne = cartQuantityForProduct(read.success.value, productId) === 1
+  const hasServerTotal = read.success.value.totals.itemPriceAfterPromos.amount.length > 0
+
+  return {
+    failure: addedExactlyOne && hasServerTotal ? undefined : { _tag: "LiveCartSmokeVerificationFailed" },
+    session: read.success.session
+  }
+}
+
+const cleanupAndVerify = async (
+  session: SessionSnapshot,
+  productId: string,
+  cookieJarPort: CookieJarPort
+): Promise<Result.Result<void, LiveCartSmokeFailure>> => {
+  const cleanup = await runLive(removeCartItems(session, [{ productId, quantity: 1 }], cookieJarPort))
+  const verificationSession = Result.isSuccess(cleanup) ? cleanup.success.session : session
+  const verification = await runLive(getCart(verificationSession, cookieJarPort))
+
+  if (Result.isFailure(verification)) {
+    const causeTag = Result.isFailure(cleanup) ? toCauseTag(cleanup.failure) : toCauseTag(verification.failure)
+    return Result.fail({ _tag: "LiveCartSmokeCleanupUnverified", causeTag })
+  }
+
+  if (cartQuantityForProduct(verification.success.value, productId) === 0) {
+    return Result.succeed(undefined)
+  }
+
+  const retry = await runLive(
+    removeCartItems(verification.success.session, [{ productId, quantity: 1 }], cookieJarPort)
+  )
+  const retryVerificationSession = Result.isSuccess(retry) ? retry.success.session : verification.success.session
+  const retryVerification = await runLive(getCart(retryVerificationSession, cookieJarPort))
+
+  if (Result.isFailure(retryVerification)) {
+    const causeTag = Result.isFailure(retry) ? toCauseTag(retry.failure) : toCauseTag(retryVerification.failure)
+    return Result.fail({ _tag: "LiveCartSmokeCleanupUnverified", causeTag })
+  }
+
+  return cartQuantityForProduct(retryVerification.success.value, productId) === 0
+    ? Result.succeed(undefined)
+    : Result.fail({ _tag: "LiveCartSmokeVerificationFailed" })
+}
+
 const runSmoke = async (): Promise<Result.Result<string, LiveCartSmokeFailure>> => {
   const bootstrap = await runLive(bootstrapGuestSession())
 
@@ -36,73 +122,58 @@ const runSmoke = async (): Promise<Result.Result<string, LiveCartSmokeFailure>> 
     return Result.fail({ _tag: "LiveCartSmokeBootstrapFailed", causeTag: toCauseTag(bootstrap.failure) })
   }
 
-  const search = await runLive(searchProducts(bootstrap.success.session, { pageSize, query: harmlessQuery }))
+  const cookieJarPort = makeSharedCookieJarPort(bootstrap.success.session)
+
+  if (Result.isFailure(cookieJarPort)) {
+    return Result.fail(cookieJarPort.failure)
+  }
+
+  const baseline = await runLive(getCart(bootstrap.success.session, cookieJarPort.success))
+
+  if (Result.isFailure(baseline)) {
+    return Result.fail({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(baseline.failure) })
+  }
+
+  const search = await runLive(
+    searchProducts(baseline.success.session, { pageSize, query: harmlessQuery }, cookieJarPort.success)
+  )
 
   if (Result.isFailure(search)) {
     return Result.fail({ _tag: "LiveCartSmokeSearchFailed", causeTag: toCauseTag(search.failure) })
   }
 
-  const product = search.success.value.products.find(isCartProductCandidate)
+  const product = search.success.value.products.find(
+    (candidate) =>
+      isCartProductCandidate(candidate) && cartQuantityForProduct(baseline.success.value, candidate.productId) === 0
+  )
 
   if (product === undefined) {
     return Result.fail({ _tag: "LiveCartSmokeNoAvailableProduct" })
   }
 
-  const add = await runLive(addCartItems(search.success.session, [{ productId: product.productId, quantity: 1 }]))
+  let observation: MutationObservation = { failure: { _tag: "LiveCartSmokeDefect" }, session: search.success.session }
+  let cleanup: Result.Result<void, LiveCartSmokeFailure> = Result.fail({
+    _tag: "LiveCartSmokeCleanupUnverified",
+    causeTag: "CleanupNotAttempted"
+  })
 
-  if (Result.isFailure(add)) {
-    return Result.fail({ _tag: "LiveCartSmokeAddFailed", causeTag: toCauseTag(add.failure) })
-  }
-
-  const read = await runLive(getCart(add.success.session))
-
-  if (Result.isFailure(read)) {
-    const cleanupAfterReadFailure = await runLive(
-      removeCartItems(add.success.session, [{ productId: product.productId, quantity: 1 }])
-    )
-
-    if (Result.isFailure(cleanupAfterReadFailure)) {
-      return Result.fail({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanupAfterReadFailure.failure) })
+  try {
+    observation = await observeAdd(search.success.session, product.productId, cookieJarPort.success)
+  } catch {
+    observation = { failure: { _tag: "LiveCartSmokeDefect" }, session: search.success.session }
+  } finally {
+    try {
+      cleanup = await cleanupAndVerify(observation.session, product.productId, cookieJarPort.success)
+    } catch {
+      cleanup = Result.fail({ _tag: "LiveCartSmokeCleanupUnverified", causeTag: "CleanupDefect" })
     }
-
-    return Result.fail({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(read.failure) })
   }
-
-  if (
-    cartQuantityForProduct(read.success.value, product.productId) < 1 ||
-    read.success.value.totals.itemPriceAfterPromos.amount.length === 0
-  ) {
-    const cleanupAfterVerificationFailure = await runLive(
-      removeCartItems(read.success.session, [{ productId: product.productId, quantity: 1 }])
-    )
-
-    if (Result.isFailure(cleanupAfterVerificationFailure)) {
-      return Result.fail({
-        _tag: "LiveCartSmokeCleanupFailed",
-        causeTag: toCauseTag(cleanupAfterVerificationFailure.failure)
-      })
-    }
-
-    return Result.fail({ _tag: "LiveCartSmokeVerificationFailed" })
-  }
-
-  const cleanup = await runLive(removeCartItems(read.success.session, [{ productId: product.productId, quantity: 1 }]))
 
   if (Result.isFailure(cleanup)) {
-    return Result.fail({ _tag: "LiveCartSmokeCleanupFailed", causeTag: toCauseTag(cleanup.failure) })
+    return Result.fail(cleanup.failure)
   }
 
-  const cleanedCart = await runLive(getCart(cleanup.success.session))
-
-  if (Result.isFailure(cleanedCart)) {
-    return Result.fail({ _tag: "LiveCartSmokeReadFailed", causeTag: toCauseTag(cleanedCart.failure) })
-  }
-
-  if (cartQuantityForProduct(cleanedCart.success.value, product.productId) > 0) {
-    return Result.fail({ _tag: "LiveCartSmokeVerificationFailed" })
-  }
-
-  return Result.succeed(product.name)
+  return observation.failure === undefined ? Result.succeed(product.name) : Result.fail(observation.failure)
 }
 
 if (process.env[liveSmokeFlag] !== enabledValue) {

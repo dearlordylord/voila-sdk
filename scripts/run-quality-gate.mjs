@@ -21,7 +21,6 @@ const gates = [
   { args: ["lint"], name: "lint, format, and duplication", timeout: 2 * 60 * second },
   { args: ["fixtures:audit"], name: "fixture safety", timeout: 60 * second },
   { args: ["test:harness"], name: "quality harness tests", timeout: 60 * second },
-  { args: ["oracle:verify"], name: "Effect 3 behavioral oracle parity", timeout: 60 * second },
   { args: ["test:coverage"], name: "tests and coverage", timeout: 5 * 60 * second }
 ]
 

@@ -1,6 +1,6 @@
 # MCP Readiness
 
-Voila includes an MCP server package: `@firfi/voila-mcp`. The server is built on `@effect/ai`'s `McpServer` over `@effect/rpc`; no `@modelcontextprotocol/*` package is a dependency.
+Voila includes an MCP server package: `@firfi/voila-mcp`. The server uses Effect 4's `effect/unstable/ai` `McpServer`; no `@effect/ai`, `@effect/rpc`, or `@modelcontextprotocol/*` package is a dependency.
 
 ## Package Boundary
 

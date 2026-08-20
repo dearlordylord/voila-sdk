@@ -1,7 +1,7 @@
 {
   "packages/voila-cli/src/auth-capture.ts": [
     {
-      "complexity": 10,
+      "complexity": 9,
       "signature": "async ( port: AuthenticatedCapturePollPort, timeoutMs: BrowserLoginTimeoutMs, observer: BrowserCaptureObserver, writeProgress: CliStderrWriter, delay: CliDelay ): Promise<CapturedBrowserSession | AuthFailure> =>"
     }
   ],

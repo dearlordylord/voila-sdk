@@ -107,8 +107,12 @@ const defaultHealth: SessionHealthPort = {
 }
 
 const defaultPersistence: SessionPersistencePort = {
-  save: async () => Result.succeed(undefined),
-  saveIfUnchanged: async () => Result.succeed(undefined)
+  validateAndSave: async (_path, validation) => {
+    const validated = await validation()
+    return Result.isFailure(validated)
+      ? Result.fail(failure(validated.failure._tag))
+      : Result.succeed(validated.success)
+  }
 }
 
 const defaultSessionCapture: SessionCapturePort = {
@@ -430,16 +434,39 @@ describe("interactive CLI login boundary", () => {
         }),
         defaultHealth,
         {
-          save: async () => {
+          validateAndSave: async () => {
             saveCalls += 1
-            return Result.succeed(undefined)
-          },
-          saveIfUnchanged: async () => Result.succeed(undefined)
+            return Result.fail(failure("UnexpectedPersistence"))
+          }
         }
       )
     )
 
     expect(result).toMatchObject({ error: { _tag: "VoilaAuthCookieCaptureFailed" }, ok: false })
+    expect(saveCalls).toBe(0)
+  })
+
+  it("does not persist a browser capture without authenticated cookie evidence", async () => {
+    const options = makeOptions("guest-capture")
+    let saveCalls = 0
+    const result = await loginWithPlaywrightWithRuntime(
+      options,
+      makeRuntime(
+        makeBrowser(makePage(), {
+          cookies: [{ ...validCookie, name: "visitor" }],
+          material: capture("guest-csrf").material
+        }),
+        defaultHealth,
+        {
+          validateAndSave: async () => {
+            saveCalls += 1
+            return Result.fail(failure("UnexpectedPersistence"))
+          }
+        }
+      )
+    )
+
+    expect(result).toMatchObject({ error: { _tag: "VoilaAuthNotAuthenticated" }, ok: false })
     expect(saveCalls).toBe(0)
   })
 
@@ -486,8 +513,7 @@ describe("interactive CLI login boundary", () => {
     const persistenceFailure = await loginWithPlaywrightWithRuntime(
       makeOptions("persist-failure"),
       makeRuntime(makeBrowser(makePage(), capture("csrf")), defaultHealth, {
-        save: async () => Result.fail(failure("VoilaAuthSessionWriteFailed")),
-        saveIfUnchanged: async () => Result.succeed(undefined)
+        validateAndSave: async () => Result.fail(failure("VoilaAuthSessionWriteFailed"))
       })
     )
     const healthFailure = await loginWithPlaywrightWithRuntime(
@@ -514,10 +540,7 @@ describe("interactive CLI login boundary", () => {
           material: capture().material
         }),
         defaultHealth,
-        {
-          save: async () => Result.fail(failure("VoilaAuthSessionWriteFailed")),
-          saveIfUnchanged: async () => Result.succeed(undefined)
-        }
+        { validateAndSave: async () => Result.fail(failure("VoilaAuthSessionWriteFailed")) }
       )
     )
 
@@ -546,13 +569,9 @@ describe("interactive CLI login boundary", () => {
         makeBrowser(makePage(), capture("csrf")),
         { check: async () => Result.succeed<SessionHealth>({ session: healthSession, status: "active" }) },
         {
-          save: async () => {
+          validateAndSave: async () => {
             saveCalls += 1
-            return Result.succeed(undefined)
-          },
-          saveIfUnchanged: async () => {
-            saveCalls += 1
-            return saveCalls === 2 ? Result.fail(failure("VoilaAuthSessionWriteFailed")) : Result.succeed(undefined)
+            return Result.fail(failure("VoilaAuthSessionWriteFailed"))
           }
         }
       )
@@ -561,29 +580,34 @@ describe("interactive CLI login boundary", () => {
     expect(inactive).toMatchObject({ error: { _tag: "VoilaAuthSessionInactive" }, ok: false })
     expect(successful).toEqual({ ok: true, value: { sessionPath: successOptions.sessionPath, status: "active" } })
     expect(validationPersistenceFailure).toMatchObject({ error: { _tag: "VoilaAuthSessionWriteFailed" }, ok: false })
+    expect(saveCalls).toBe(1)
   })
 
   it("does not overwrite a session written while health validation is in flight", async () => {
     const options = makeOptions("health-session-superseded")
-    const newerSession = makeSdkSession()
-    let currentSession: SdkSessionSnapshot | undefined
+    const newerBase = makeSdkSession()
+    const newerSession = { ...newerBase, session: { ...newerBase.session, csrf: { token: "newer-csrf" } } }
+    let currentSession: SdkSessionSnapshot = makeSdkSession()
     const persistence: SessionPersistencePort = {
-      save: async (_path, snapshot) => {
-        currentSession = snapshot
-        return Result.succeed(undefined)
-      },
-      saveIfUnchanged: async (_path, expected, snapshot) => {
-        if (currentSession === undefined || encodeSession(currentSession) !== encodeSession(expected)) {
+      validateAndSave: async (_path, validation) => {
+        const expected = currentSession
+        const validated = await validation()
+
+        if (Result.isFailure(validated)) {
+          return Result.fail(failure(validated.failure._tag))
+        }
+
+        if (encodeSession(currentSession) !== encodeSession(expected)) {
           return Result.fail(failure("VoilaAuthSessionSuperseded"))
         }
 
-        currentSession = snapshot
-        return Result.succeed(undefined)
+        currentSession = validated.success.session
+        return Result.succeed(validated.success)
       }
     }
     const health: SessionHealthPort = {
       check: async () => {
-        await persistence.save(options.sessionPath, newerSession)
+        currentSession = newerSession
         return Result.succeed<SessionHealth>({ session: newerSession, status: "active" })
       }
     }
@@ -641,13 +665,11 @@ describe("interactive CLI login boundary", () => {
     try {
       const persistence = adapterTools.makeDefaultPersistencePort()
       const saved = makeSdkSession()
-      const different = { ...saved, session: { ...saved.session, csrf: { token: "different-csrf" } } }
-
-      await expect(persistence.save(sessionPath, saved)).resolves.toEqual(Result.succeed(undefined))
-      await expect(persistence.saveIfUnchanged(sessionPath, saved, saved)).resolves.toEqual(Result.succeed(undefined))
-      await expect(persistence.saveIfUnchanged(sessionPath, different, saved)).resolves.toMatchObject({
-        failure: { error: { _tag: "VoilaAuthSessionSuperseded" }, ok: false }
-      })
+      await expect(
+        persistence.validateAndSave(sessionPath, async () =>
+          Result.succeed<SessionHealth>({ session: saved, status: "active" })
+        )
+      ).resolves.toEqual(Result.succeed({ session: saved, status: "active" }))
       expect(Layer.isLayer(adapterTools.defaultTransportLayer())).toBe(true)
     } finally {
       await rm(directory, { force: true, recursive: true })

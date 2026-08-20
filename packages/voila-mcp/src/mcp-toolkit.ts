@@ -159,9 +159,9 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const lastArrayIndex = -1
 
 /**
- * RC.110 represents independent checks as `allOf` fragments. Effect 3 exposed
- * those non-conflicting constraints directly, which is the Draft-07 shape
- * existing MCP clients received. Ambiguous schema composition stays intact.
+ * Independent checks are represented as `allOf` fragments. Promote
+ * non-conflicting constraints into the Draft-07 shape expected by MCP clients,
+ * while leaving ambiguous schema composition intact.
  */
 const projectDraft07Constraints = (value: unknown): unknown => {
   if (Array.isArray(value)) {

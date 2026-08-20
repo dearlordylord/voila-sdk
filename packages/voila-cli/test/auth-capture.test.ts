@@ -364,11 +364,29 @@ describe("authenticated browser capture polling", () => {
       },
       async () => undefined
     )
+    let unauthenticatedClosedChecks = 0
+    const unauthenticatedClosed = await pollAuthenticatedCapture(
+      {
+        capture: async () => ({
+          cookies: [{ ...validCookie, name: "visitor" }],
+          material: getMaterial(sessionPayload("guest-csrf"))
+        }),
+        isClosed: () => {
+          unauthenticatedClosedChecks += 1
+          return unauthenticatedClosedChecks > 1
+        }
+      },
+      BrowserLoginTimeoutMsSchema.make(4_000),
+      { getMaterial: () => undefined, hasPayload: () => false },
+      () => undefined,
+      async () => undefined
+    )
 
     expect(closedAfterCapture).toEqual(captured)
     expect(observedPayload).toMatchObject({ error: { _tag: "VoilaAuthTimedOut" }, ok: false })
     expect(immediatelyClosed).toMatchObject({ error: { _tag: "VoilaAuthInitialStateCaptureFailed" }, ok: false })
     expect(unauthenticatedCapture).toMatchObject({ error: { _tag: "VoilaAuthTimedOut" }, ok: false })
+    expect(unauthenticatedClosed).toMatchObject({ error: { _tag: "VoilaAuthNotAuthenticated" }, ok: false })
     expect(progress.some((message) => message.includes("Authenticated cookie observed. CSRF token observed."))).toBe(
       true
     )

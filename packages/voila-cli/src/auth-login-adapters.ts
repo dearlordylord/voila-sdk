@@ -20,7 +20,7 @@ import { chromium, type Page } from "playwright"
 
 import { waitForAuthenticatedCapture } from "./auth-capture.js"
 import type { CapturedBrowserSession, observeVoilaBrowserTraffic } from "./auth-capture.js"
-import { persistLoginSession, persistLoginSessionIfUnchanged } from "./auth-session-file.js"
+import { persistValidatedLoginSession } from "./auth-session-file.js"
 
 type BrowserTrafficPagePort = Parameters<typeof observeVoilaBrowserTraffic>[0]
 type BrowserSessionPagePort = Parameters<typeof waitForAuthenticatedCapture>[0]
@@ -108,12 +108,10 @@ export interface SessionHealthPort {
 }
 
 export interface SessionPersistencePort {
-  readonly save: (path: StateFilePath, snapshot: SdkSessionSnapshot) => Promise<Result.Result<void, AuthFailure>>
-  readonly saveIfUnchanged: (
+  readonly validateAndSave: (
     path: StateFilePath,
-    expected: SdkSessionSnapshot,
-    snapshot: SdkSessionSnapshot
-  ) => Promise<Result.Result<void, AuthFailure>>
+    validation: () => Promise<SessionHealthResult>
+  ) => Promise<Result.Result<SessionHealth, AuthFailure>>
 }
 
 interface SessionSnapshotConstructors {
@@ -188,25 +186,25 @@ const makeHealthPort = (transport: Layer.Layer<VoilaTransport>): SessionHealthPo
 })
 
 const makePersistencePort = (locks: StateFileLocksService): SessionPersistencePort => ({
-  save: async (path, snapshot) => {
-    const saved = await Effect.runPromise(
-      Effect.result(persistLoginSession(path, snapshot).pipe(Effect.provideService(StateFileLocks, locks)))
-    )
-
-    return Result.isFailure(saved)
-      ? Result.fail({ error: { _tag: saved.failure._tag, message: saved.failure.message }, ok: false })
-      : Result.succeed(undefined)
-  },
-  saveIfUnchanged: async (path, expected, snapshot) => {
+  validateAndSave: async (path, validation) => {
     const saved = await Effect.runPromise(
       Effect.result(
-        persistLoginSessionIfUnchanged(path, expected, snapshot).pipe(Effect.provideService(StateFileLocks, locks))
+        persistValidatedLoginSession(
+          path,
+          Effect.flatMap(
+            Effect.tryPromise({
+              catch: () => ({ _tag: "VoilaAuthHealthFailed", message: "Session health check failed" }),
+              try: validation
+            }),
+            Effect.fromResult
+          )
+        ).pipe(Effect.provideService(StateFileLocks, locks))
       )
     )
 
     return Result.isFailure(saved)
       ? Result.fail({ error: { _tag: saved.failure._tag, message: saved.failure.message }, ok: false })
-      : Result.succeed(undefined)
+      : Result.succeed(saved.success)
   }
 })
 
