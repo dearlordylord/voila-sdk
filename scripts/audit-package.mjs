@@ -59,11 +59,22 @@ try {
     throw new Error(`Package must depend on exact Effect ${EFFECT_COHORT_VERSION}`)
   }
 
-  if (
-    manifest.dependencies["@effect/platform-node"] === EFFECT_COHORT_VERSION &&
-    manifest.dependencies.redis !== REDIS_VERSION
-  ) {
-    throw new Error(`Package using @effect/platform-node must provide exact redis ${REDIS_VERSION}`)
+  if (Object.hasOwn(manifest.dependencies, "@effect/platform-node")) {
+    const platformNodeVersion = manifest.dependencies["@effect/platform-node"]
+
+    if (platformNodeVersion !== EFFECT_COHORT_VERSION) {
+      throw new Error(`Package must depend on exact @effect/platform-node ${EFFECT_COHORT_VERSION}`)
+    }
+
+    if (manifest.dependencies.redis !== REDIS_VERSION) {
+      throw new Error(`Package using @effect/platform-node must provide exact redis ${REDIS_VERSION}`)
+    }
+
+    if (manifest.dependencies["@effect/platform-node-shared"] !== EFFECT_COHORT_VERSION) {
+      throw new Error(
+        `Package using @effect/platform-node must pin @effect/platform-node-shared ${EFFECT_COHORT_VERSION}`
+      )
+    }
   }
 
   const prohibited = prohibitedDependencies.filter((name) => Object.hasOwn(packageDependencies, name))
