@@ -14,7 +14,7 @@
     "test:harness": "vitest run scripts/*.test.ts --coverage.enabled=false",
     "test:coverage": "vitest run packages --reporter=dot --coverage --coverage.reporter=text-summary --coverage.reporter=json-summary && node scripts/verify-coverage-summary.mjs",
     "test:watch": "vitest",
-    "rebuild:native": "CI=true pnpm install --frozen-lockfile --prefer-offline && pnpm rebuild esbuild unrs-resolver @parcel/watcher rolldown",
+    "rebuild:native": "CI=true pnpm install --frozen-lockfile --prefer-offline && pnpm rebuild unrs-resolver @parcel/watcher rolldown",
     "smoke:catalog-search": "pnpm --filter @firfi/voila-sdk smoke:catalog-search",
     "smoke:cart": "pnpm --filter @firfi/voila-sdk smoke:cart",
     "smoke:request-identity": "pnpm --filter @firfi/voila-mcp smoke:request-identity",
@@ -82,10 +82,13 @@
     ]
   },
   "pnpm": {
+    "supportedArchitectures": {
+      "os": ["current", "darwin", "linux"],
+      "cpu": ["current", "arm64", "x64"]
+    },
     "onlyBuiltDependencies": [
       "core-js",
       "dprint",
-      "esbuild",
       "@parcel/watcher",
       "unrs-resolver"
     ]
