@@ -1,7 +1,12 @@
-import { Effect, Result } from "effect"
+import { Effect, Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
-import type { BrowserLoginPortError } from "../../src/domain/schemas/index.js"
+import {
+  BrowserLoginErrorSchema,
+  BrowserLoginResultSchema,
+  BrowserLoginTimeoutMsSchema,
+  type BrowserLoginPortError
+} from "../../src/domain/schemas/index.js"
 import type { BrowserLoginPort } from "../../src/voila/browser-login.js"
 import { loginWithBrowser } from "../../src/voila/browser-login.js"
 import { makeSessionSnapshot, serializeCookieJar, toughCookieJarPort } from "../../src/voila/session-snapshot.js"
@@ -59,6 +64,14 @@ const makePort = (
 }
 
 describe("browser login port", () => {
+  it("constrains browser-login timeouts to positive safe milliseconds", () => {
+    expect(Schema.decodeUnknownSync(BrowserLoginTimeoutMsSchema)(1)).toBe(1)
+
+    for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => Schema.decodeUnknownSync(BrowserLoginTimeoutMsSchema)(value)).toThrow()
+    }
+  })
+
   it("captures an authenticated session through an injected browser port without password input", async () => {
     const fake = makePort(
       Result.succeed({ account: { emailHint: secretEmailHint }, authenticated: true, session: makeSession(true) })
@@ -73,6 +86,7 @@ describe("browser login port", () => {
     expect(fake.requests[0]).toEqual({ loginUrl: voilaUrl, timeoutMs: 30_000 })
 
     if (Result.isSuccess(result)) {
+      expect(Result.isSuccess(Schema.decodeUnknownResult(BrowserLoginResultSchema)(result.success))).toBe(true)
       expect(result.success.session.kind).toBe("authenticated")
       expect(result.success.session.state).toBe("authenticated")
       expect(result.success.session.account?.emailHint).toBe(secretEmailHint)
@@ -92,6 +106,7 @@ describe("browser login port", () => {
     expect(Result.isFailure(result)).toBe(true)
 
     if (Result.isFailure(result)) {
+      expect(Result.isSuccess(Schema.decodeUnknownResult(BrowserLoginErrorSchema)(result.failure))).toBe(true)
       expect(result.failure._tag).toBe("BrowserLoginUserCancelled")
       expect(JSON.stringify(result.failure)).not.toContain(secretCookieValue)
     }

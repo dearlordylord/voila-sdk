@@ -2,15 +2,20 @@ import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
-  type AuthenticatedSdkSessionSnapshot,
   BrowserLoginCaptureSchema,
+  BrowserLoginErrorSchema,
   BrowserLoginOptionsSchema,
   BrowserLoginPortErrorSchema,
+  BrowserLoginResultSchema,
+  type BrowserLoginError,
+  type BrowserLoginResult,
   type BrowserLoginRequest,
   BrowserLoginRequestSchema
 } from "../domain/schemas/index.js"
 import { makeAuthenticatedSdkSessionSnapshot } from "./session-snapshot.js"
 import { VOILA_BASE_URL } from "./urls.js"
+
+export type { BrowserLoginError, BrowserLoginResult } from "../domain/schemas/index.js"
 
 /**
  * Playwright is promise-shaped and stays that way: this port is the one place
@@ -21,56 +26,47 @@ export interface BrowserLoginPort {
   readonly captureSession: (request: BrowserLoginRequest) => Promise<unknown>
 }
 
-export interface BrowserLoginResult {
-  readonly session: AuthenticatedSdkSessionSnapshot
-}
-
-export type BrowserLoginError =
-  | { readonly _tag: "BrowserLoginUserCancelled"; readonly message: string }
-  | { readonly _tag: "BrowserLoginTimedOut"; readonly message: string }
-  | { readonly _tag: "BrowserLoginOptionsInvalid"; readonly message: string }
-  | { readonly _tag: "BrowserLoginAdapterFailure"; readonly message: string }
-  | { readonly _tag: "BrowserLoginCaptureInvalid"; readonly message: string }
-  | { readonly _tag: "BrowserLoginMissingCookies"; readonly message: string }
-  | { readonly _tag: "BrowserLoginNotAuthenticated"; readonly message: string }
-
 const loginUrl = new URL("/", VOILA_BASE_URL).href
 const emptyCookieCount = 0
 
-const browserLoginOptionsInvalid = (): BrowserLoginError => ({
-  _tag: "BrowserLoginOptionsInvalid",
-  message: "Browser login options do not match the SDK schema"
-})
+const browserLoginOptionsInvalid = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({
+    _tag: "BrowserLoginOptionsInvalid",
+    message: "Browser login options do not match the SDK schema"
+  })
 
-const browserLoginAdapterFailure = (): BrowserLoginError => ({
-  _tag: "BrowserLoginAdapterFailure",
-  message: "Browser login adapter failed before returning a typed result"
-})
+const browserLoginAdapterFailure = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({
+    _tag: "BrowserLoginAdapterFailure",
+    message: "Browser login adapter failed before returning a typed result"
+  })
 
-const browserLoginUserCancelled = (): BrowserLoginError => ({
-  _tag: "BrowserLoginUserCancelled",
-  message: "User cancelled interactive browser login"
-})
+const browserLoginUserCancelled = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({
+    _tag: "BrowserLoginUserCancelled",
+    message: "User cancelled interactive browser login"
+  })
 
-const browserLoginTimedOut = (): BrowserLoginError => ({
-  _tag: "BrowserLoginTimedOut",
-  message: "Interactive browser login timed out"
-})
+const browserLoginTimedOut = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({ _tag: "BrowserLoginTimedOut", message: "Interactive browser login timed out" })
 
-const browserLoginCaptureInvalid = (): BrowserLoginError => ({
-  _tag: "BrowserLoginCaptureInvalid",
-  message: "Browser login capture does not match the SDK schema"
-})
+const browserLoginCaptureInvalid = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({
+    _tag: "BrowserLoginCaptureInvalid",
+    message: "Browser login capture does not match the SDK schema"
+  })
 
-const browserLoginMissingCookies = (): BrowserLoginError => ({
-  _tag: "BrowserLoginMissingCookies",
-  message: "Browser login completed without Voila session cookies"
-})
+const browserLoginMissingCookies = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({
+    _tag: "BrowserLoginMissingCookies",
+    message: "Browser login completed without Voila session cookies"
+  })
 
-const browserLoginNotAuthenticated = (): BrowserLoginError => ({
-  _tag: "BrowserLoginNotAuthenticated",
-  message: "Browser login completed without authenticated account evidence"
-})
+const browserLoginNotAuthenticated = (): BrowserLoginError =>
+  BrowserLoginErrorSchema.make({
+    _tag: "BrowserLoginNotAuthenticated",
+    message: "Browser login completed without authenticated account evidence"
+  })
 
 const normalizeBrowserLoginPortError = (error: unknown): BrowserLoginError => {
   const parsedError = parseUnknown(BrowserLoginPortErrorSchema, error)
@@ -79,14 +75,11 @@ const normalizeBrowserLoginPortError = (error: unknown): BrowserLoginError => {
     return browserLoginAdapterFailure()
   }
 
-  switch (parsedError.success._tag) {
-    case "BrowserLoginAdapterFailure":
-      return browserLoginAdapterFailure()
-    case "BrowserLoginTimedOut":
-      return browserLoginTimedOut()
-    case "BrowserLoginUserCancelled":
-      return browserLoginUserCancelled()
-  }
+  return BrowserLoginPortErrorSchema.match(parsedError.success, {
+    BrowserLoginAdapterFailure: browserLoginAdapterFailure,
+    BrowserLoginTimedOut: browserLoginTimedOut,
+    BrowserLoginUserCancelled: browserLoginUserCancelled
+  })
 }
 
 const makeBrowserLoginRequest = (options?: unknown): Result.Result<BrowserLoginRequest, BrowserLoginError> =>
@@ -119,12 +112,12 @@ const makeBrowserLoginResult = (captureResult: unknown): Result.Result<BrowserLo
         return Result.fail(browserLoginNotAuthenticated())
       }
 
-      return Result.map(
+      return Result.flatMap(
         Result.mapError(
           makeAuthenticatedSdkSessionSnapshot(capture.session, "authenticated", capture.account),
           browserLoginCaptureInvalid
         ),
-        (session) => ({ session })
+        (session) => Result.mapError(parseUnknown(BrowserLoginResultSchema, { session }), browserLoginCaptureInvalid)
       )
     }
   )

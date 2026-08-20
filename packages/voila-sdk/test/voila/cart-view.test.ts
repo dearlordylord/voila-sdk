@@ -8,6 +8,9 @@ import { NormalizedCartViewSchema } from "../../src/domain/schemas/index.js"
 import { normalizeCartViewResponse, parseCartViewResponse } from "../../src/voila/cart-view.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
+const fixtureStrawberriesProductUuid = "11111111-1111-4111-8111-111111111111"
+const fixtureBlueberriesProductUuid = "22222222-2222-4222-8222-222222222222"
+
 const readFixture = (fixtureName: string): unknown => {
   const fixtureText = readFileSync(new URL(`../fixtures/${fixtureName}`, import.meta.url), "utf8")
   const parsed = parseJson(fixtureText)
@@ -60,7 +63,7 @@ describe("cart view normalization", () => {
       const [strawberries, blueberries] = result.success.items
 
       expect(strawberries?.groupName).toBe("Fruits & Vegetables")
-      expect(strawberries?.productId).toBe("sanitized-strawberries-product-id")
+      expect(strawberries?.productId).toBe(fixtureStrawberriesProductUuid)
       expect(strawberries?.retailerProductId).toBe("111222EA")
       expect(strawberries?.name).toBe("Fresh Farms Strawberries 454 g")
       expect(strawberries?.quantity).toBe(2)
@@ -69,7 +72,7 @@ describe("cart view normalization", () => {
       expect(strawberries?.available).toBe(true)
       expect(strawberries?.maxQuantityReached).toBe(false)
 
-      expect(blueberries?.productId).toBe("sanitized-blueberries-product-id")
+      expect(blueberries?.productId).toBe(fixtureBlueberriesProductUuid)
       expect(blueberries?.retailerProductId).toBe("333444EA")
       expect(blueberries?.quantity).toBe(1)
       expect(blueberries?.available).toBe(false)
@@ -83,7 +86,7 @@ describe("cart view normalization", () => {
         {
           code: "MAX_QUANTITY",
           message: "Blueberries are limited to one item",
-          productId: "sanitized-blueberries-product-id",
+          productId: fixtureBlueberriesProductUuid,
           severity: "WARNING"
         }
       ])
@@ -91,7 +94,7 @@ describe("cart view normalization", () => {
         {
           code: "PRICE_CHANGED",
           message: "A product price changed since it was added",
-          productId: "sanitized-strawberries-product-id",
+          productId: fixtureStrawberriesProductUuid,
           severity: "INFO"
         }
       ])
@@ -99,7 +102,7 @@ describe("cart view normalization", () => {
         {
           code: "UNAVAILABLE",
           message: "Blueberries are unavailable",
-          productId: "sanitized-blueberries-product-id",
+          productId: fixtureBlueberriesProductUuid,
           severity: "WARNING"
         }
       ])
@@ -130,19 +133,23 @@ describe("cart view normalization", () => {
       }
     })
 
-    expect(result.itemCount).toBe(0)
-    expect(result.items).toEqual([])
-    expect(result.checkoutRestrictions).toEqual([])
-    expect(result.limitedItems).toEqual([])
-    expect(result.pricingNotifications).toEqual([])
-    expect(result.unavailableData).toEqual([])
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.itemCount).toBe(0)
+      expect(result.success.items).toEqual([])
+      expect(result.success.checkoutRestrictions).toEqual([])
+      expect(result.success.limitedItems).toEqual([])
+      expect(result.success.pricingNotifications).toEqual([])
+      expect(result.success.unavailableData).toEqual([])
+    }
   })
 
   it("does not add group names when Voila omits item group names", () => {
     const result = normalizeCartViewResponse({
       basket: {
         basketId: "basket-id",
-        itemGroups: [{ items: [{ productId: "product-id", quantity: 1 }] }],
+        itemGroups: [{ items: [{ productId: fixtureStrawberriesProductUuid, quantity: 1 }] }],
         totals: {
           itemPriceAfterPromos: { amount: "1.00", currency: "CAD" },
           itemsRetailPrice: { amount: "1.00", currency: "CAD" },
@@ -152,7 +159,32 @@ describe("cart view normalization", () => {
       }
     })
 
-    expect(result.items[0]).toEqual({ productId: "product-id", quantity: 1 })
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.items[0]).toEqual({ productId: fixtureStrawberriesProductUuid, quantity: 1 })
+    }
+  })
+
+  it("normalizes active cart groups without item groups as empty", () => {
+    const result = normalizeCartViewResponse({
+      cartId: "active-cart-id",
+      checkoutGroups: { assignedCheckoutGroups: [{}] },
+      totals: {
+        itemPriceAfterPromos: { amount: "0.00", currency: "CAD" },
+        itemsRetailPrice: { amount: "0.00", currency: "CAD" },
+        savingsPrice: { amount: "0.00", currency: "CAD" },
+        taxation: "TAX_EXCLUDED"
+      }
+    })
+
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.basketId).toBe("active-cart-id")
+      expect(result.success.items).toEqual([])
+      expect(result.success.itemCount).toBe(0)
+    }
   })
 
   it("fails at the schema boundary when totals are missing", () => {

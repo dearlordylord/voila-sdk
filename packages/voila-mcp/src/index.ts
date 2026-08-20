@@ -1,5 +1,5 @@
 export { makeKeepaliveConfig, runKeepalive } from "./keepalive-runner.js"
-export type { KeepaliveConfig } from "./keepalive-runner.js"
+export type { KeepaliveConfig, KeepaliveConfigFailure } from "./keepalive-runner.js"
 export * from "./mcp-http-server.js"
 export * from "./mcp-tool-registry.js"
 export * from "./mcp-toolkit.js"

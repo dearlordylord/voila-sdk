@@ -1,12 +1,9 @@
 import { Schema } from "effect"
 
+import { CategoryIdSchema, PageTokenSchema, QuerySchema, RetailerCategoryIdSchema } from "./identifiers.js"
+
 export const MIN_SEARCH_PAGE_SIZE = 1
 export const MAX_SEARCH_PAGE_SIZE = 24
-
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.check(Schema.isTrimmed()),
-  Schema.check(Schema.isMinLength(1))
-)
 
 const SearchPageSizeSchema = Schema.Number.pipe(
   Schema.check(Schema.isFinite()),
@@ -16,8 +13,8 @@ const SearchPageSizeSchema = Schema.Number.pipe(
 )
 
 export const SearchCategoryContextSchema = Schema.Struct({
-  categoryId: Schema.optionalKey(NonEmptyTrimmedStringSchema),
-  retailerCategoryId: Schema.optionalKey(NonEmptyTrimmedStringSchema)
+  categoryId: Schema.optionalKey(CategoryIdSchema),
+  retailerCategoryId: Schema.optionalKey(RetailerCategoryIdSchema)
 }).pipe(
   Schema.check(
     Schema.makeFilter((context) => context.categoryId !== undefined || context.retailerCategoryId !== undefined, {
@@ -31,8 +28,8 @@ export type SearchCategoryContext = Schema.Schema.Type<typeof SearchCategoryCont
 export const SearchInputSchema = Schema.Struct({
   categoryContext: Schema.optionalKey(SearchCategoryContextSchema),
   pageSize: SearchPageSizeSchema,
-  pageToken: Schema.optionalKey(NonEmptyTrimmedStringSchema),
-  query: NonEmptyTrimmedStringSchema
+  pageToken: Schema.optionalKey(PageTokenSchema),
+  query: QuerySchema
 })
 
 export type SearchInput = Schema.Schema.Type<typeof SearchInputSchema>

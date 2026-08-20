@@ -74,8 +74,8 @@ Failures stay in the typed error channel: `Effect.result` turns them into a
 - Product search and category product reads.
 - Cart reads, item add/remove, and server-returned cart totals.
 - Authenticated session health checks and authenticated cart reads.
-- Keepalive classification helpers and schema-owned `KeepaliveOutcome` /
-  `KeepaliveStopReason` contracts.
+- Keepalive classification helpers and schema-owned `KeepaliveOutcome`,
+  `KeepaliveStopReason`, `KeepaliveConfig`, and timing contracts.
 - Delivery destination/context reads and guarded delivery context changes.
 - Slot listing and guarded slot reservation input helpers.
 - Checkout summary/readiness review.
@@ -102,10 +102,19 @@ local-session-snapshots/voila-auth-session.json
 
 That file is sensitive and ignored by git. Use it with `loadSdkSessionSnapshot` and `checkSessionHealth` before authenticated reads or cart mutations. See [docs/browser-login.md](docs/browser-login.md) and [docs/auth-readonly-smoke.md](docs/auth-readonly-smoke.md).
 
-The SDK exports `KeepaliveOutcomeSchema` and `KeepaliveStopReasonSchema` as the
-runtime contracts for keepalive results. `classifyHealthStatus` and
+The SDK exports `KeepaliveOutcomeSchema`, `KeepaliveStopReasonSchema`, and
+`KeepaliveConfigSchema` as runtime contracts. `KeepaliveIntervalSecondsSchema`
+accepts only canonical whole-second strings from `3600` through the safe
+millisecond-conversion limit. `KeepaliveHealthyIntervalMsSchema`,
+`KeepaliveRetryDelayMsSchema`, and `KeepaliveMaxRetryDelayMsSchema` are distinct
+positive safe-integer brands; use `keepaliveIntervalMsFromSeconds` after parsing
+an interval. `KeepaliveExpiryPolicySchema` distinguishes background
+`"continue"` from foreground `"stop"` behavior. `classifyHealthStatus` and
 `describeKeepaliveOutcome` are pure; the Effect-native loop and foreground
 signal handling live in `@firfi/voila-mcp`.
+
+Browser login timeout values are likewise constrained by the branded
+`BrowserLoginTimeoutMsSchema` before they reach a browser adapter.
 
 ## Public API
 

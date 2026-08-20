@@ -158,6 +158,23 @@ const failingSerializeCookieJarPort: CookieJarPort = {
 }
 
 describe("interactive browser login adapter", () => {
+  it("returns a typed failure when the browser page cannot be opened", async () => {
+    const port = createInteractiveBrowserLoginPort({
+      openPage: async () => {
+        throw new Error(secretFailurePayload)
+      }
+    })
+
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
+
+    expect(Result.isFailure(result)).toBe(true)
+
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
+    }
+  })
+
   it("opens an interactive page and captures an authenticated session", async () => {
     const fake = makePage()
     const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
@@ -413,6 +430,21 @@ describe("interactive browser login adapter", () => {
 
     expect(Result.isFailure(result)).toBe(true)
     expect(fake.calls).toEqual(expectedCalls)
+
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")
+      expect(JSON.stringify(result.failure)).not.toContain(secretFailurePayload)
+    }
+  })
+
+  it("returns the close failure when opening login and closing the page both fail", async () => {
+    const fake = makePage({ closeThrows: true, openThrows: true })
+    const port = createInteractiveBrowserLoginPort({ openPage: async () => fake.page })
+
+    const result = await Effect.runPromise(Effect.result(loginWithBrowser(port)))
+
+    expect(Result.isFailure(result)).toBe(true)
+    expect(fake.calls).toEqual(["open:https://voila.ca/", "close"])
 
     if (Result.isFailure(result)) {
       expect(result.failure._tag).toBe("BrowserLoginAdapterFailure")

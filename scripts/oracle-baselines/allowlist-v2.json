@@ -3,11 +3,46 @@
     {
       "path": "$.cli.help.stdout",
       "before": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
-      "after": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "after": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>] [--json]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3",
+        "https://github.com/dearlordylord/voila-sdk/pull/20"
+      ],
+      "rationale": "Group help is resolved before subcommand validation, and the successful help output includes the current keepalive and JSON login usage."
+    },
+    {
+      "path": "$.cli.help.stderr",
+      "before": "",
+      "after": {
+        "$oracle": "undefined"
+      },
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3",
+        "https://github.com/dearlordylord/voila-sdk/pull/20"
+      ],
+      "rationale": "Successful group help carries only stdout, so the impossible stderr channel is omitted."
+    },
+    {
+      "path": "$.cli.operationFailureJson.stderr",
+      "before": "",
+      "after": {
+        "$oracle": "undefined"
+      },
       "evidence": [
         "https://github.com/dearlordylord/voila-sdk/pull/3"
       ],
-      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand to the CLI help text; wire MCP protocol samples remain exact outside explicit entries."
+      "rationale": "CliRunResult now carries exactly one output channel; omitted stderr is intentional for the JSON failure variant."
+    },
+    {
+      "path": "$.cli.operationFailureText.stdout",
+      "before": "",
+      "after": {
+        "$oracle": "undefined"
+      },
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "CliRunResult now carries exactly one output channel; omitted stdout is intentional for the text failure variant."
     }
   ],
   "version": 1,

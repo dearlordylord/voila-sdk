@@ -1,8 +1,14 @@
-import { Effect, Result } from "effect"
+import { createHash } from "node:crypto"
+
+import { Effect, Result, Schema } from "effect"
 import { describe, expect, it } from "vitest"
 
 import type { DiscountedProductsInput, SessionSnapshot } from "../../src/index.js"
 import {
+  DiscountPageSizeSchema,
+  DiscountScanMetadataSchema,
+  PageTokenSchema,
+  QuerySchema,
   getDiscountedProducts,
   makeDiscountedProductsRequest,
   makeSessionSnapshot,
@@ -21,6 +27,12 @@ import {
 } from "../helpers/transport.js"
 
 const csrfToken = "csrf-token"
+const productUuid = (productId: string): string => {
+  const digest = createHash("sha256").update(productId).digest("hex")
+
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`
+}
+
 const sampleMetadata = {
   assetVersion: "asset-version",
   clientRouteId: "client-route-id",
@@ -59,7 +71,7 @@ const makeProduct = (
   maxQuantityReached: false,
   name,
   price: { amount: price, currency: "CAD" },
-  productId,
+  productId: productUuid(productId),
   promoPrice: { amount: promoPrice, currency: "CAD" },
   promoUnitPrice: { price: { amount: "0.40", currency: "CAD" }, unit: "fop.price.per.100g" },
   promotions: [{ label: promotionLabel, promotionId: "sanitized-promotion-id" }],
@@ -79,13 +91,14 @@ const makeMinimalProduct = (name: string, price: string, promoPrice: string, pro
   maxQuantityReached: false,
   name,
   price: { amount: price, currency: "CAD" },
-  productId,
+  productId: productUuid(productId),
   promoPrice: { amount: promoPrice, currency: "CAD" },
   quantityInBasket: 0,
   retailerProductId: `${productId}-retailer`
 })
 
-const requestInput = { pageSize: 24 } satisfies DiscountedProductsInput
+const pageSize = (value: number) => DiscountPageSizeSchema.make(value)
+const requestInput = { pageSize: pageSize(24) } satisfies DiscountedProductsInput
 
 describe("discounted product normalization", () => {
   it("decodes raw promotion payloads and computes savings fields", () => {
@@ -117,10 +130,17 @@ describe("discounted product normalization", () => {
         makeProduct("Cheap real discount", "1.00", "0.89", "cheap-id")
       ]),
       requestInput,
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(24),
+        returnedProducts: 0
+      }
     )
 
-    expect(result.products.map((product) => product.productId)).toEqual(["cheap-id"])
+    expect(result.products.map((product) => product.productId)).toEqual([productUuid("cheap-id")])
     expect(result.products[0]?.savingsAmount).toBe(0.11)
     expect(result.products[0]?.savingsPercent).toBe(11)
   })
@@ -132,11 +152,21 @@ describe("discounted product normalization", () => {
         makeProduct("Discounted oat milk", "5.00", "4.00", "milk-id"),
         makeProduct("Premium milk", "10.00", "8.00", "premium-milk-id")
       ]),
-      { pageSize: 2, query: "milk", sort: "price-asc" },
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 2, returnedProducts: 0 }
+      { pageSize: pageSize(2), query: QuerySchema.make("milk"), sort: "price-asc" },
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(2),
+        returnedProducts: 0
+      }
     )
 
-    expect(result.products.map((product) => product.productId)).toEqual(["milk-id", "premium-milk-id"])
+    expect(result.products.map((product) => product.productId)).toEqual([
+      productUuid("milk-id"),
+      productUuid("premium-milk-id")
+    ])
     expect(result.scan.matchedProducts).toBe(2)
     expect(result.scan.returnedProducts).toBe(2)
   })
@@ -147,11 +177,21 @@ describe("discounted product normalization", () => {
         makeProduct("Percent winner", "5.00", "4.00", "percent-id"),
         makeProduct("Amount winner", "20.00", "17.00", "amount-id")
       ]),
-      { pageSize: 2, sort: "best-amount" },
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 2, returnedProducts: 0 }
+      { pageSize: pageSize(2), sort: "best-amount" },
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(2),
+        returnedProducts: 0
+      }
     )
 
-    expect(result.products.map((product) => product.productId)).toEqual(["amount-id", "percent-id"])
+    expect(result.products.map((product) => product.productId)).toEqual([
+      productUuid("amount-id"),
+      productUuid("percent-id")
+    ])
   })
 
   it("sorts by savings percent when requested", () => {
@@ -160,11 +200,21 @@ describe("discounted product normalization", () => {
         makeProduct("Amount winner", "20.00", "17.00", "amount-id"),
         makeProduct("Percent winner", "5.00", "4.00", "percent-id")
       ]),
-      { pageSize: 2, sort: "best-percent" },
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 2, returnedProducts: 0 }
+      { pageSize: pageSize(2), sort: "best-percent" },
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(2),
+        returnedProducts: 0
+      }
     )
 
-    expect(result.products.map((product) => product.productId)).toEqual(["percent-id", "amount-id"])
+    expect(result.products.map((product) => product.productId)).toEqual([
+      productUuid("percent-id"),
+      productUuid("amount-id")
+    ])
   })
 
   it("uses promotion metadata fallback fields for summaries", () => {
@@ -192,7 +242,14 @@ describe("discounted product normalization", () => {
         ]
       },
       requestInput,
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(24),
+        returnedProducts: 0
+      }
     )
 
     expect(result.products.map((product) => product.promotionSummary)).toEqual([
@@ -226,14 +283,21 @@ describe("discounted product normalization", () => {
           }
         ]
       },
-      { pageSize: 3, query: "match" },
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 3, returnedProducts: 0 }
+      { pageSize: pageSize(3), query: QuerySchema.make("match") },
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(3),
+        returnedProducts: 0
+      }
     )
 
     expect(result.products.map((product) => product.productId)).toEqual([
-      "retailer-match-id",
-      "description-match-id",
-      "type-match-id"
+      productUuid("retailer-match-id"),
+      productUuid("description-match-id"),
+      productUuid("type-match-id")
     ])
   })
 
@@ -245,12 +309,19 @@ describe("discounted product normalization", () => {
         ]
       },
       requestInput,
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(24),
+        returnedProducts: 0
+      }
     )
 
     const [product] = result.products
 
-    expect(product?.productId).toBe("minimal-id")
+    expect(product?.productId).toBe(productUuid("minimal-id"))
     expect(product).not.toHaveProperty("brand")
     expect(product).not.toHaveProperty("promotionSummary")
     expect(product).not.toHaveProperty("sourceGroupName")
@@ -283,10 +354,17 @@ describe("discounted product normalization", () => {
         ]
       },
       requestInput,
-      { exhausted: true, matchedProducts: 0, maxPages: 1, pagesScanned: 1, requestedPageSize: 24, returnedProducts: 0 }
+      {
+        _tag: "exhausted",
+        matchedProducts: 0,
+        maxPages: 1,
+        pagesScanned: 1,
+        requestedPageSize: DiscountPageSizeSchema.make(24),
+        returnedProducts: 0
+      }
     )
 
-    expect(result.products.map((product) => product.productId)).toEqual(["real-id"])
+    expect(result.products.map((product) => product.productId)).toEqual([productUuid("real-id")])
   })
 
   it("returns a typed schema mismatch for malformed promotion responses", () => {
@@ -310,7 +388,7 @@ describe("discounted product normalization", () => {
           { products: [makeMinimalProduct("Paged discount", "5.00", "4.00", "paged-id")], type: "promotion" }
         ]
       },
-      { pageSize: 1, pageToken: "start-token" }
+      { pageSize: pageSize(1), pageToken: PageTokenSchema.make("start-token") }
     )
 
     expect(Result.isSuccess(result)).toBe(true)
@@ -318,11 +396,24 @@ describe("discounted product normalization", () => {
     if (Result.isSuccess(result)) {
       expect(result.success.pagination).toEqual({ nextPageToken: "next-token" })
       expect(result.success.scan).toMatchObject({
-        exhausted: false,
+        _tag: "continuable",
         nextPageToken: "next-token",
         startedPageToken: "start-token"
       })
     }
+  })
+
+  it("rejects a continuable scan without a continuation token", () => {
+    const decoded = Schema.decodeUnknownResult(DiscountScanMetadataSchema)({
+      _tag: "continuable",
+      matchedProducts: 0,
+      maxPages: 1,
+      pagesScanned: 1,
+      requestedPageSize: 1,
+      returnedProducts: 0
+    })
+
+    expect(Result.isFailure(decoded)).toBe(true)
   })
 
   it("builds deterministic promotions endpoint requests", () => {
@@ -388,9 +479,9 @@ describe("discounted product normalization", () => {
       expect(requests).toHaveLength(2)
       expect(requests[0]?.url.searchParams.has("q")).toBe(false)
       expect(requests[1]?.url.searchParams.get("pageToken")).toBe("p2")
-      expect(result.success.value.products.map((product) => product.productId)).toEqual(["milk-id"])
+      expect(result.success.value.products.map((product) => product.productId)).toEqual([productUuid("milk-id")])
       expect(result.success.value.scan.pagesScanned).toBe(2)
-      expect(result.success.value.scan.exhausted).toBe(true)
+      expect(result.success.value.scan._tag).toBe("exhausted")
     }
   })
 
@@ -423,9 +514,9 @@ describe("discounted product normalization", () => {
 
     if (Result.isSuccess(result)) {
       expect(result.success.value.products.map((product) => product.productId)).toEqual([
-        "milk-id-1",
-        "milk-id-2",
-        "milk-id-3"
+        productUuid("milk-id-1"),
+        productUuid("milk-id-2"),
+        productUuid("milk-id-3")
       ])
       expect(result.success.value.pagination.nextPageToken).toBe("p3")
       expect(result.success.value.scan).toMatchObject({ matchedProducts: 3, requestedPageSize: 2, returnedProducts: 3 })
@@ -474,7 +565,7 @@ describe("discounted product normalization", () => {
       expect(fake.requests).toHaveLength(5)
       expect(result.success.value.products).toEqual([])
       expect(result.success.value.scan).toMatchObject({
-        exhausted: false,
+        _tag: "continuable",
         maxPages: 5,
         nextPageToken: "p6",
         pagesScanned: 5
@@ -507,7 +598,7 @@ describe("discounted product normalization", () => {
     if (Result.isSuccess(result)) {
       expect(fake.requests[0]?.url.searchParams.get("maxPageSize")).toBe("12")
       expect(result.success.value.scan.requestedPageSize).toBe(12)
-      expect(result.success.value.products.map((product) => product.productId)).toEqual(["milk-id"])
+      expect(result.success.value.products.map((product) => product.productId)).toEqual([productUuid("milk-id")])
     }
   })
 

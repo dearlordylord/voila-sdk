@@ -1,10 +1,23 @@
 import { it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Sink, Stdio, Stream } from "effect"
 import { readFile } from "node:fs/promises"
 import { describe, expect } from "vitest"
 
 import { mcpName, type OperationEnvironment, VoilaOperations } from "../src/index.js"
-import { getJson, jsonRpc, jsonRpcResponse, jsonRpcTextResponse, testServerLayer } from "./helpers/mcp-http.js"
+import { voilaHttpServerLayer } from "../src/mcp-http-server.js"
+import { isVoilaOperationName, voilaStdioServerLayer, voilaStdioStreamsLayer } from "../src/mcp-server.js"
+import { packageVersion, resolvePackageVersion } from "../src/package-version.js"
+import { HttpHostSchema, TcpPortSchema } from "../src/runtime-config.js"
+import {
+  getJson,
+  emptyMcpResponse,
+  jsonRpc,
+  jsonRpcResponse,
+  jsonRpcTextResponse,
+  rawMcpResponse,
+  testServerLayer,
+  unsupportedMethodResponse
+} from "./helpers/mcp-http.js"
 import { makeStubEnvironment, unusedTransportLayer } from "./helpers/operations.js"
 
 const testSessionFailure = "Session is unavailable in this protocol test"
@@ -115,6 +128,37 @@ describe("Voila MCP HTTP server", () => {
     expect(mcpName).toBe("io.github.dearlordylord/voila-mcp")
   })
 
+  it("recognizes only registered Voila operation names", () => {
+    expect(isVoilaOperationName("voila_get_cart")).toBe(true)
+    expect(isVoilaOperationName("not-a-voila-operation")).toBe(false)
+  })
+
+  it("constructs the default HTTP path and version server layer", () => {
+    expect(
+      Layer.isLayer(voilaHttpServerLayer({ host: HttpHostSchema.make("127.0.0.1"), port: TcpPortSchema.make(3_000) }))
+    ).toBe(true)
+  })
+
+  it("keeps the build version and fallback version deterministic", () => {
+    expect(packageVersion).toBe("0.0.0")
+    expect(resolvePackageVersion(undefined)).toBe("0.0.0")
+    expect(resolvePackageVersion("")).toBe("0.0.0")
+    expect(resolvePackageVersion("1.2.3")).toBe("1.2.3")
+  })
+
+  it.effect("drains custom stderr and supports the process stdio default", () =>
+    Effect.gen(function* () {
+      const streams = voilaStdioStreamsLayer({ stdin: Stream.empty, stdout: Sink.drain })
+      const stderr = yield* Effect.provide(
+        Effect.map(Stdio.Stdio, (stdio) => stdio.stderr()),
+        streams
+      )
+
+      yield* Stream.run(Stream.make("diagnostic"), stderr)
+      expect(Layer.isLayer(voilaStdioServerLayer())).toBe(true)
+    })
+  )
+
   it.effect("answers liveness on / and /health", () =>
     Effect.gen(function* () {
       const root = yield* getJson("/")
@@ -128,12 +172,19 @@ describe("Voila MCP HTTP server", () => {
   it.effect("negotiates a supported protocol version", () =>
     Effect.gen(function* () {
       const negotiated = yield* initialize(1)
+      const fallback = yield* jsonRpc({
+        id: 2,
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: { capabilities: {}, clientInfo: { name: "vitest", version: "0.0.0" }, protocolVersion: "2099-01-01" }
+      })
 
       expect(negotiated).toMatchObject({
         id: 1,
         jsonrpc: "2.0",
         result: { protocolVersion: negotiatedProtocolVersion, serverInfo: { name: mcpName } }
       })
+      expect(fallback).toMatchObject({ id: 2, result: { protocolVersion: negotiatedProtocolVersion } })
     }).pipe(Effect.provide(ServerLive))
   )
 
@@ -338,6 +389,70 @@ describe("Voila MCP HTTP server", () => {
       expect(called).toMatchObject({ id: 2, jsonrpc: "2.0" })
       expect(called).toHaveProperty("error")
       expect(called).not.toHaveProperty("result")
+    }).pipe(Effect.provide(ServerLive))
+  )
+
+  it.effect("covers malformed protocol requests, media negotiation, and unsupported methods", () =>
+    Effect.gen(function* () {
+      const wrongContentType = yield* rawMcpResponse(
+        JSON.stringify({ id: 1, jsonrpc: "2.0", method: "ping", params: {} }),
+        {},
+        "text/plain"
+      )
+      const missingContentType = yield* emptyMcpResponse()
+      const missingAccept = yield* jsonRpcTextResponse(
+        { id: 2, jsonrpc: "2.0", method: "ping", params: {} },
+        { accept: "application/json" }
+      )
+      const invalidAcceptQuality = yield* jsonRpcTextResponse(
+        { id: 10, jsonrpc: "2.0", method: "ping", params: {} },
+        { accept: "application/json;q=2, text/event-stream" }
+      )
+      const validAcceptQuality = yield* jsonRpcTextResponse(
+        { id: 11, jsonrpc: "2.0", method: "ping", params: {} },
+        { accept: "application/json;q=0.5, text/event-stream" }
+      )
+      const malformedJson = yield* rawMcpResponse("{")
+      const malformedRequest = yield* jsonRpc({ id: 3, jsonrpc: "1.0", method: "ping", params: {} })
+      const invalidInitialize = yield* jsonRpc({ id: 4, jsonrpc: "2.0", method: "initialize", params: {} })
+      const invalidList = yield* jsonRpc({ id: 5, jsonrpc: "2.0", method: "tools/list", params: [] })
+      const invalidCall = yield* jsonRpc({
+        id: 6,
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: { name: 42, arguments: {} }
+      })
+      const unknownTool = yield* jsonRpc({
+        id: 7,
+        jsonrpc: "2.0",
+        method: "tools/call",
+        params: { name: "missing", arguments: {} }
+      })
+      const invalidPing = yield* jsonRpc({ id: 8, jsonrpc: "2.0", method: "ping", params: [] })
+      const unsupported = yield* unsupportedMethodResponse("GET")
+      const invalidOrigin = yield* jsonRpcResponse(
+        { id: 9, jsonrpc: "2.0", method: "ping", params: {} },
+        { origin: "not-a-url" }
+      )
+
+      expect(wrongContentType).toEqual({ body: "", status: 415 })
+      expect(missingContentType).toEqual({ body: "", status: 415 })
+      expect(missingAccept).toEqual({ body: "", status: 406 })
+      expect(invalidAcceptQuality).toEqual({ body: "", status: 406 })
+      expect(validAcceptQuality).toMatchObject({ status: 200 })
+      expect(malformedJson).toMatchObject({ status: 200 })
+      expect(JSON.parse(malformedJson.body)).toMatchObject({ error: { code: -32600 }, id: null })
+      expect(malformedRequest).toMatchObject({ error: { code: -32600 }, id: null })
+      expect(invalidInitialize).toMatchObject({ error: { code: -32602 }, id: 4 })
+      expect(invalidList).toMatchObject({ error: { code: -32602 }, id: 5 })
+      expect(invalidCall).toMatchObject({ error: { code: -32602 }, id: 6 })
+      expect(unknownTool).toMatchObject({ error: { code: -32602, message: "Tool 'missing' not found" }, id: 7 })
+      expect(invalidPing).toMatchObject({ error: { code: -32602 }, id: 8 })
+      expect(unsupported).toEqual({ body: "", status: 405 })
+      expect(invalidOrigin).toMatchObject({
+        body: { error: "forbidden_origin", message: expect.any(String) },
+        status: 403
+      })
     }).pipe(Effect.provide(ServerLive))
   )
 

@@ -485,6 +485,21 @@ describe("session health", () => {
     }
   })
 
+  it("treats an authenticated-cookie read failure as lost authenticated evidence", async () => {
+    const fake = respondingTransport(makeResponse(JSON.stringify({})))
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedSnapshot(), makeFailingSecondDeserializeCookieJarPort()),
+      fake
+    )
+
+    expect(Result.isSuccess(result)).toBe(true)
+    expect(fake.requests).toHaveLength(1)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
+    }
+  })
+
   it("maps guest network failures to retry health", async () => {
     const result = await runWith(checkSessionHealth(makeGuestSnapshot()), connectionFailureTransport())
 

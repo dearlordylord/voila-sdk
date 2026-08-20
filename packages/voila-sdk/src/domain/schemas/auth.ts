@@ -1,12 +1,14 @@
 import { Schema } from "effect"
 
-import { AuthAccountSummarySchema, SessionSnapshotSchema } from "./session.js"
+import { AuthAccountSummarySchema, AuthenticatedSdkSessionSnapshotSchema, SessionSnapshotSchema } from "./session.js"
 
-const BrowserLoginTimeoutMsSchema = Schema.Number.pipe(
+export const BrowserLoginTimeoutMsSchema = Schema.Number.pipe(
   Schema.check(Schema.isFinite()),
   Schema.check(Schema.isInt()),
   Schema.check(Schema.isGreaterThan(0))
-)
+).pipe(Schema.brand("BrowserLoginTimeoutMs"))
+
+export type BrowserLoginTimeoutMs = Schema.Schema.Type<typeof BrowserLoginTimeoutMsSchema>
 
 export const BrowserLoginOptionsSchema = Schema.Struct({ timeoutMs: Schema.optionalKey(BrowserLoginTimeoutMsSchema) })
 
@@ -18,13 +20,25 @@ export const BrowserLoginRequestSchema = BrowserLoginOptionsSchema.pipe(
 
 export type BrowserLoginRequest = Schema.Schema.Type<typeof BrowserLoginRequestSchema>
 
-export const BrowserLoginPortErrorSchema = Schema.Union([
-  Schema.Struct({ _tag: Schema.Literal("BrowserLoginUserCancelled"), message: Schema.optionalKey(Schema.String) }),
-  Schema.Struct({ _tag: Schema.Literal("BrowserLoginTimedOut"), message: Schema.optionalKey(Schema.String) }),
-  Schema.Struct({ _tag: Schema.Literal("BrowserLoginAdapterFailure"), message: Schema.optionalKey(Schema.String) })
-])
+export const BrowserLoginPortErrorSchema = Schema.TaggedUnion({
+  BrowserLoginUserCancelled: { message: Schema.optionalKey(Schema.String) },
+  BrowserLoginTimedOut: { message: Schema.optionalKey(Schema.String) },
+  BrowserLoginAdapterFailure: { message: Schema.optionalKey(Schema.String) }
+})
 
 export type BrowserLoginPortError = Schema.Schema.Type<typeof BrowserLoginPortErrorSchema>
+
+export const BrowserLoginErrorSchema = Schema.TaggedUnion({
+  BrowserLoginAdapterFailure: { message: Schema.String },
+  BrowserLoginCaptureInvalid: { message: Schema.String },
+  BrowserLoginMissingCookies: { message: Schema.String },
+  BrowserLoginNotAuthenticated: { message: Schema.String },
+  BrowserLoginOptionsInvalid: { message: Schema.String },
+  BrowserLoginTimedOut: { message: Schema.String },
+  BrowserLoginUserCancelled: { message: Schema.String }
+})
+
+export type BrowserLoginError = Schema.Schema.Type<typeof BrowserLoginErrorSchema>
 
 export const BrowserLoginCaptureSchema = Schema.Struct({
   account: Schema.optionalKey(AuthAccountSummarySchema),
@@ -33,6 +47,10 @@ export const BrowserLoginCaptureSchema = Schema.Struct({
 })
 
 export type BrowserLoginCapture = Schema.Schema.Type<typeof BrowserLoginCaptureSchema>
+
+export const BrowserLoginResultSchema = Schema.Struct({ session: AuthenticatedSdkSessionSnapshotSchema })
+
+export type BrowserLoginResult = Schema.Schema.Type<typeof BrowserLoginResultSchema>
 
 export const BrowserLoginBrowserCookieSchema = Schema.Struct({
   domain: Schema.String,

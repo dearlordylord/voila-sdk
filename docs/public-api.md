@@ -53,8 +53,10 @@ searchProducts(
 - Session health: `checkSessionHealth(snapshot, cookieJarPort?)`.
 - Keepalive classification: `classifyHealthStatus(status)` and
   `describeKeepaliveOutcome(outcome)` are pure helpers. The public runtime
-  contracts are `KeepaliveOutcomeSchema` and `KeepaliveStopReasonSchema`, with
-  `KeepaliveOutcome` and `KeepaliveStopReason` derived from those schemas.
+  contracts include `KeepaliveOutcomeSchema`, `KeepaliveStopReasonSchema`,
+  `KeepaliveConfigSchema`, `KeepaliveIntervalSecondsSchema`, and the three
+  distinct positive millisecond schemas. `KeepaliveOutcome`,
+  `KeepaliveStopReason`, and `KeepaliveConfig` are derived from those schemas.
 - Catalog: `searchProducts`, `getCategoryProducts`, `getDiscountedProducts`, `getInitialStateCategories`, `normalizeRawCategories`.
 - Cart: `getCart`, `applyCartDeltas`, `addCartItems`, `removeCartItems`.
 - Delivery context: `getDeliveryDestinations`, `getDeliveryDestination`, `getActiveShoppingContext`, `getDeliveryPropositionDetails`, `previewDeliveryContextChange`, `applyDeliveryContextChange`.
@@ -67,14 +69,16 @@ Pure decisions and normalizers — `decideCheckoutReadiness`, `normalizeRawCateg
 ## Keepalive
 
 The MCP package exports the foreground `runKeepalive` bridge,
-`makeKeepaliveConfig`, and the `KeepaliveConfig` type used to configure it. Foreground
-execution defaults to stopping on expiry. It listens for `SIGINT` and
-`SIGTERM`, interrupts the loop, removes both listeners, and returns the
+`makeKeepaliveConfig`, and the schema-derived `KeepaliveConfig` and
+`KeepaliveConfigFailure` types. The constructor returns a typed `Result`, including
+cross-field retry-bound failures, rather than throwing. Foreground
+execution uses expiry policy `"stop"`; background startup uses `"continue"`.
+The runner listens for `SIGINT` and `SIGTERM`, interrupts the loop, removes
+both listeners (including partial-registration cleanup), and returns the
 `"cancelled"` stop reason. A re-authentication verdict returns `"expired"`;
 an absent or guest-shaped configured session snapshot returns
-`"misconfigured"`. The tick and background-loop implementations, their
-defaults, and typed tick failures are internal MCP server details rather than
-publishable contracts.
+`"misconfigured"`. The tick and background-loop implementations are internal
+MCP server details rather than publishable contracts.
 
 The MCP server starts a background keepalive only when
 `VOILA_AUTH_SESSION_PATH` is explicitly configured and `VOILA_GUEST` is not
@@ -82,7 +86,8 @@ The MCP server starts a background keepalive only when
 file path is a misconfiguration for keepalive, while ordinary MCP operations
 without a configured path retain their in-memory guest behavior.
 Set `VOILA_KEEPALIVE=0` to disable it; `VOILA_KEEPALIVE_INTERVAL_SECONDS`
-controls the healthy interval (default `86400`, minimum `3600`).
+controls the canonical whole-second healthy interval (default `86400`, minimum
+`3600`).
 
 ## Errors
 

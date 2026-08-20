@@ -21,6 +21,8 @@ import {
 
 const fixtureText = readFileSync(new URL("../fixtures/cart-view-non-empty.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
+const fixtureStrawberriesProductUuid = "11111111-1111-4111-8111-111111111111"
+const currentStrawberriesProductUuid = "33333333-3333-4333-8333-333333333333"
 const sampleMetadata = {
   assetVersion: "asset-version",
   clientRouteId: "client-route-id",
@@ -79,7 +81,7 @@ describe("getCart", () => {
       expect(request?.headers.cookie).toContain("voila-session=before")
       expect(result.success.value.basketId).toBe("sanitized-basket-id")
       expect(result.success.value.itemCount).toBe(3)
-      expect(result.success.value.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.items[0]?.productId).toBe(fixtureStrawberriesProductUuid)
       expect(result.success.value.items[1]?.unavailable).toBe(true)
       expect(result.success.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
       expect(result.success.value.checkoutRestrictions[0]?.code).toBe("DELIVERY_SLOT_REQUIRED")
@@ -106,7 +108,7 @@ describe("getCart", () => {
                         finalPrice: { amount: "4.99", currency: "CAD" },
                         name: "Fresh Farms Strawberries 454 g",
                         price: { amount: "4.99", currency: "CAD" },
-                        productId: "sanitized-current-strawberries-product-id",
+                        productId: currentStrawberriesProductUuid,
                         quantity: 2,
                         retailerProductId: "111222EA"
                       }

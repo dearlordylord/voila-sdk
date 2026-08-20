@@ -8,6 +8,9 @@ import { NormalizedCartMutationResultSchema } from "../../src/domain/schemas/ind
 import { normalizeCartMutationResponse, parseCartMutationResponse } from "../../src/voila/cart-mutation.js"
 import { assertDecodeSuccess, assertEncodeSuccess } from "../helpers/property.js"
 
+const fixtureStrawberriesProductUuid = "11111111-1111-4111-8111-111111111111"
+const fixtureBlueberriesProductUuid = "22222222-2222-4222-8222-222222222222"
+
 const readFixture = (fixtureName: string): unknown => {
   const fixtureText = readFileSync(new URL(`../fixtures/${fixtureName}`, import.meta.url), "utf8")
   const parsed = parseJson(fixtureText)
@@ -28,7 +31,7 @@ describe("cart mutation response normalization", () => {
     if (Result.isSuccess(result)) {
       expect(result.success.itemCount).toBe(2)
       expect(result.success.itemGroups).toHaveLength(1)
-      expect(result.success.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.itemGroups[0]?.items[0]?.productId).toBe(fixtureStrawberriesProductUuid)
       expect(result.success.itemGroups[0]?.items[0]?.quantity).toBe(2)
       expect(result.success.totals).toEqual({
         itemPriceAfterPromos: { amount: "8.88", currency: "CAD" },
@@ -57,7 +60,7 @@ describe("cart mutation response normalization", () => {
         {
           code: "MAX_QUANTITY",
           message: "Only one strawberry package can be added",
-          productId: "sanitized-strawberries-product-id",
+          productId: fixtureStrawberriesProductUuid,
           quantity: 1,
           reason: "MAX_QUANTITY",
           severity: "WARNING"
@@ -68,7 +71,7 @@ describe("cart mutation response normalization", () => {
         {
           code: "PRICE_CHANGED",
           message: "A product price changed while applying the cart delta",
-          productId: "sanitized-strawberries-product-id",
+          productId: fixtureStrawberriesProductUuid,
           severity: "INFO"
         }
       ])
@@ -76,7 +79,7 @@ describe("cart mutation response normalization", () => {
         {
           code: "UNAVAILABLE",
           message: "Blueberries are unavailable",
-          productId: "sanitized-blueberries-product-id",
+          productId: fixtureBlueberriesProductUuid,
           severity: "WARNING"
         }
       ])
@@ -110,8 +113,12 @@ describe("cart mutation response normalization", () => {
       unavailableData: []
     })
 
-    expect(result.itemCount).toBe(0)
-    expect(result.itemGroups).toEqual([])
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.itemCount).toBe(0)
+      expect(result.success.itemGroups).toEqual([])
+    }
   })
 
   it("fails at the schema boundary when totals are missing", () => {

@@ -56,13 +56,9 @@ class OperationExecutionFailureError extends Error {
 }
 
 const descriptorFor = (name: VoilaOperationName): VoilaOperationDescriptor => {
-  const descriptor = voilaOperationDescriptors.find((operation) => operation.name === name)
-
-  if (descriptor === undefined) {
-    throw new Error(`Missing Voila operation descriptor for ${name}`)
-  }
-
-  return descriptor
+  return Option.getOrThrow(
+    Option.fromUndefinedOr(voilaOperationDescriptors.find((operation) => operation.name === name))
+  )
 }
 
 /**
@@ -227,13 +223,6 @@ const maximumDescription: LegacyDescriptionRule = (value) => {
   return undefined
 }
 
-const minimumDescription: LegacyDescriptionRule = (value) => {
-  if ((value.type === "integer" || value.type === "number") && value.minimum === 0) {
-    return { ...value, description: "a non-negative number", title: "nonNegative" }
-  }
-  return undefined
-}
-
 const exclusiveMinimumDescription: LegacyDescriptionRule = (value, fieldName) => {
   if ((value.type === "integer" || value.type === "number") && value.exclusiveMinimum === 0) {
     return {
@@ -271,7 +260,6 @@ const externalAddressDescription: LegacyDescriptionRule = (value, fieldName) => 
 const legacyDescriptionRules: ReadonlyArray<LegacyDescriptionRule> = [
   stringDescription,
   maximumDescription,
-  minimumDescription,
   exclusiveMinimumDescription,
   arrayDescription,
   externalAddressDescription
@@ -300,19 +288,19 @@ const projectLegacyDescriptions = (value: unknown, path: ReadonlyArray<string> =
 }
 
 const projectToolInputSchema = (value: unknown): unknown => {
-  const projected = projectLegacyDescriptions(projectDraft07Constraints(value))
-  return isRecord(projected) && projected.type === "object"
-    ? {
-        ...projected,
-        ...(projected.properties === undefined ? { properties: {} } : {}),
-        ...(projected.required === undefined ? { required: [] } : {})
-      }
-    : projected
+  const projected = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
+    projectLegacyDescriptions(projectDraft07Constraints(value))
+  )
+  return {
+    ...projected,
+    ...(projected.properties === undefined ? { properties: {} } : {}),
+    ...(projected.required === undefined ? { required: [] } : {})
+  }
 }
 
 const makeVoilaMcpToolRecord = (name: VoilaOperationName): VoilaMcpToolRecord => {
+  const descriptor = descriptorFor(name)
   const tool = voilaToolkit.tools[name]
-  const title = Option.getOrUndefined(Context.getOption(tool.annotations, Tool.Title))
   const description = Tool.getDescription(tool)
   const inputSchema = Schema.decodeUnknownSync(McpSchema.ToolJsonSchema)(
     projectToolInputSchema(Tool.getJsonSchema(tool))
@@ -327,7 +315,7 @@ const makeVoilaMcpToolRecord = (name: VoilaOperationName): VoilaMcpToolRecord =>
         idempotentHint: Context.get(tool.annotations, Tool.Idempotent),
         openWorldHint: Context.get(tool.annotations, Tool.OpenWorld),
         readOnlyHint: Context.get(tool.annotations, Tool.Readonly),
-        ...(title === undefined ? {} : { title })
+        title: descriptor.title
       },
       description,
       inputSchema,

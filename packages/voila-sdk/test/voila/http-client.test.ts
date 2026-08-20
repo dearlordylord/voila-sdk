@@ -363,6 +363,28 @@ describe("requestVoilaJson", () => {
     }
   })
 
+  it("omits an edge request id when a blocked response has no diagnostic header", async () => {
+    const result = await runWith(
+      requestVoilaJson(OkResponseSchema, makeSession(), { method: "GET", url: voilaUrl }),
+      respondingTransport({
+        body: "<HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY>Request blocked.</BODY></HTML>",
+        headers: {},
+        status: 403
+      })
+    )
+
+    expect(Result.isFailure(result)).toBe(true)
+
+    if (Result.isFailure(result)) {
+      expect(result.failure).toEqual({
+        _tag: "VoilaRequestBlocked",
+        message: "Voila request was blocked",
+        method: "GET",
+        status: 403
+      })
+    }
+  })
+
   it.each([
     [403, "VoilaUnauthorizedSession"],
     [503, "VoilaNon2xxResponse"]

@@ -2,7 +2,8 @@ import { Effect, Result } from "effect"
 
 import { parseUnknown } from "../domain/parse.js"
 import {
-  type Product,
+  type NormalizedSearchResult,
+  NormalizedSearchResultSchema,
   type ProductSearchResponse,
   ProductSearchResponseSchema,
   type SessionSnapshot
@@ -14,27 +15,12 @@ import type { VoilaTransport } from "./transport.js"
 import type { SearchRequestError } from "./urls.js"
 import { makeSearchRequest } from "./urls.js"
 
-export interface NormalizedSearchProduct extends Product {
-  readonly sourceGroupName?: string
-  readonly sourceGroupType: string
-}
-
-export interface SearchPagination {
-  readonly nextPageToken?: string
-  readonly totalProducts?: number
-}
-
-export interface NormalizedSearchResult {
-  readonly pagination: SearchPagination
-  readonly products: ReadonlyArray<NormalizedSearchProduct>
-}
-
 export type SearchResponseNormalizationError = {
   readonly _tag: "SearchResponseSchemaMismatch"
   readonly message: string
 }
 
-export type SearchProductsError = SearchRequestError | VoilaSdkError
+export type SearchProductsError = SearchRequestError | SearchResponseNormalizationError | VoilaSdkError
 
 export type SearchProductsResult = VoilaJsonResult<NormalizedSearchResult>
 
@@ -43,9 +29,7 @@ const searchResponseSchemaMismatch = (): SearchResponseNormalizationError => ({
   message: "Voila search response does not match the SDK schema"
 })
 
-const normalizeGroupProducts = (
-  group: ProductSearchResponse["productGroups"][number]
-): ReadonlyArray<NormalizedSearchProduct> => {
+const projectGroupProducts = (group: ProductSearchResponse["productGroups"][number]) => {
   const products = [...(group.decoratedProducts ?? []), ...(group.products ?? [])]
 
   return products.map((product) => ({
@@ -55,18 +39,26 @@ const normalizeGroupProducts = (
   }))
 }
 
-export const normalizeSearchResponse = (response: ProductSearchResponse): NormalizedSearchResult => ({
+const projectSearchResponse = (response: ProductSearchResponse) => ({
   pagination: {
     ...(response.nextPageToken === undefined ? {} : { nextPageToken: response.nextPageToken }),
     ...(response.totalProducts === undefined ? {} : { totalProducts: response.totalProducts })
   },
-  products: response.productGroups.flatMap(normalizeGroupProducts)
+  products: response.productGroups.flatMap(projectGroupProducts)
 })
+
+export const normalizeSearchResponse = (
+  response: ProductSearchResponse
+): Result.Result<NormalizedSearchResult, SearchResponseNormalizationError> =>
+  Result.mapError(
+    parseUnknown(NormalizedSearchResultSchema, projectSearchResponse(response)),
+    searchResponseSchemaMismatch
+  )
 
 export const parseSearchResponse = (
   input: unknown
 ): Result.Result<NormalizedSearchResult, SearchResponseNormalizationError> =>
-  Result.map(
+  Result.flatMap(
     Result.mapError(parseUnknown(ProductSearchResponseSchema, input), searchResponseSchemaMismatch),
     normalizeSearchResponse
   )
@@ -77,8 +69,10 @@ export const searchProducts = (
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<SearchProductsResult, SearchProductsError, VoilaTransport> =>
   Effect.flatMap(Effect.fromResult(makeSearchRequest(input)), (request) =>
-    Effect.map(requestVoilaJson(ProductSearchResponseSchema, session, request, cookieJarPort), (result) => ({
-      session: result.session,
-      value: normalizeSearchResponse(result.value)
-    }))
+    Effect.flatMap(requestVoilaJson(ProductSearchResponseSchema, session, request, cookieJarPort), (result) =>
+      Effect.map(Effect.fromResult(normalizeSearchResponse(result.value)), (value) => ({
+        session: result.session,
+        value
+      }))
+    )
   )

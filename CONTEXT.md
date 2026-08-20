@@ -35,3 +35,7 @@ _Avoid_: logout, session reset, anonymous overwrite
 **CSRF refresh**:
 Re-reading the server-rendered homepage to adopt the current CSRF token and page metadata into an existing session snapshot, keeping its cookie jar. Voila rotates the token separately from the cookies and checks it on writes only, so a snapshot whose reads all succeed can still be rejected on every write.
 _Avoid_: re-login, re-auth, session renewal
+
+**Keepalive**:
+A periodic health check for an authenticated session that keeps its current snapshot usable; it does not create a guest session or replace interactive login.
+_Avoid_: refresh token, guest poller, background login

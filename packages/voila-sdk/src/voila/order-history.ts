@@ -1,6 +1,8 @@
-import { Effect, Result } from "effect"
+import { Effect, Match, Result } from "effect"
 
+import { parseUnknown } from "../domain/parse.js"
 import {
+  NormalizedCompletedOrdersResultSchema,
   type NormalizedCompletedOrder,
   type NormalizedCompletedOrdersResult,
   type RawCompletedOrderNode,
@@ -21,8 +23,14 @@ export type CompletedOrdersGraphqlError = { readonly _tag: "CompletedOrdersGraph
 
 export type CompletedOrdersUnavailableError = { readonly _tag: "CompletedOrdersUnavailable"; readonly message: string }
 
+export type CompletedOrdersNormalizationError = {
+  readonly _tag: "CompletedOrdersNormalizationError"
+  readonly message: string
+}
+
 export type GetCompletedOrdersError =
   | CompletedOrdersGraphqlError
+  | CompletedOrdersNormalizationError
   | CompletedOrdersRequestError
   | CompletedOrdersUnavailableError
   | VoilaSdkError
@@ -32,33 +40,31 @@ export type GetCompletedOrdersResult = VoilaJsonResult<NormalizedCompletedOrders
 const HOME_DELIVERY = "HOME_DELIVERY"
 const STANDARD_SLOT = "STANDARD"
 
-const normalizeSlot = (slot: RawCompletedOrderSlot) => {
-  switch (slot.__typename) {
-    case "ImportedOrderSlot":
-      return {
-        addressNickName: slot.name,
-        dates: { deliveryEndDate: slot.end, deliveryStartDate: slot.start, timeZoneId: slot.timeZone },
-        deliveryMethod: HOME_DELIVERY,
-        slotType: STANDARD_SLOT
-      }
-    case "InternalOrderSlot":
-      return {
-        addressNickName: slot.deliveryDestination.name,
-        ...(slot.carrier === undefined || slot.carrier === null ? {} : { carrierId: slot.carrier.carrierId }),
-        dates: {
-          deliveryEndDate: slot.end,
-          deliveryStartDate: slot.start,
-          timeZoneId: slot.deliveryDestination.address.timeZone
-        },
-        deliveryMethod: slot.deliveryDestination.deliveryMethod,
-        ...(slot.externalLocker === undefined || slot.externalLocker === null
-          ? {}
-          : { externalAddress: { externalCollectionPointId: slot.externalLocker.externalLockerId } }),
-        ...(slot.shippingGroupType === undefined ? {} : { shippingGroupType: slot.shippingGroupType }),
-        slotType: slot.type
-      }
-  }
-}
+const normalizeSlot = (slot: RawCompletedOrderSlot) =>
+  Match.value(slot).pipe(
+    Match.when({ __typename: "ImportedOrderSlot" }, (imported) => ({
+      addressNickName: imported.name,
+      dates: { deliveryEndDate: imported.end, deliveryStartDate: imported.start, timeZoneId: imported.timeZone },
+      deliveryMethod: HOME_DELIVERY,
+      slotType: STANDARD_SLOT
+    })),
+    Match.when({ __typename: "InternalOrderSlot" }, (internal) => ({
+      addressNickName: internal.deliveryDestination.name,
+      ...(internal.carrier === undefined || internal.carrier === null ? {} : { carrierId: internal.carrier.carrierId }),
+      dates: {
+        deliveryEndDate: internal.end,
+        deliveryStartDate: internal.start,
+        timeZoneId: internal.deliveryDestination.address.timeZone
+      },
+      deliveryMethod: internal.deliveryDestination.deliveryMethod,
+      ...(internal.externalLocker === undefined || internal.externalLocker === null
+        ? {}
+        : { externalAddress: { externalCollectionPointId: internal.externalLocker.externalLockerId } }),
+      ...(internal.shippingGroupType === undefined ? {} : { shippingGroupType: internal.shippingGroupType }),
+      slotType: internal.type
+    })),
+    Match.exhaustive
+  )
 
 const normalizeCompletedOrder = (order: RawCompletedOrderNode): NormalizedCompletedOrder => ({
   ...normalizeSlot(order.slot),
@@ -72,9 +78,7 @@ const normalizeCompletedOrder = (order: RawCompletedOrderNode): NormalizedComple
   status: order.status
 })
 
-export const normalizeCompletedOrdersResponse = (
-  connection: RawCompletedOrdersConnection
-): NormalizedCompletedOrdersResult => {
+const projectCompletedOrdersResponse = (connection: RawCompletedOrdersConnection) => {
   const orders = connection.edges.flatMap((edge) =>
     edge?.node === undefined || edge.node === null ? [] : [normalizeCompletedOrder(edge.node)]
   )
@@ -89,6 +93,14 @@ export const normalizeCompletedOrdersResponse = (
   }
 }
 
+export const normalizeCompletedOrdersResponse = (
+  connection: RawCompletedOrdersConnection
+): Result.Result<NormalizedCompletedOrdersResult, CompletedOrdersNormalizationError> =>
+  Result.mapError(
+    parseUnknown(NormalizedCompletedOrdersResultSchema, projectCompletedOrdersResponse(connection)),
+    completedOrdersNormalizationError
+  )
+
 const graphqlError = (): CompletedOrdersGraphqlError => ({
   _tag: "CompletedOrdersGraphqlError",
   message: "Voila completed orders returned a GraphQL error; account login may be required"
@@ -97,6 +109,11 @@ const graphqlError = (): CompletedOrdersGraphqlError => ({
 const completedOrdersUnavailable = (): CompletedOrdersUnavailableError => ({
   _tag: "CompletedOrdersUnavailable",
   message: "Voila completed orders are unavailable for the current session"
+})
+
+const completedOrdersNormalizationError = (): CompletedOrdersNormalizationError => ({
+  _tag: "CompletedOrdersNormalizationError",
+  message: "Voila completed orders could not be normalized"
 })
 
 const getCompletedOrdersConnection = (
@@ -122,9 +139,11 @@ export const getCompletedOrders = (
     Effect.flatMap(
       requestVoilaJson(RawCompletedOrdersGraphqlResponseSchema, session, request, cookieJarPort),
       (result) =>
-        Effect.map(Effect.fromResult(getCompletedOrdersConnection(result.value)), (connection) => ({
-          session: result.session,
-          value: normalizeCompletedOrdersResponse(connection)
-        }))
+        Effect.flatMap(Effect.fromResult(getCompletedOrdersConnection(result.value)), (connection) =>
+          Effect.map(Effect.fromResult(normalizeCompletedOrdersResponse(connection)), (value) => ({
+            session: result.session,
+            value
+          }))
+        )
     )
   )

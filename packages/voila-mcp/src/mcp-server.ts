@@ -23,7 +23,7 @@ export interface VoilaStdioStreams {
   readonly stdout: Sink.Sink<void, Uint8Array | string, never, PlatformError>
 }
 
-const streamsLayer = (streams: VoilaStdioStreams): Layer.Layer<Stdio.Stdio> =>
+export const voilaStdioStreamsLayer = (streams: VoilaStdioStreams): Layer.Layer<Stdio.Stdio> =>
   Layer.succeed(
     Stdio.Stdio,
     Stdio.make({
@@ -48,7 +48,7 @@ export const voilaStdioServerLayer = (
     Layer.provide(
       McpServer.layerStdio({ name: mcpName, protocols: [McpProtocol.v2025_06_18], version }).pipe(Layer.orDie)
     ),
-    Layer.provide(streams === undefined ? NodeStdio.layer : streamsLayer(streams))
+    Layer.provide(streams === undefined ? NodeStdio.layer : voilaStdioStreamsLayer(streams))
   )
 
 export const isVoilaOperationName = (name: string): name is VoilaOperationName =>

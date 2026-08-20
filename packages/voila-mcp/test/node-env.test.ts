@@ -1,4 +1,7 @@
 import {
+  KeepaliveHealthyIntervalMsSchema,
+  KeepaliveMaxRetryDelayMsSchema,
+  KeepaliveRetryDelayMsSchema,
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   makeSessionSnapshot,
@@ -10,12 +13,12 @@ import {
 import { persistSession, StateFileLocksLive, StateFilePathSchema, updateSessionFile } from "@firfi/voila-session-store"
 import { Deferred, Effect, Fiber, Result } from "effect"
 import { createServer } from "node:http"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 
-import { makeKeepaliveConfig, runKeepaliveLoop } from "../src/keepalive-runner.js"
+import { makeKeepaliveConfig, runKeepaliveLoop, type KeepaliveConfig } from "../src/keepalive-runner.js"
 import { makeNodeOperationEnvironment } from "../src/node-env.js"
 import { stubTransportLayer, unusedTransportLayer } from "./helpers/operations.js"
 
@@ -77,6 +80,16 @@ const writeSnapshot = async (path: string, snapshot: SdkSessionSnapshot) => {
 }
 
 const healthyResponse = { body: JSON.stringify({ authenticated: true }), headers: {}, status: 200 }
+
+const makeTestKeepaliveConfig = (overrides: Parameters<typeof makeKeepaliveConfig>[0] = {}): KeepaliveConfig => {
+  const config = makeKeepaliveConfig(overrides)
+
+  if (Result.isFailure(config)) {
+    throw new Error(config.failure.message)
+  }
+
+  return config.success
+}
 
 describe("Node operation environment", () => {
   it("accepts a configured user-agent and session path", () => {
@@ -187,13 +200,143 @@ describe("Node operation environment", () => {
         Effect.provide(
           runKeepaliveLoop(
             environment.success,
-            makeKeepaliveConfig({ healthyIntervalMs: 1, retryDelayMs: 1, maxRetryDelayMs: 1, stopOnExpired: true })
+            makeTestKeepaliveConfig({
+              healthyIntervalMs: KeepaliveHealthyIntervalMsSchema.make(1),
+              retryDelayMs: KeepaliveRetryDelayMsSchema.make(1),
+              maxRetryDelayMs: KeepaliveMaxRetryDelayMsSchema.make(1),
+              expiryPolicy: "stop"
+            })
           ),
           environment.success.transport
         )
       )
 
       expect(reason).toBe("misconfigured")
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  it("uses a configured guest snapshot for ordinary operations and rejects it for authenticated-only work", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "voila-node-env-guest-"))
+    const path = join(directory, "session.json")
+
+    try {
+      await writeSnapshot(path, makeGuestSnapshot())
+      const environment = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: path }, unusedTransportLayer)
+
+      if (Result.isFailure(environment)) {
+        throw new Error("Expected a valid operation environment")
+      }
+
+      const ordinary = await Effect.runPromise(
+        Effect.provide(
+          environment.success.session.withSession(() => Effect.succeed({ value: "guest-session" })),
+          environment.success.transport
+        )
+      )
+      const authenticated = await Effect.runPromise(
+        Effect.result(
+          Effect.provide(
+            environment.success.session.withAuthenticatedSession(() => Effect.succeed({ value: "not-run" })),
+            environment.success.transport
+          )
+        )
+      )
+
+      expect(ordinary).toBe("guest-session")
+      expect(Result.isFailure(authenticated)).toBe(true)
+      if (Result.isFailure(authenticated)) {
+        expect(authenticated.failure._tag).toBe("VoilaSessionSnapshotMissing")
+      }
+
+      const forcedGuest = makeNodeOperationEnvironment(
+        { VOILA_AUTH_SESSION_PATH: path, VOILA_GUEST: "1" },
+        unusedTransportLayer
+      )
+      if (Result.isFailure(forcedGuest)) {
+        throw new Error("Expected a valid forced-guest environment")
+      }
+
+      const forcedGuestAuthenticated = await Effect.runPromise(
+        Effect.result(
+          Effect.provide(
+            forcedGuest.success.session.withAuthenticatedSession(() => Effect.succeed({ value: "not-run" })),
+            forcedGuest.success.transport
+          )
+        )
+      )
+
+      expect(Result.isFailure(forcedGuestAuthenticated)).toBe(true)
+      if (Result.isFailure(forcedGuestAuthenticated)) {
+        expect(forcedGuestAuthenticated.failure._tag).toBe("VoilaSessionSnapshotMissing")
+      }
+    } finally {
+      await rm(directory, { force: true, recursive: true })
+    }
+  })
+
+  it("retains a bootstrapped guest when an operation does not refresh it", async () => {
+    const homepage = await readFile(
+      new URL("../../voila-sdk/test/fixtures/voila-homepage.html", import.meta.url),
+      "utf8"
+    )
+    let requests = 0
+    const environment = makeNodeOperationEnvironment(
+      { VOILA_GUEST: "1" },
+      stubTransportLayer(() => {
+        requests += 1
+        return Effect.succeed({
+          body: homepage,
+          headers: { "set-cookie": "voila-session=sanitized-cookie; Path=/; Secure; HttpOnly" },
+          status: 200
+        })
+      })
+    )
+
+    if (Result.isFailure(environment)) {
+      throw new Error("Expected a valid guest environment")
+    }
+
+    const result = await Effect.runPromise(
+      Effect.provide(
+        environment.success.session.withSession(() => Effect.succeed({ value: "guest-operation" })),
+        environment.success.transport
+      )
+    )
+
+    expect(result).toBe("guest-operation")
+    expect(requests).toBe(1)
+  })
+
+  it("returns the carried result when an ordinary session refresh loses a CAS race", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "voila-node-env-carried-"))
+    const path = join(directory, "session.json")
+    const entered = Deferred.makeUnsafe<void>()
+    const release = Deferred.makeUnsafe<void>()
+
+    try {
+      await writeSnapshot(path, makeAuthenticatedSnapshot("boot"))
+      const environment = makeNodeOperationEnvironment({ VOILA_AUTH_SESSION_PATH: path }, unusedTransportLayer)
+
+      if (Result.isFailure(environment)) {
+        throw new Error("Expected a valid operation environment")
+      }
+
+      const operation = environment.success.session.withSession(() =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(entered, undefined)
+          yield* Deferred.await(release)
+          return { refreshed: makeAuthenticatedSnapshot("refresh"), value: "carried-result" }
+        })
+      )
+      const running = Effect.runFork(Effect.provide(operation, environment.success.transport))
+
+      await Effect.runPromise(Deferred.await(entered))
+      await writeSnapshot(path, makeAuthenticatedSnapshot("winner"))
+      Effect.runSync(Deferred.succeed(release, undefined))
+
+      expect(await Effect.runPromise(Fiber.join(running))).toBe("carried-result")
     } finally {
       await rm(directory, { force: true, recursive: true })
     }
@@ -231,7 +374,10 @@ describe("Node operation environment", () => {
         Effect.provide(
           runKeepaliveLoop(
             environment.success,
-            makeKeepaliveConfig({ healthyIntervalMs: 60_000, stopOnExpired: true })
+            makeTestKeepaliveConfig({
+              healthyIntervalMs: KeepaliveHealthyIntervalMsSchema.make(60_000),
+              expiryPolicy: "stop"
+            })
           ),
           environment.success.transport
         )
@@ -278,7 +424,10 @@ describe("Node operation environment", () => {
           Effect.provide(
             runKeepaliveLoop(
               environment.success,
-              makeKeepaliveConfig({ healthyIntervalMs: 60_000, stopOnExpired: true })
+              makeTestKeepaliveConfig({
+                healthyIntervalMs: KeepaliveHealthyIntervalMsSchema.make(60_000),
+                expiryPolicy: "stop"
+              })
             ),
             environment.success.transport
           )
@@ -338,9 +487,13 @@ describe("Node operation environment", () => {
         Effect.provide(
           runKeepaliveLoop(
             environment.success,
-            makeKeepaliveConfig({ healthyIntervalMs: 60_000, retryDelayMs: 60_000, maxRetryDelayMs: 60_000 }),
+            makeTestKeepaliveConfig({
+              healthyIntervalMs: KeepaliveHealthyIntervalMsSchema.make(60_000),
+              retryDelayMs: KeepaliveRetryDelayMsSchema.make(60_000),
+              maxRetryDelayMs: KeepaliveMaxRetryDelayMsSchema.make(60_000)
+            }),
             (line) => {
-              if (line.includes("VoilaSessionSnapshotConflict")) {
+              if (line.includes("session keepalive check failed")) {
                 Effect.runSync(Deferred.succeed(retried, undefined))
               }
             }

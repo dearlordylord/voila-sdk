@@ -1,224 +1,69 @@
-import type { KeepaliveStopReason } from "@firfi/voila-sdk"
 import { normalizeCliCartInput, type OperationExecutionResult, type VoilaOperationName } from "@firfi/voila-mcp"
-import { type StateFilePath, StateFilePathSchema } from "@firfi/voila-session-store"
-import { Result, Schema } from "effect"
+import { Match } from "effect"
 
 import { makeDiscountsOperationInput, renderDiscountsText } from "./cli-discounts.js"
-import { defaultBrowserProfilePath, defaultSessionPath } from "./defaults.js"
+import {
+  parseCliCommand,
+  type AuthKeepaliveCommand,
+  type AuthLoginCommand,
+  type AuthStatusCommand,
+  type CartAddCommand,
+  type CartGetCommand,
+  type CartRemoveCommand,
+  type CategoryProductsCommand,
+  type CliCommand,
+  type DiscountsCommand,
+  type OrdersDetailsCommand,
+  type OrdersItemsCommand,
+  type OrdersListCommand,
+  type SearchCommand
+} from "./cli-commands.js"
+import {
+  fail,
+  helpText,
+  isCliRunResult,
+  ok,
+  parseArgs,
+  renderKeepalive,
+  type CliKeepaliveOptions,
+  type CliLoginOptions,
+  type CliOperationOptions,
+  type CliPorts,
+  type CliRunResult
+} from "./cli-model.js"
 
-export interface CliOperationOptions {
-  readonly sessionPath: StateFilePath
-}
+export { BrowserPollDelayMsSchema, CliRunResultSchema } from "./cli-model.js"
+export type {
+  BrowserPollDelayMs,
+  CliDelay,
+  CliKeepaliveOptions,
+  CliLoginOptions,
+  CliOperationOptions,
+  CliPorts,
+  CliProgressPort,
+  CliRunResult,
+  CliStderrWriter
+} from "./cli-model.js"
+export type {
+  AuthKeepaliveCommand,
+  AuthLoginCommand,
+  AuthStatusCommand,
+  CartAddCommand,
+  CartGetCommand,
+  CartRemoveCommand,
+  CategoryProductsCommand,
+  CliCommand,
+  DiscountsCommand,
+  OrdersDetailsCommand,
+  OrdersItemsCommand,
+  OrdersListCommand,
+  SearchCommand
+} from "./cli-commands.js"
 
-export interface CliLoginOptions {
-  readonly profilePath: string
-  readonly sessionPath: StateFilePath
-  readonly timeoutMs?: number
-}
-
-export interface CliKeepaliveOptions {
-  readonly intervalSeconds?: number
-  readonly sessionPath: StateFilePath
-}
-
-export interface CliPorts {
-  readonly keepalive: (options: CliKeepaliveOptions) => Promise<KeepaliveStopReason>
-  readonly login: (options: CliLoginOptions) => Promise<OperationExecutionResult>
-  readonly runOperation: (
-    name: VoilaOperationName,
-    input: unknown,
-    options: CliOperationOptions
-  ) => Promise<OperationExecutionResult>
-}
-
-export interface CliRunResult {
-  readonly exitCode: number
-  readonly stderr: string
-  readonly stdout: string
-}
-
-interface ParsedOptions {
-  readonly flags: ReadonlySet<string>
-  readonly options: ReadonlyMap<string, string>
-  readonly positionals: ReadonlyArray<string>
-}
-
-const successExitCode = 0
-const failureExitCode = 1
-const usageExitCode = 2
-const minKeepaliveIntervalSeconds = 3600
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected keepalive stop reason: ${JSON.stringify(value)}`)
-}
-
-const helpText = `Usage:
-  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]
-  voila auth status [--session <path>] [--json]
-  voila auth keepalive [--session <path>] [--interval <s>]
-  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
-  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
-  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
-  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
-  voila orders details <order-id> [--session <path>] [--json]
-  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]
-  voila cart get [--session <path>] [--json]
-  voila cart add <product-id> --quantity <n> [--session <path>] [--json]
-  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]`
-
-const parseArgs = (args: ReadonlyArray<string>): ParsedOptions => {
-  const flags = new Set<string>()
-  const options = new Map<string, string>()
-  const positionals: Array<string> = []
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]
-
-    if (arg === undefined) {
-      continue
-    }
-
-    if (!arg.startsWith("--")) {
-      positionals.push(arg)
-      continue
-    }
-
-    const name = arg.slice(2)
-
-    if (name === "json" || name === "help") {
-      flags.add(name)
-      continue
-    }
-
-    const value = args[index + 1]
-
-    if (value === undefined || value.startsWith("--")) {
-      flags.add(name)
-      continue
-    }
-
-    options.set(name, value)
-    index += 1
-  }
-
-  return { flags, options, positionals }
-}
-
-const usage = (message: string): CliRunResult => ({
-  exitCode: usageExitCode,
-  stderr: `${message}\n\n${helpText}\n`,
-  stdout: ""
-})
-
-const ok = (stdout: string): CliRunResult => ({ exitCode: successExitCode, stderr: "", stdout })
-
-const renderFailureText = (result: OperationExecutionResult): string => {
-  if (result.ok) {
-    return ""
-  }
-
-  const guidance = result.error.authGuidance
-  const base = `${result.error._tag}: ${result.error.message}\n`
-
-  if (guidance === undefined) {
-    return base
-  }
-
-  return [base, `${guidance.message}\n`, `${guidance.instructions}\n`, `Login command: ${guidance.command}\n`].join("")
-}
-
-const fail = (result: OperationExecutionResult, json: boolean): CliRunResult => ({
-  exitCode: failureExitCode,
-  stderr: json ? "" : renderFailureText(result),
-  stdout: json ? `${JSON.stringify(result, undefined, 2)}\n` : ""
-})
-
-// Parsed here, where the argument arrives, so one absolute path travels
-// onward: a relative `--session` would name different files depending on the
-// directory a command happened to run in.
-const getSessionPath = (parsed: ParsedOptions): CliRunResult | StateFilePath => {
-  const configured = Schema.decodeUnknownResult(StateFilePathSchema)(
-    parsed.options.get("session") ?? defaultSessionPath()
-  )
-
-  return Result.isFailure(configured)
-    ? usage("--session must be an absolute path to a session file")
-    : configured.success
-}
-
-const getJsonFlag = (parsed: ParsedOptions): boolean => parsed.flags.has("json")
-
-const parsePositiveInteger = (value: string | undefined, optionName: string): number | CliRunResult => {
-  if (value === undefined) {
-    return usage(`Missing ${optionName}`)
-  }
-
-  const parsed = Number(value)
-
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return usage(`${optionName} must be a positive integer`)
-  }
-
-  return parsed
-}
-
-const optionalPageInput = (parsed: ParsedOptions) => {
-  const pageSizeOption = parsed.options.get("page-size")
-
-  if (pageSizeOption === undefined) {
-    return {
-      ...(parsed.options.get("page-token") === undefined ? {} : { pageToken: parsed.options.get("page-token") })
-    }
-  }
-
-  const pageSize = parsePositiveInteger(pageSizeOption, "--page-size")
-
-  if (typeof pageSize !== "number") {
-    return pageSize
-  }
-
-  return {
-    pageSize,
-    ...(parsed.options.get("page-token") === undefined ? {} : { pageToken: parsed.options.get("page-token") })
-  }
-}
-
-const optionalOrderItemsInput = (parsed: ParsedOptions) => {
-  const page = optionalPageInput(parsed)
-
-  if ("exitCode" in page) {
-    return page
-  }
-
-  const maxOrdersOption = parsed.options.get("max-orders")
-
-  if (maxOrdersOption === undefined) {
-    return {
-      ...page,
-      ...(parsed.options.get("from-date") === undefined ? {} : { fromDate: parsed.options.get("from-date") }),
-      ...(parsed.options.get("to-date") === undefined ? {} : { toDate: parsed.options.get("to-date") })
-    }
-  }
-
-  const maxOrders = parsePositiveInteger(maxOrdersOption, "--max-orders")
-
-  if (typeof maxOrders !== "number") {
-    return maxOrders
-  }
-
-  return {
-    ...page,
-    maxOrders,
-    ...(parsed.options.get("from-date") === undefined ? {} : { fromDate: parsed.options.get("from-date") }),
-    ...(parsed.options.get("to-date") === undefined ? {} : { toDate: parsed.options.get("to-date") })
-  }
-}
-
-const renderText = (name: VoilaOperationName | "auth_login", result: OperationExecutionResult): string => {
-  if (!result.ok) {
-    return ""
-  }
-
+const renderText = (
+  name: VoilaOperationName | "auth_login",
+  result: Extract<OperationExecutionResult, { readonly ok: true }>
+): string => {
   if (name === "auth_login") {
     return "Authenticated session saved.\n"
   }
@@ -239,254 +84,153 @@ const render = (
     return fail(result, json)
   }
 
-  if (json) {
-    return ok(`${JSON.stringify(result, undefined, 2)}\n`)
-  }
-
-  return ok(renderText(name, result))
+  return ok(json ? `${JSON.stringify(result, undefined, 2)}\n` : renderText(name, result))
 }
 
 const runOperation = async (
   ports: CliPorts,
   name: VoilaOperationName,
   input: unknown,
-  parsed: ParsedOptions
-): Promise<CliRunResult> => {
-  const sessionPath = getSessionPath(parsed)
+  sessionPath: CliOperationOptions["sessionPath"],
+  json: boolean
+): Promise<CliRunResult> => render(name, await ports.runOperation(name, input, { sessionPath }), json)
 
-  if (typeof sessionPath !== "string") {
-    return sessionPath
+const runAuthLogin = async (ports: CliPorts, command: AuthLoginCommand): Promise<CliRunResult> => {
+  const options: CliLoginOptions = {
+    delay: ports.delay,
+    profilePath: command.profilePath,
+    progress: { write: ports.writeStderr },
+    sessionPath: command.sessionPath,
+    ...(command.timeoutMs === undefined ? {} : { timeoutMs: command.timeoutMs })
   }
+  const result = await ports.login(options)
 
-  const result = await ports.runOperation(name, input, { sessionPath })
-
-  return render(name, result, getJsonFlag(parsed))
+  return render("auth_login", result, command.json)
 }
 
-const renderKeepalive = (reason: KeepaliveStopReason): CliRunResult => {
-  switch (reason) {
-    case "expired":
-      return {
-        exitCode: failureExitCode,
-        stderr: "Session requires re-authentication. Run: voila auth login\n",
-        stdout: ""
-      }
-    case "misconfigured":
-      return {
-        exitCode: usageExitCode,
-        stderr: "No authenticated session snapshot is configured. Run: voila auth login\n",
-        stdout: ""
-      }
-    case "cancelled":
-      return ok("Keepalive stopped.\n")
-    default:
-      return assertNever(reason)
+const runAuthStatus = (ports: CliPorts, command: AuthStatusCommand): Promise<CliRunResult> =>
+  runOperation(ports, "voila_check_session_health", {}, command.sessionPath, command.json)
+
+const runAuthKeepalive = async (ports: CliPorts, command: AuthKeepaliveCommand): Promise<CliRunResult> => {
+  const options: CliKeepaliveOptions = {
+    sessionPath: command.sessionPath,
+    ...(command.intervalSeconds === undefined ? {} : { intervalSeconds: command.intervalSeconds })
   }
+
+  return renderKeepalive(await ports.keepalive(options))
 }
 
-const runKeepalive = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const intervalOption = parsed.options.get("interval")
-  const intervalSeconds = intervalOption === undefined ? undefined : parsePositiveInteger(intervalOption, "--interval")
-
-  if (intervalSeconds !== undefined && typeof intervalSeconds !== "number") {
-    return intervalSeconds
-  }
-
-  if (intervalSeconds !== undefined && intervalSeconds < minKeepaliveIntervalSeconds) {
-    return usage(`--interval must be at least ${minKeepaliveIntervalSeconds} seconds`)
-  }
-
-  const sessionPath = getSessionPath(parsed)
-
-  // getSessionPath parses the path at the edge, where the argument arrives, and
-  // returns a usage error instead of a path when the value is not absolute; the
-  // keepalive command handles that error before it can reach the loop.
-  if (typeof sessionPath !== "string") {
-    return sessionPath
-  }
-
-  const reason = await ports.keepalive({ sessionPath, ...(intervalSeconds === undefined ? {} : { intervalSeconds }) })
-
-  return renderKeepalive(reason)
-}
-
-const runAuthLogin = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const timeout =
-    parsed.options.get("timeout-ms") === undefined
-      ? undefined
-      : parsePositiveInteger(parsed.options.get("timeout-ms"), "--timeout-ms")
-
-  if (timeout !== undefined && typeof timeout !== "number") {
-    return timeout
-  }
-
-  const sessionPath = getSessionPath(parsed)
-
-  if (typeof sessionPath !== "string") {
-    return sessionPath
-  }
-
-  const result = await ports.login({
-    profilePath: parsed.options.get("profile") ?? defaultBrowserProfilePath(),
-    sessionPath,
-    ...(timeout === undefined ? {} : { timeoutMs: timeout })
-  })
-
-  return render("auth_login", result, getJsonFlag(parsed))
-}
-
-const runAuth = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const subcommand = parsed.positionals[1]
-
-  if (subcommand === "status") {
-    return runOperation(ports, "voila_check_session_health", {}, parsed)
-  }
-
-  if (subcommand === "keepalive") {
-    return runKeepalive(ports, parsed)
-  }
-
-  if (subcommand === "login") {
-    return runAuthLogin(ports, parsed)
-  }
-
-  return usage("Expected auth login, auth status, or auth keepalive")
-}
-
-const runSearch = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const query = parsed.positionals[1]
-
-  if (query === undefined) {
-    return usage("Missing search query")
-  }
-
-  const page = optionalPageInput(parsed)
-
-  if ("exitCode" in page) {
-    return page
-  }
-
-  return runOperation(ports, "voila_search_products", { ...page, query }, parsed)
-}
-
-const runCategory = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  if (parsed.positionals[1] !== "products") {
-    return usage("Expected category products")
-  }
-
-  const categoryId = parsed.positionals[2]
-
-  if (categoryId === undefined) {
-    return usage("Missing category id")
-  }
-
-  const page = optionalPageInput(parsed)
-
-  if ("exitCode" in page) {
-    return page
-  }
-
-  return runOperation(ports, "voila_get_category_products", { ...page, categoryId }, parsed)
-}
-
-const runDiscounts = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const input = makeDiscountsOperationInput(parsed, usage, parsePositiveInteger)
-
-  if ("exitCode" in input) {
-    return input
-  }
-
-  return runOperation(ports, "voila_get_discounted_products", input, parsed)
-}
-
-const runOrders = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const subcommand = parsed.positionals[1]
-
-  if (subcommand === "details") {
-    const orderId = parsed.positionals[2]
-
-    if (orderId === undefined) {
-      return usage("Missing order id")
-    }
-
-    return runOperation(ports, "voila_get_order_details", { orderId }, parsed)
-  }
-
-  if (subcommand === "items") {
-    const input = optionalOrderItemsInput(parsed)
-
-    if ("exitCode" in input) {
-      return input
-    }
-
-    return runOperation(ports, "voila_get_completed_order_items", input, parsed)
-  }
-
-  if (subcommand !== "list") {
-    return usage("Expected orders list, orders details, or orders items")
-  }
-
-  const page = optionalPageInput(parsed)
-
-  if ("exitCode" in page) {
-    return page
-  }
-
-  return runOperation(ports, "voila_get_completed_orders", page, parsed)
-}
-
-const runCart = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const subcommand = parsed.positionals[1]
-
-  if (subcommand === "get") {
-    return runOperation(ports, "voila_get_cart", {}, parsed)
-  }
-
-  if (subcommand !== "add" && subcommand !== "remove") {
-    return usage("Expected cart get, cart add, or cart remove")
-  }
-
-  const productId = parsed.positionals[2]
-
-  if (productId === undefined) {
-    return usage("Missing product id")
-  }
-
-  const quantity = parsePositiveInteger(parsed.options.get("quantity"), "--quantity")
-
-  if (typeof quantity !== "number") {
-    return quantity
-  }
-
-  return runOperation(
+const runSearch = (ports: CliPorts, command: SearchCommand): Promise<CliRunResult> =>
+  runOperation(
     ports,
-    subcommand === "add" ? "voila_add_cart_items" : "voila_remove_cart_items",
-    normalizeCliCartInput(productId, quantity),
-    parsed
+    "voila_search_products",
+    {
+      ...(command.pageSize === undefined ? {} : { pageSize: command.pageSize }),
+      ...(command.pageToken === undefined ? {} : { pageToken: command.pageToken }),
+      query: command.query
+    },
+    command.sessionPath,
+    command.json
   )
-}
+
+const runDiscounts = (ports: CliPorts, command: DiscountsCommand): Promise<CliRunResult> =>
+  runOperation(
+    ports,
+    "voila_get_discounted_products",
+    makeDiscountsOperationInput(command),
+    command.sessionPath,
+    command.json
+  )
+
+const runCategoryProducts = (ports: CliPorts, command: CategoryProductsCommand): Promise<CliRunResult> =>
+  runOperation(
+    ports,
+    "voila_get_category_products",
+    {
+      categoryId: command.categoryId,
+      ...(command.pageSize === undefined ? {} : { pageSize: command.pageSize }),
+      ...(command.pageToken === undefined ? {} : { pageToken: command.pageToken })
+    },
+    command.sessionPath,
+    command.json
+  )
+
+const runOrdersList = (ports: CliPorts, command: OrdersListCommand): Promise<CliRunResult> =>
+  runOperation(
+    ports,
+    "voila_get_completed_orders",
+    {
+      ...(command.pageSize === undefined ? {} : { pageSize: command.pageSize }),
+      ...(command.pageToken === undefined ? {} : { pageToken: command.pageToken })
+    },
+    command.sessionPath,
+    command.json
+  )
+
+const runOrdersDetails = (ports: CliPorts, command: OrdersDetailsCommand): Promise<CliRunResult> =>
+  runOperation(ports, "voila_get_order_details", { orderId: command.orderId }, command.sessionPath, command.json)
+
+const runOrdersItems = (ports: CliPorts, command: OrdersItemsCommand): Promise<CliRunResult> =>
+  runOperation(
+    ports,
+    "voila_get_completed_order_items",
+    {
+      ...(command.fromDate === undefined ? {} : { fromDate: command.fromDate }),
+      ...(command.maxOrders === undefined ? {} : { maxOrders: command.maxOrders }),
+      ...(command.pageSize === undefined ? {} : { pageSize: command.pageSize }),
+      ...(command.pageToken === undefined ? {} : { pageToken: command.pageToken }),
+      ...(command.toDate === undefined ? {} : { toDate: command.toDate })
+    },
+    command.sessionPath,
+    command.json
+  )
+
+const runCartGet = (ports: CliPorts, command: CartGetCommand): Promise<CliRunResult> =>
+  runOperation(ports, "voila_get_cart", {}, command.sessionPath, command.json)
+
+const runCartAdd = (ports: CliPorts, command: CartAddCommand): Promise<CliRunResult> =>
+  runOperation(
+    ports,
+    "voila_add_cart_items",
+    normalizeCliCartInput(command.productId, command.quantity),
+    command.sessionPath,
+    command.json
+  )
+
+const runCartRemove = (ports: CliPorts, command: CartRemoveCommand): Promise<CliRunResult> =>
+  runOperation(
+    ports,
+    "voila_remove_cart_items",
+    normalizeCliCartInput(command.productId, command.quantity),
+    command.sessionPath,
+    command.json
+  )
+
+const dispatch = (ports: CliPorts): ((command: CliCommand) => Promise<CliRunResult>) =>
+  Match.typeTags<CliCommand>()({
+    help: async () => ok(`${helpText}\n`),
+    "auth-login": (command) => runAuthLogin(ports, command),
+    "auth-status": (command) => runAuthStatus(ports, command),
+    "auth-keepalive": (command) => runAuthKeepalive(ports, command),
+    search: (command) => runSearch(ports, command),
+    discounts: (command) => runDiscounts(ports, command),
+    "category-products": (command) => runCategoryProducts(ports, command),
+    "orders-list": (command) => runOrdersList(ports, command),
+    "orders-details": (command) => runOrdersDetails(ports, command),
+    "orders-items": (command) => runOrdersItems(ports, command),
+    "cart-get": (command) => runCartGet(ports, command),
+    "cart-add": (command) => runCartAdd(ports, command),
+    "cart-remove": (command) => runCartRemove(ports, command)
+  })
 
 export const runCli = async (args: ReadonlyArray<string>, ports: CliPorts): Promise<CliRunResult> => {
   const parsed = parseArgs(args)
 
-  if (parsed.flags.has("help") || parsed.positionals.length === 0) {
-    return ok(`${helpText}\n`)
+  if (isCliRunResult(parsed)) {
+    return parsed
   }
 
-  switch (parsed.positionals[0]) {
-    case "auth":
-      return runAuth(ports, parsed)
-    case "cart":
-      return runCart(ports, parsed)
-    case "category":
-      return runCategory(ports, parsed)
-    case "discounts":
-      return runDiscounts(ports, parsed)
-    case "orders":
-      return runOrders(ports, parsed)
-    case "search":
-      return runSearch(ports, parsed)
-    default:
-      return usage("Unknown command")
-  }
+  const command = parseCliCommand(parsed)
+
+  return isCliRunResult(command) ? command : dispatch(ports)(command)
 }

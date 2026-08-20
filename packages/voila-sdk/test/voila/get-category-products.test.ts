@@ -20,6 +20,7 @@ import {
 
 const fixtureText = readFileSync(new URL("../fixtures/category-products-produce.json", import.meta.url), "utf8")
 const csrfToken = "csrf-token"
+const fixtureStrawberriesProductUuid = "11111111-1111-4111-8111-111111111111"
 const sampleMetadata = {
   assetVersion: "asset-version",
   clientRouteId: "client-route-id",
@@ -89,7 +90,7 @@ describe("getCategoryProducts", () => {
       expect(request?.headers.cookie).toContain("voila-session=before")
       expect(result.success.value.category.categoryId).toBe("sanitized-category-produce")
       expect(result.success.value.category.retailerCategoryId).toBe("retailer-category-produce")
-      expect(result.success.value.products[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.products[0]?.productId).toBe(fixtureStrawberriesProductUuid)
       expect(result.success.value.products[0]?.retailerProductId).toBe("111222EA")
       expect(result.success.value.products[0]?.price.amount).toBe("4.99")
       expect(result.success.value.pagination.nextPageToken).toBe("sanitized-category-next-page-token")

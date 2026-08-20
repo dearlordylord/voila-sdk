@@ -19,7 +19,7 @@ import * as path from "node:path"
 import { describe, expect, it } from "vitest"
 
 import { makeNodeOperationEnvironment } from "../src/node-env.js"
-import { voilaTransportLayer } from "../src/node-transport.js"
+import { type RequestTimeoutMs, RequestTimeoutMsSchema, voilaTransportLayer } from "../src/node-transport.js"
 import type { OperationEnvironment, SessionOperation } from "../src/operations.js"
 
 const voilaUrl = "https://voila.ca/"
@@ -127,7 +127,7 @@ const observe =
 const hangingRequestLayer = (
   cancellations: Array<boolean>,
   started: Deferred.Deferred<void>,
-  timeoutMs: number
+  timeoutMs: RequestTimeoutMs
 ): Layer.Layer<VoilaTransport> =>
   Layer.provide(
     voilaTransportLayer(undefined, timeoutMs),
@@ -211,7 +211,7 @@ describe("MCP session port", () => {
       yield* Effect.promise(() => fs.writeFile(file, encode(authenticated("boot")), { mode: 0o600 }))
 
       const cancellations: Array<boolean> = []
-      const timeoutMs = 5_000
+      const timeoutMs = RequestTimeoutMsSchema.make(5_000)
       const started = yield* Deferred.make<void>()
       const env = environmentFor(file, hangingRequestLayer(cancellations, started, timeoutMs))
       const seen: Array<string> = []

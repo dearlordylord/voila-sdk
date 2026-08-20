@@ -7,6 +7,9 @@ import { parseJson } from "../../src/domain/parse.js"
 import { normalizeSearchResponse, parseSearchResponse } from "../../src/voila/catalog-search.js"
 
 const fixtureText = readFileSync(new URL("../fixtures/search-response-milk.json", import.meta.url), "utf8")
+const fixtureLactoseFreeProductUuid = "22222222-2222-4222-8222-222222222222"
+const decoratedProductUuid = "33333333-3333-4333-8333-333333333333"
+const standardProductUuid = "44444444-4444-4444-8444-444444444444"
 
 const readFixture = (): unknown => {
   const parsed = parseJson(fixtureText)
@@ -47,7 +50,7 @@ describe("catalog search normalization", () => {
       expect(milk?.sourceGroupName).toBe("Top results")
       expect(milk?.sourceGroupType).toBe("featured")
 
-      expect(lactoseFree?.productId).toBe("sanitized-second-product-id")
+      expect(lactoseFree?.productId).toBe(fixtureLactoseFreeProductUuid)
       expect(lactoseFree?.retailerProductId).toBe("987654EA")
       expect(lactoseFree?.available).toBe(false)
       expect(lactoseFree?.quantityInBasket).toBe(0)
@@ -58,8 +61,12 @@ describe("catalog search normalization", () => {
   it("omits optional pagination fields when Voila omits them", () => {
     const result = normalizeSearchResponse({ productGroups: [] })
 
-    expect(result.pagination).toEqual({})
-    expect(result.products).toEqual([])
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.pagination).toEqual({})
+      expect(result.success.products).toEqual([])
+    }
   })
 
   it("combines decorated and standard products when Voila sends both arrays", () => {
@@ -72,7 +79,7 @@ describe("catalog search normalization", () => {
               maxQuantityReached: false,
               name: "Decorated product",
               price: { amount: "1.00", currency: "CAD" },
-              productId: "decorated-product-id",
+              productId: decoratedProductUuid,
               quantityInBasket: 0,
               retailerProductId: "decorated-retailer-product-id"
             }
@@ -83,7 +90,7 @@ describe("catalog search normalization", () => {
               maxQuantityReached: false,
               name: "Standard product",
               price: { amount: "2.00", currency: "CAD" },
-              productId: "standard-product-id",
+              productId: standardProductUuid,
               quantityInBasket: 0,
               retailerProductId: "standard-retailer-product-id"
             }
@@ -93,9 +100,16 @@ describe("catalog search normalization", () => {
       ]
     })
 
-    expect(result.products.map((product) => product.productId)).toEqual(["decorated-product-id", "standard-product-id"])
-    expect(result.products[0]?.sourceGroupType).toBe("mixed")
-    expect(result.products[1]?.sourceGroupType).toBe("mixed")
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.products.map((product) => product.productId)).toEqual([
+        decoratedProductUuid,
+        standardProductUuid
+      ])
+      expect(result.success.products[0]?.sourceGroupType).toBe("mixed")
+      expect(result.success.products[1]?.sourceGroupType).toBe("mixed")
+    }
   })
 
   it("fails at the schema boundary when total product count is not a non-negative integer", () => {

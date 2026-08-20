@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect"
+import { Effect, Match, Result } from "effect"
 
 import { parseJson, parseUnknown } from "../domain/parse.js"
 import type {
@@ -86,12 +86,15 @@ const makeSdkSnapshotWithSession = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot
 ): Result.Result<SdkSessionSnapshot, CheckSessionHealthError> =>
-  previous.kind === "authenticated"
-    ? Result.mapError(
-        makeAuthenticatedSdkSessionSnapshot(session, previous.state, previous.account),
-        sessionHealthSnapshotInvalid
-      )
-    : Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid)
+  Match.value(previous).pipe(
+    Match.when({ kind: "authenticated" }, ({ account, state }) =>
+      Result.mapError(makeAuthenticatedSdkSessionSnapshot(session, state, account), sessionHealthSnapshotInvalid)
+    ),
+    Match.when({ kind: "guest" }, () =>
+      Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid)
+    ),
+    Match.exhaustive
+  )
 
 const makeActiveSession = (
   cookieJarPort: CookieJarPort,
@@ -99,32 +102,50 @@ const makeActiveSession = (
   response: ActiveCustomerSessionResponse,
   session: SessionSnapshot
 ): Result.Result<SessionHealth, CheckSessionHealthError> => {
-  if (previous.kind === "authenticated" && !responseHasAuthenticatedEvidence(cookieJarPort, response, session)) {
-    return makeReauthRequired(previous, session)
-  }
-
-  return previous.kind === "authenticated"
-    ? Result.mapError(
-        makeAuthenticatedSdkSessionSnapshot(session, "authenticated", previous.account),
-        sessionHealthSnapshotInvalid
-      ).pipe(Result.flatMap((updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })))
-    : Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid).pipe(
-        Result.flatMap((updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" }))
+  return Match.value(previous).pipe(
+    Match.when({ kind: "authenticated" }, ({ account }) =>
+      responseHasAuthenticatedEvidence(cookieJarPort, response, session)
+        ? Result.flatMap(
+            Result.mapError(
+              makeAuthenticatedSdkSessionSnapshot(session, "authenticated", account),
+              sessionHealthSnapshotInvalid
+            ),
+            (updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })
+          )
+        : makeReauthRequired(previous, session)
+    ),
+    Match.when({ kind: "guest" }, () =>
+      Result.flatMap(
+        Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid),
+        (updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })
       )
+    ),
+    Match.exhaustive
+  )
 }
 
 const makeReauthRequired = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot = previous.session
 ): Result.Result<SessionHealth, CheckSessionHealthError> =>
-  previous.kind === "authenticated"
-    ? Result.mapError(
-        makeAuthenticatedSdkSessionSnapshot(session, "reauth-required", previous.account),
-        sessionHealthSnapshotInvalid
-      ).pipe(Result.flatMap((session) => decodeSessionHealth({ session, status: "reauth-required" })))
-    : Result.flatMap(makeGuestSdkSessionSnapshot(session), (updatedSession) =>
-        decodeSessionHealth({ session: updatedSession, status: "unauthorized" })
-      ).pipe(Result.mapError(sessionHealthSnapshotInvalid))
+  Match.value(previous).pipe(
+    Match.when({ kind: "authenticated" }, ({ account }) =>
+      Result.flatMap(
+        Result.mapError(
+          makeAuthenticatedSdkSessionSnapshot(session, "reauth-required", account),
+          sessionHealthSnapshotInvalid
+        ),
+        (updatedSession) => decodeSessionHealth({ session: updatedSession, status: "reauth-required" })
+      )
+    ),
+    Match.when({ kind: "guest" }, () =>
+      Result.flatMap(
+        Result.mapError(makeGuestSdkSessionSnapshot(session), sessionHealthSnapshotInvalid),
+        (updatedSession) => decodeSessionHealth({ session: updatedSession, status: "unauthorized" })
+      )
+    ),
+    Match.exhaustive
+  )
 
 const isSuccessStatus = (status: number): boolean => status >= successStatusMin && status < successStatusMax
 
@@ -257,20 +278,18 @@ const makeSessionHealth = (
   result: ActiveCustomerSessionRequestResult,
   cookieJarPort: CookieJarPort
 ): Result.Result<SessionHealth, CheckSessionHealthError> => {
-  switch (result._tag) {
-    case "ActiveCustomerSessionOk":
-      return makeActiveSession(cookieJarPort, snapshot, result.value, result.session)
-    case "ActiveCustomerSessionRetry":
-      return Result.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
-        decodeSessionHealth({ reason: result.reason, session: updatedSnapshot, status: "retry" })
-      )
-    case "ActiveCustomerSessionSchemaChanged":
-      return Result.flatMap(makeSdkSnapshotWithSession(snapshot, result.session), (updatedSnapshot) =>
+  return Match.typeTags<ActiveCustomerSessionRequestResult>()({
+    ActiveCustomerSessionOk: ({ session, value }) => makeActiveSession(cookieJarPort, snapshot, value, session),
+    ActiveCustomerSessionRetry: ({ reason, session }) =>
+      Result.flatMap(makeSdkSnapshotWithSession(snapshot, session), (updatedSnapshot) =>
+        decodeSessionHealth({ reason, session: updatedSnapshot, status: "retry" })
+      ),
+    ActiveCustomerSessionSchemaChanged: ({ session }) =>
+      Result.flatMap(makeSdkSnapshotWithSession(snapshot, session), (updatedSnapshot) =>
         decodeSessionHealth({ session: updatedSnapshot, status: "schema-changed" })
-      )
-    case "ActiveCustomerSessionUnauthorized":
-      return makeReauthRequired(snapshot, result.session)
-  }
+      ),
+    ActiveCustomerSessionUnauthorized: ({ session }) => makeReauthRequired(snapshot, session)
+  })(result)
 }
 
 export const checkSessionHealth = (

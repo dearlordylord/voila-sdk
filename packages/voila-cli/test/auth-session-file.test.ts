@@ -16,7 +16,7 @@ import * as path from "node:path"
 import { describe, expect } from "vitest"
 
 import type { LoginSessionSuperseded, LoginSessionWriteError } from "../src/auth-session-file.js"
-import { persistLoginSession } from "../src/auth-session-file.js"
+import { persistLoginSession, persistLoginSessionIfUnchanged } from "../src/auth-session-file.js"
 
 const voilaUrl = "https://voila.ca/"
 const secretCookieValue = "sanitized-cookie"
@@ -95,6 +95,56 @@ describe("persistLoginSession", () => {
       yield* persistLoginSession(file, login)
 
       expect(yield* readRaw(file)).toBe(encode(login))
+    })
+  )
+
+  itLocks("keeps an already matching session snapshot unchanged", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = sessionFile(dir)
+      const login = authenticated("unchanged-login")
+
+      yield* persistLoginSession(file, login)
+      yield* persistLoginSession(file, login)
+
+      expect(yield* readRaw(file)).toBe(encode(login))
+    })
+  )
+
+  itLocks("does not overwrite a newer session during conditional health persistence", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = sessionFile(dir)
+      const checked = authenticated("checked-before-health")
+      const newer = authenticated("newer-during-health")
+      const validated = authenticated("validated-after-health")
+
+      yield* persistLoginSession(file, checked)
+      yield* persistLoginSession(file, newer)
+
+      const error: LoginSessionSuperseded | LoginSessionWriteError = yield* persistLoginSessionIfUnchanged(
+        file,
+        checked,
+        validated
+      ).pipe(Effect.flip)
+
+      expect(error._tag).toBe("VoilaAuthSessionSuperseded")
+      expect(yield* readRaw(file)).toBe(encode(newer))
+    })
+  )
+
+  itLocks("saves and then keeps matching conditional health results", () =>
+    Effect.gen(function* () {
+      const dir = yield* makeTempDir
+      const file = sessionFile(dir)
+      const checked = authenticated("checked")
+      const validated = authenticated("validated")
+
+      yield* persistLoginSession(file, checked)
+      yield* persistLoginSessionIfUnchanged(file, checked, validated)
+      yield* persistLoginSessionIfUnchanged(file, validated, validated)
+
+      expect(yield* readRaw(file)).toBe(encode(validated))
     })
   )
 

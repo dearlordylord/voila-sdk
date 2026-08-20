@@ -14,7 +14,7 @@ The server reads configuration from environment variables:
 - `VOILA_GUEST=1`: force guest-session behavior.
 - `VOILA_USER_AGENT`: optional browser identity override. The built-in default works for most users.
 - `VOILA_KEEPALIVE=0`: disable the background authenticated-session keepalive.
-- `VOILA_KEEPALIVE_INTERVAL_SECONDS`: healthy keepalive interval in seconds (default `86400`, minimum `3600`).
+- `VOILA_KEEPALIVE_INTERVAL_SECONDS`: canonical whole-second healthy interval (default `86400`, minimum `3600`). Fractional, non-finite, unsafe, exponent, and below-minimum values fail startup.
 - `MCP_TRANSPORT`: `stdio` by default, or `http`.
 - `MCP_HTTP_HOST`: HTTP bind host. Defaults to `127.0.0.1`.
 - `MCP_HTTP_PORT` / `PORT`: HTTP port. Defaults to `3000`.
@@ -35,6 +35,15 @@ remote agents. Keepalive is read-only and never mutates the cart; set
 session snapshot stops keepalive as `misconfigured` rather than bootstrapping a
 guest. Once an existing authenticated session drops to re-authentication-required,
 keepalive logs it (to stderr) and the next tool call surfaces `authGuidance`.
+
+Keepalive startup has three explicit states: operator-disabled, ineligible
+(guest mode or no configured session path), and enabled with a validated
+configuration. The background owner uses expiry policy `"continue"`, so an
+expired session is reported and the next tool call provides re-auth guidance;
+the foreground runner uses `"stop"` and returns `"expired"`. Timing values are
+Effect-schema brands, not arbitrary numbers, and are driven by Effect Clock,
+Schedule, and Random so the retry/backoff policy is interruptible and
+deterministically testable.
 
 The foreground runner handles `SIGINT` and `SIGTERM` as cancellation, cleans up
 its listeners, and returns the `cancelled` stop reason. The MCP server's
