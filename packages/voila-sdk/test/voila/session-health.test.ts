@@ -1,13 +1,16 @@
-import { Result } from "effect"
+import { Effect, Result } from "effect"
 import { CookieJar, Store } from "tough-cookie"
 import { describe, expect, it } from "vitest"
 
 import {
   checkSessionHealth,
+  connectionFailure,
   type CookieJarPort,
   makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   makeSessionSnapshot,
+  requestDeadlineExceeded,
+  responseReadFailure,
   type SdkSessionSnapshot,
   serializeCookieJar,
   SessionHealthSchema,
@@ -21,7 +24,9 @@ import {
   deadlineExceededTransport,
   respondingTransport,
   responseReadFailureTransport,
-  runWith
+  runWith,
+  sequenceTransport,
+  stubTransport
 } from "../helpers/transport.js"
 import { assertDecodeFailure } from "../helpers/property.js"
 
@@ -138,6 +143,13 @@ const makeResponse = (
   status: number = 200,
   headers: VoilaTransportResponse["headers"] = {}
 ): VoilaTransportResponse => ({ body, headers, status })
+
+const homepageResponse = (isLoggedIn: boolean): VoilaTransportResponse =>
+  makeResponse(
+    `<script>window.__INITIAL_STATE__ = ${JSON.stringify({
+      session: { csrf: { token: csrfToken }, isLoggedIn, metadata: sampleMetadata }
+    })};</script>`
+  )
 
 const failingDeserializeCookieJarPort: CookieJarPort = {
   create: toughCookieJarPort.create,
@@ -264,12 +276,60 @@ describe("session health", () => {
     }
   })
 
-  it("accepts active cart session identifiers for an authenticated snapshot", async () => {
+  it("lets explicit deauthentication evidence override contradictory positive evidence", async () => {
+    const fake = respondingTransport(
+      makeResponse(JSON.stringify({ authenticated: true, customer: { anonymous: true } }))
+    )
+    const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot()), fake)
+
+    expect(Result.isSuccess(result)).toBe(true)
+    expect(fake.requests).toHaveLength(1)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
+    }
+  })
+
+  it.each([
+    { body: { isAuthenticated: false }, name: "top-level isAuthenticated" },
+    { body: { customer: { authenticated: false } }, name: "customer authenticated" },
+    { body: { customer: { anonymous: true } }, name: "customer anonymous" }
+  ])("requires reauthentication for negative $name evidence", async ({ body }) => {
+    const fake = respondingTransport(makeResponse(JSON.stringify(body)))
+    const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot()), fake)
+
+    expect(Result.isSuccess(result)).toBe(true)
+    expect(fake.requests).toHaveLength(1)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
+    }
+  })
+
+  it("requires reauthentication when only anonymous cart session identifiers are returned", async () => {
     const result = await runWith(
       checkSessionHealth(makeAuthenticatedSnapshot()),
-      respondingTransport(
-        makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id", type: "CART" }))
-      )
+      sequenceTransport([
+        makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id", type: "CART" })),
+        homepageResponse(false)
+      ])
+    )
+
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result)) {
+      expect(result.success.status).toBe("reauth-required")
+      expect(result.success.session.kind).toBe("authenticated")
+    }
+  })
+
+  it("uses homepage login state instead of a stored authenticated cookie for ambiguous responses", async () => {
+    const result = await runWith(
+      checkSessionHealth(makeAuthenticatedCookieSnapshot()),
+      sequenceTransport([
+        makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id", type: "CART" })),
+        homepageResponse(true)
+      ])
     )
 
     expect(Result.isSuccess(result)).toBe(true)
@@ -280,19 +340,68 @@ describe("session health", () => {
     }
   })
 
-  it("preserves authenticated cookie sessions when active cart identifiers are returned", async () => {
+  it("reports homepage schema drift while confirming ambiguous authentication", async () => {
     const result = await runWith(
-      checkSessionHealth(makeAuthenticatedCookieSnapshot()),
-      respondingTransport(
-        makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id", type: "CART" }))
-      )
+      checkSessionHealth(makeAuthenticatedSnapshot()),
+      sequenceTransport([
+        makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id" })),
+        makeResponse("<html>missing initial state</html>")
+      ])
     )
 
     expect(Result.isSuccess(result)).toBe(true)
 
     if (Result.isSuccess(result)) {
-      expect(result.success.status).toBe("active")
-      expect(result.success.session.kind).toBe("authenticated")
+      expect(result.success.status).toBe("schema-changed")
+    }
+  })
+
+  it.each([
+    { expectedStatus: "reauth-required", homepageStatus: 401 },
+    { expectedStatus: "reauth-required", homepageStatus: 403 },
+    { expectedStatus: "retry", homepageStatus: 500 }
+  ])(
+    "maps ambiguous authentication homepage status $homepageStatus to $expectedStatus",
+    async ({ expectedStatus, homepageStatus }) => {
+      const result = await runWith(
+        checkSessionHealth(makeAuthenticatedSnapshot()),
+        sequenceTransport([
+          makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id" })),
+          makeResponse("", homepageStatus)
+        ])
+      )
+
+      expect(Result.isSuccess(result)).toBe(true)
+
+      if (Result.isSuccess(result)) {
+        expect(result.success.status).toBe(expectedStatus)
+
+        if (result.success.status === "retry") {
+          expect(result.success.reason).toBe("server")
+        }
+      }
+    }
+  )
+
+  it.each([
+    { error: connectionFailure(), name: "connection failure" },
+    { error: requestDeadlineExceeded(1_000), name: "deadline" },
+    { error: responseReadFailure(), name: "response read failure" }
+  ])("maps homepage $name during ambiguous authentication to network retry", async ({ error }) => {
+    let requestCount = 0
+    const fake = stubTransport(() => {
+      requestCount += 1
+
+      return requestCount === 1
+        ? Effect.succeed(makeResponse(JSON.stringify({ cartId: "sanitized-cart-id", regionId: "sanitized-region-id" })))
+        : Effect.fail(error)
+    })
+    const result = await runWith(checkSessionHealth(makeAuthenticatedSnapshot()), fake)
+
+    expect(Result.isSuccess(result)).toBe(true)
+
+    if (Result.isSuccess(result) && result.success.status === "retry") {
+      expect(result.success.reason).toBe("network")
     }
   })
 
@@ -485,7 +594,7 @@ describe("session health", () => {
     }
   })
 
-  it("treats an authenticated-cookie read failure as lost authenticated evidence", async () => {
+  it("maps cookie restoration failures during homepage authentication confirmation to retry health", async () => {
     const fake = respondingTransport(makeResponse(JSON.stringify({})))
     const result = await runWith(
       checkSessionHealth(makeAuthenticatedSnapshot(), makeFailingSecondDeserializeCookieJarPort()),
@@ -496,7 +605,11 @@ describe("session health", () => {
     expect(fake.requests).toHaveLength(1)
 
     if (Result.isSuccess(result)) {
-      expect(result.success.status).toBe("reauth-required")
+      expect(result.success.status).toBe("retry")
+
+      if (result.success.status === "retry") {
+        expect(result.success.reason).toBe("persistence")
+      }
     }
   })
 

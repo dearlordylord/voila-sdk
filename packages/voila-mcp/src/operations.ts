@@ -278,12 +278,15 @@ const runSessionOperation = <S extends Schema.ConstraintDecoder<unknown>>(
   Effect.flatMap(parseInput(schema, input), (parsed) =>
     runSessionResult(env, (current) =>
       Effect.matchEffect(
-        withCsrfRefreshRetry(current.session, (session) => execute(session, parsed)),
+        withCsrfRefreshRetry(current.session, current.kind, (session) => execute(session, parsed)),
         {
-          onFailure: (error) =>
-            Effect.succeed({
-              value: failure(redactError(error), authGuidanceOnFailure ? env.authGuidance : undefined)
-            }),
+          onFailure: (error) => {
+            const redacted = redactError(error)
+            const authGuidance =
+              authGuidanceOnFailure || redacted._tag === "VoilaUnauthorizedSession" ? env.authGuidance : undefined
+
+            return Effect.succeed({ value: failure(redacted, authGuidance) })
+          },
           onSuccess: (result) => Effect.fromResult(refreshedOutcome(env, current, result))
         }
       )

@@ -77,11 +77,13 @@ const makeAuthenticatedSdkSessionForTest = (): SdkSessionSnapshot => {
  * forward the way the file cycle does — over a scripted transport.
  */
 export const makeStubEnvironment = (
-  respond: (request: VoilaTransportRequest) => Effect.Effect<VoilaTransportResponse, VoilaTransportError>
+  respond: (request: VoilaTransportRequest) => Effect.Effect<VoilaTransportResponse, VoilaTransportError>,
+  options: { readonly sessionKind?: SdkSessionSnapshot["kind"] } = {}
 ): { readonly env: OperationEnvironment; readonly saved: () => SdkSessionSnapshot | undefined } => {
   let savedSession: SdkSessionSnapshot | undefined
   let savedAuthenticatedSession: SdkSessionSnapshot | undefined
-  const initialSession = makeSdkSessionForTest()
+  const initialSession =
+    options.sessionKind === "authenticated" ? makeAuthenticatedSdkSessionForTest() : makeSdkSessionForTest()
   const initialAuthenticatedSession = makeAuthenticatedSdkSessionForTest()
 
   return {

@@ -252,7 +252,7 @@ export type InitialState = Schema.Schema.Type<typeof InitialStateSchema>
 // and a token rotation that depended on all of them parsing would fail for
 // reasons that have nothing to do with the token.
 export const InitialStateSessionSchema = Schema.Struct({
-  session: Schema.Struct({ csrf: CsrfStateSchema, metadata: SessionMetadataSchema })
+  session: Schema.Struct({ csrf: CsrfStateSchema, isLoggedIn: Schema.Boolean, metadata: SessionMetadataSchema })
 })
 
 export type InitialStateSession = Schema.Schema.Type<typeof InitialStateSessionSchema>

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest"
 import type { CookieJarPort, CookieJarPortError, SessionSnapshot, VoilaTransportResponse } from "../../src/index.js"
 import {
   makeSessionSnapshot,
-  refreshSessionCsrf,
+  refreshSessionCsrf as refreshSessionCsrfSdk,
   serializeCookieJar,
   toughCookieJarPort,
   VOILA_BASE_URL
@@ -63,7 +63,7 @@ const homepageHtml = (session: unknown): string =>
     session
   })};</script></body></html>`
 
-const freshSessionState = { csrf: { token: freshToken }, metadata: freshMetadata }
+const freshSessionState = { csrf: { token: freshToken }, isLoggedIn: true, metadata: freshMetadata }
 
 const homepageResponse = (
   body: string = homepageHtml(freshSessionState),
@@ -93,7 +93,36 @@ const failingDeserializeCookieJarPort: CookieJarPort = {
   serialize: toughCookieJarPort.serialize
 }
 
+const refreshSessionCsrf = (session: SessionSnapshot, cookieJarPort: CookieJarPort = toughCookieJarPort) =>
+  refreshSessionCsrfSdk(session, "authenticated", cookieJarPort)
+
 describe("refreshSessionCsrf", () => {
+  it("rotates a guest token when the homepage truthfully reports logged-out state", async () => {
+    const result = await runWith(
+      refreshSessionCsrfSdk(makeSession([sessionCookie]), "guest"),
+      respondingTransport(homepageResponse(homepageHtml({ ...freshSessionState, isLoggedIn: false })))
+    )
+
+    if (Result.isFailure(result)) {
+      throw new Error(`Expected guest refresh to succeed, got ${result.failure._tag}`)
+    }
+
+    expect(result.success.csrf.token).toBe(freshToken)
+  })
+
+  it("rejects a guest refresh when the homepage reports an authenticated account", async () => {
+    const result = await runWith(
+      refreshSessionCsrfSdk(makeSession([sessionCookie]), "guest"),
+      respondingTransport(homepageResponse())
+    )
+
+    expect(Result.isFailure(result)).toBe(true)
+
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshAuthenticationMismatch")
+    }
+  })
+
   it("adopts the token and metadata the homepage publishes", async () => {
     const fake = respondingTransport(homepageResponse())
     const result = await runWith(refreshSessionCsrf(makeSession([sessionCookie])), fake)
@@ -139,7 +168,9 @@ describe("refreshSessionCsrf", () => {
   it("reports a token the session already carries rather than retrying with it", async () => {
     const result = await runWith(
       refreshSessionCsrf(makeSession([sessionCookie])),
-      respondingTransport(homepageResponse(homepageHtml({ csrf: { token: staleToken }, metadata: freshMetadata })))
+      respondingTransport(
+        homepageResponse(homepageHtml({ csrf: { token: staleToken }, isLoggedIn: true, metadata: freshMetadata }))
+      )
     )
 
     expect(Result.isFailure(result)).toBe(true)
@@ -149,11 +180,39 @@ describe("refreshSessionCsrf", () => {
     }
   })
 
-  it("refuses a refresh that drops the authenticated cookie", async () => {
+  it("trusts explicit server login state when the homepage drops a stale authenticated cookie", async () => {
     const result = await runWith(
       refreshSessionCsrf(makeSession([sessionCookie, authenticatedCookie])),
       respondingTransport(
         homepageResponse(undefined, { "set-cookie": "userEmail=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT" })
+      )
+    )
+
+    if (Result.isFailure(result)) {
+      throw new Error(`Expected refresh to succeed, got ${result.failure._tag}`)
+    }
+
+    expect(cookiesOf(result.success)).not.toContain("userEmail=")
+  })
+
+  it("refuses a refresh when the homepage reports that the account is logged out", async () => {
+    const result = await runWith(
+      refreshSessionCsrf(makeSession([sessionCookie, authenticatedCookie])),
+      respondingTransport(homepageResponse(homepageHtml({ ...freshSessionState, isLoggedIn: false })))
+    )
+
+    expect(Result.isFailure(result)).toBe(true)
+
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("CsrfRefreshSessionDeauthenticated")
+    }
+  })
+
+  it("reports deauthentication before validating a logged-out session's blank token", async () => {
+    const result = await runWith(
+      refreshSessionCsrf(makeSession([sessionCookie, authenticatedCookie])),
+      respondingTransport(
+        homepageResponse(homepageHtml({ ...freshSessionState, csrf: { token: " " }, isLoggedIn: false }))
       )
     )
 
@@ -206,7 +265,9 @@ describe("refreshSessionCsrf", () => {
   it("reports a blank token as malformed rather than adopting it", async () => {
     const result = await runWith(
       refreshSessionCsrf(makeSession([sessionCookie])),
-      respondingTransport(homepageResponse(homepageHtml({ csrf: { token: " " }, metadata: freshMetadata })))
+      respondingTransport(
+        homepageResponse(homepageHtml({ csrf: { token: " " }, isLoggedIn: true, metadata: freshMetadata }))
+      )
     )
 
     expect(Result.isFailure(result)).toBe(true)

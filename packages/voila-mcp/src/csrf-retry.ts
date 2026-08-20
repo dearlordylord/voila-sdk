@@ -1,4 +1,10 @@
-import { refreshSessionCsrf, type SessionSnapshot, type VoilaJsonResult, type VoilaTransport } from "@firfi/voila-sdk"
+import {
+  type CsrfRefreshAuthentication,
+  refreshSessionCsrf,
+  type SessionSnapshot,
+  type VoilaJsonResult,
+  type VoilaTransport
+} from "@firfi/voila-sdk"
 import { Effect } from "effect"
 
 const unauthorizedTag = "VoilaUnauthorizedSession"
@@ -15,10 +21,14 @@ const isUnauthorizedSessionError = (error: unknown): boolean =>
  */
 export const withCsrfRefreshRetry = (
   session: SessionSnapshot,
+  authentication: CsrfRefreshAuthentication,
   attempt: (session: SessionSnapshot) => Effect.Effect<VoilaJsonResult<unknown>, unknown, VoilaTransport>
 ): Effect.Effect<VoilaJsonResult<unknown>, unknown, VoilaTransport> =>
   Effect.catch(attempt(session), (error) =>
     isUnauthorizedSessionError(error)
-      ? Effect.matchEffect(refreshSessionCsrf(session), { onFailure: () => Effect.fail(error), onSuccess: attempt })
+      ? Effect.matchEffect(refreshSessionCsrf(session, authentication), {
+          onFailure: () => Effect.fail(error),
+          onSuccess: attempt
+        })
       : Effect.fail(error)
   )

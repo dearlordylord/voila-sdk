@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
 
 import { makeStubEnvironment, runOperation } from "./helpers/operations.js"
+import { makeAuthGuidance } from "../src/auth-guidance.js"
 
 const cartItems = { items: [{ productId: "11111111-1111-4111-8111-111111111111", quantity: 1 }] }
 const freshToken = "fresh-csrf-token"
@@ -11,10 +12,11 @@ const freshToken = "fresh-csrf-token"
 const fixture = (name: string): Promise<string> =>
   readFile(new URL(`../../voila-sdk/test/fixtures/${name}`, import.meta.url), "utf8")
 
-const homepageBody = (token: string): string =>
+const homepageBody = (token: string, isLoggedIn = true): string =>
   `<html><body><script>window.__INITIAL_STATE__ = ${JSON.stringify({
     session: {
       csrf: { token },
+      isLoggedIn,
       metadata: { assetVersion: "fresh-asset-version", pageViewId: "fresh-page-view-id", regionId: "region-id" }
     }
   })};</script></body></html>`
@@ -34,7 +36,7 @@ describe("CSRF refresh retry", () => {
 
     const fake = makeStubEnvironment((request) => {
       if (isHomepage(request)) {
-        return ok(homepageBody(freshToken))
+        return ok(homepageBody(freshToken, false))
       }
 
       tokens.push(request.headers["X-CSRF-TOKEN"])
@@ -84,6 +86,34 @@ describe("CSRF refresh retry", () => {
     if (!result.ok) {
       expect(result.error._tag).toBe("VoilaUnauthorizedSession")
       expect(result.error.status).toBe(401)
+    }
+  })
+
+  it("returns login guidance without retrying a write when the homepage reports logout", async () => {
+    let writes = 0
+    const fake = makeStubEnvironment(
+      (request) => {
+        if (isHomepage(request)) {
+          return ok(homepageBody(freshToken, false))
+        }
+
+        writes += 1
+        return status(403)
+      },
+      { sessionKind: "authenticated" }
+    )
+
+    const result = await runOperation("voila_add_cart_items", cartItems, {
+      ...fake.env,
+      authGuidance: makeAuthGuidance()
+    })
+
+    expect(result.ok).toBe(false)
+    expect(writes).toBe(1)
+
+    if (!result.ok) {
+      expect(result.error._tag).toBe("VoilaUnauthorizedSession")
+      expect(result.error.authGuidance).toBeDefined()
     }
   })
 

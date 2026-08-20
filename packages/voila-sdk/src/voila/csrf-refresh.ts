@@ -16,17 +16,16 @@ export type CsrfRefreshError =
   | { readonly _tag: "CsrfRefreshInitialStateMalformed"; readonly message: string }
   | { readonly _tag: "CsrfRefreshTokenUnchanged"; readonly message: string }
   | { readonly _tag: "CsrfRefreshSessionDeauthenticated"; readonly message: string }
+  | { readonly _tag: "CsrfRefreshAuthenticationMismatch"; readonly message: string }
   | { readonly _tag: "CsrfRefreshPersistenceFailure"; readonly message: string }
+
+export type CsrfRefreshAuthentication = "authenticated" | "guest"
 
 const homepageUrl = new URL("/", VOILA_BASE_URL)
 const emptyStringLength = 0
 const successStatusMin = 200
 const successStatusMax = 300
 const setCookieHeader = "set-cookie"
-// the cookie the session-health check already treats as evidence of a logged-in
-// account: if the homepage hands back a session without it, the refresh is a
-// logout, not a token rotation
-const authenticatedCookieName = "userEmail"
 
 const non2xxResponse = (status: number): CsrfRefreshError => ({
   _tag: "CsrfRefreshNon2xxResponse",
@@ -49,15 +48,17 @@ const sessionDeauthenticated = (): CsrfRefreshError => ({
   message: "Voila homepage no longer recognizes the session as authenticated"
 })
 
+const authenticationMismatch = (): CsrfRefreshError => ({
+  _tag: "CsrfRefreshAuthenticationMismatch",
+  message: "Voila homepage authentication state does not match the session kind"
+})
+
 const persistenceFailure = (): CsrfRefreshError => ({
   _tag: "CsrfRefreshPersistenceFailure",
   message: "Refreshed session cookies could not be restored or persisted"
 })
 
 const isSuccessStatus = (status: number): boolean => status >= successStatusMin && status < successStatusMax
-
-const hasAuthenticatedCookie = (jar: CookieJar): boolean =>
-  jar.getCookiesSync(homepageUrl.href).some((cookie) => cookie.key === authenticatedCookieName)
 
 const foldSetCookies = (jar: CookieJar, response: VoilaTransportResponse): Result.Result<void, CsrfRefreshError> => {
   for (const cookie of getHeaderValues(response.headers, setCookieHeader)) {
@@ -86,13 +87,22 @@ const makeRefreshedSession = (
   cookieJarPort: CookieJarPort,
   jar: CookieJar,
   session: SessionSnapshot,
-  response: VoilaTransportResponse
+  response: VoilaTransportResponse,
+  authentication: CsrfRefreshAuthentication
 ): Result.Result<SessionSnapshot, CsrfRefreshError> => {
   if (!isSuccessStatus(response.status)) {
     return Result.fail(non2xxResponse(response.status))
   }
 
   return Result.flatMap(readInitialStateSession(response.body), (initialState) => {
+    if (authentication === "authenticated" && !initialState.session.isLoggedIn) {
+      return Result.fail(sessionDeauthenticated())
+    }
+
+    if (authentication === "guest" && initialState.session.isLoggedIn) {
+      return Result.fail(authenticationMismatch())
+    }
+
     if (initialState.session.csrf.token.trim().length === emptyStringLength) {
       return Result.fail(initialStateMalformed())
     }
@@ -101,13 +111,7 @@ const makeRefreshedSession = (
       return Result.fail(tokenUnchanged())
     }
 
-    const wasAuthenticated = hasAuthenticatedCookie(jar)
-
     return Result.flatMap(foldSetCookies(jar, response), () => {
-      if (wasAuthenticated && !hasAuthenticatedCookie(jar)) {
-        return Result.fail(sessionDeauthenticated())
-      }
-
       return Result.flatMap(Result.mapError(cookieJarPort.serialize(jar), persistenceFailure), (cookieJar) =>
         Result.mapError(
           makeSessionSnapshot(initialState.session.metadata, initialState.session.csrf, cookieJar),
@@ -126,6 +130,7 @@ const makeRefreshedSession = (
  */
 export const refreshSessionCsrf = (
   session: SessionSnapshot,
+  authentication: CsrfRefreshAuthentication,
   cookieJarPort: CookieJarPort = toughCookieJarPort
 ): Effect.Effect<SessionSnapshot, CsrfRefreshError, VoilaTransport> =>
   Effect.gen(function* () {
@@ -142,5 +147,5 @@ export const refreshSessionCsrf = (
       url: homepageUrl
     })
 
-    return yield* Effect.fromResult(makeRefreshedSession(cookieJarPort, jar, session, response))
+    return yield* Effect.fromResult(makeRefreshedSession(cookieJarPort, jar, session, response, authentication))
   })

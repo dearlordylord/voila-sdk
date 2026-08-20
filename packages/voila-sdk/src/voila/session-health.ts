@@ -10,6 +10,7 @@ import type {
 } from "../domain/schemas/index.js"
 import { ActiveCustomerSessionResponseSchema, SessionHealthSchema } from "../domain/schemas/index.js"
 import { getHeaderValues, makeVoilaHeaders } from "./headers.js"
+import { confirmHomepageAuthentication } from "./homepage-authentication.js"
 import type { CookieJarPort } from "./session-snapshot.js"
 import { VoilaTransport, type VoilaTransportResponse } from "./transport.js"
 import {
@@ -37,7 +38,6 @@ type ActiveCustomerSessionRequestResult =
   | { readonly _tag: "ActiveCustomerSessionUnauthorized"; readonly session: SessionSnapshot }
 
 const emptyStringLength = 0
-const authenticatedCookieName = "userEmail"
 const forbiddenStatus = 403
 const setCookieHeader = "set-cookie"
 const successStatusMax = 300
@@ -58,29 +58,11 @@ const responseSaysAuthenticated = (response: ActiveCustomerSessionResponse): boo
   response.customer?.authenticated === true ||
   response.status?.toLowerCase() === "authenticated"
 
-const responseSaysActiveCartSession = (response: ActiveCustomerSessionResponse): boolean =>
-  typeof response.cartId === "string" && typeof response.regionId === "string"
-
-const sessionHasAuthenticatedCookie = (cookieJarPort: CookieJarPort, session: SessionSnapshot): boolean => {
-  const jar = cookieJarPort.deserialize(session.cookieJar)
-
-  if (Result.isFailure(jar)) {
-    return false
-  }
-
-  return jar.success
-    .getCookiesSync(makeActiveCustomerSessionRequest().url.href)
-    .some((cookie) => cookie.key === authenticatedCookieName)
-}
-
-const responseHasAuthenticatedEvidence = (
-  cookieJarPort: CookieJarPort,
-  response: ActiveCustomerSessionResponse,
-  session: SessionSnapshot
-): boolean =>
-  responseSaysAuthenticated(response) ||
-  responseSaysActiveCartSession(response) ||
-  sessionHasAuthenticatedCookie(cookieJarPort, session)
+const responseSaysDeauthenticated = (response: ActiveCustomerSessionResponse): boolean =>
+  response.authenticated === false ||
+  response.isAuthenticated === false ||
+  response.customer?.authenticated === false ||
+  response.customer?.anonymous === true
 
 const makeSdkSnapshotWithSession = (
   previous: SdkSessionSnapshot,
@@ -97,22 +79,18 @@ const makeSdkSnapshotWithSession = (
   )
 
 const makeActiveSession = (
-  cookieJarPort: CookieJarPort,
   previous: SdkSessionSnapshot,
-  response: ActiveCustomerSessionResponse,
   session: SessionSnapshot
 ): Result.Result<SessionHealth, CheckSessionHealthError> => {
   return Match.value(previous).pipe(
     Match.when({ kind: "authenticated" }, ({ account }) =>
-      responseHasAuthenticatedEvidence(cookieJarPort, response, session)
-        ? Result.flatMap(
-            Result.mapError(
-              makeAuthenticatedSdkSessionSnapshot(session, "authenticated", account),
-              sessionHealthSnapshotInvalid
-            ),
-            (updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })
-          )
-        : makeReauthRequired(previous, session)
+      Result.flatMap(
+        Result.mapError(
+          makeAuthenticatedSdkSessionSnapshot(session, "authenticated", account),
+          sessionHealthSnapshotInvalid
+        ),
+        (updatedSession) => decodeSessionHealth({ session: updatedSession, status: "active" })
+      )
     ),
     Match.when({ kind: "guest" }, () =>
       Result.flatMap(
@@ -273,13 +251,47 @@ const requestActiveCustomerSession = (
   })
 }
 
-const makeSessionHealth = (
+const confirmAmbiguousAuthentication = (
   snapshot: SdkSessionSnapshot,
   result: ActiveCustomerSessionRequestResult,
   cookieJarPort: CookieJarPort
+): Effect.Effect<ActiveCustomerSessionRequestResult, never, VoilaTransport> => {
+  if (snapshot.kind !== "authenticated" || result._tag !== "ActiveCustomerSessionOk") {
+    return Effect.succeed(result)
+  }
+
+  if (responseSaysDeauthenticated(result.value)) {
+    return Effect.succeed({ _tag: "ActiveCustomerSessionUnauthorized", session: result.session })
+  }
+
+  if (responseSaysAuthenticated(result.value)) {
+    return Effect.succeed(result)
+  }
+
+  return Effect.map(confirmHomepageAuthentication(result.session, cookieJarPort), (confirmed) =>
+    Match.typeTags<typeof confirmed>()({
+      HomepageAuthenticated: ({ session }) =>
+        ({
+          _tag: "ActiveCustomerSessionOk",
+          session,
+          value: { authenticated: true }
+        }) satisfies ActiveCustomerSessionRequestResult,
+      HomepageAuthenticationRetry: ({ reason, session }) =>
+        ({ _tag: "ActiveCustomerSessionRetry", reason, session }) satisfies ActiveCustomerSessionRequestResult,
+      HomepageAuthenticationSchemaChanged: ({ session }) =>
+        ({ _tag: "ActiveCustomerSessionSchemaChanged", session }) satisfies ActiveCustomerSessionRequestResult,
+      HomepageDeauthenticated: ({ session }) =>
+        ({ _tag: "ActiveCustomerSessionUnauthorized", session }) satisfies ActiveCustomerSessionRequestResult
+    })(confirmed)
+  )
+}
+
+const makeSessionHealth = (
+  snapshot: SdkSessionSnapshot,
+  result: ActiveCustomerSessionRequestResult
 ): Result.Result<SessionHealth, CheckSessionHealthError> => {
   return Match.typeTags<ActiveCustomerSessionRequestResult>()({
-    ActiveCustomerSessionOk: ({ session, value }) => makeActiveSession(cookieJarPort, snapshot, value, session),
+    ActiveCustomerSessionOk: ({ session }) => makeActiveSession(snapshot, session),
     ActiveCustomerSessionRetry: ({ reason, session }) =>
       Result.flatMap(makeSdkSnapshotWithSession(snapshot, session), (updatedSnapshot) =>
         decodeSessionHealth({ reason, session: updatedSnapshot, status: "retry" })
@@ -297,5 +309,7 @@ export const checkSessionHealth = (
   cookieJarPort: CookieJarPort = toughCookieJarPort
 ): Effect.Effect<SessionHealth, CheckSessionHealthError, VoilaTransport> =>
   Effect.flatMap(requestActiveCustomerSession(snapshot.session, cookieJarPort), (result) =>
-    Effect.fromResult(makeSessionHealth(snapshot, result, cookieJarPort))
+    Effect.flatMap(confirmAmbiguousAuthentication(snapshot, result, cookieJarPort), (confirmed) =>
+      Effect.fromResult(makeSessionHealth(snapshot, confirmed))
+    )
   )
