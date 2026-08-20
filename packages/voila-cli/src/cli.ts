@@ -1,3 +1,4 @@
+import type { KeepaliveStopReason } from "@firfi/voila-sdk"
 import { normalizeCliCartInput, type OperationExecutionResult, type VoilaOperationName } from "@firfi/voila-mcp"
 import { type StateFilePath, StateFilePathSchema } from "@firfi/voila-session-store"
 import { Result, Schema } from "effect"
@@ -15,7 +16,13 @@ export interface CliLoginOptions {
   readonly timeoutMs?: number
 }
 
+export interface CliKeepaliveOptions {
+  readonly intervalSeconds?: number
+  readonly sessionPath: StateFilePath
+}
+
 export interface CliPorts {
+  readonly keepalive: (options: CliKeepaliveOptions) => Promise<KeepaliveStopReason>
   readonly login: (options: CliLoginOptions) => Promise<OperationExecutionResult>
   readonly runOperation: (
     name: VoilaOperationName,
@@ -39,10 +46,12 @@ interface ParsedOptions {
 const successExitCode = 0
 const failureExitCode = 1
 const usageExitCode = 2
+const minKeepaliveIntervalSeconds = 3600
 
 const helpText = `Usage:
   voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]
   voila auth status [--session <path>] [--json]
+  voila auth keepalive [--session <path>] [--interval <s>]
   voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
   voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]
@@ -250,17 +259,52 @@ const runOperation = async (
   return render(name, result, getJsonFlag(parsed))
 }
 
-const runAuth = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
-  const subcommand = parsed.positionals[1]
+const renderKeepalive = (reason: KeepaliveStopReason): CliRunResult => {
+  switch (reason) {
+    case "expired":
+      return {
+        exitCode: failureExitCode,
+        stderr: "Session requires re-authentication. Run: voila auth login\n",
+        stdout: ""
+      }
+    case "misconfigured":
+      return {
+        exitCode: usageExitCode,
+        stderr: "No session file found or the environment is invalid. Run: voila auth login\n",
+        stdout: ""
+      }
+    default:
+      return ok("Keepalive stopped.\n")
+  }
+}
 
-  if (subcommand === "status") {
-    return runOperation(ports, "voila_check_session_health", {}, parsed)
+const runKeepalive = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
+  const intervalOption = parsed.options.get("interval")
+  const intervalSeconds = intervalOption === undefined ? undefined : parsePositiveInteger(intervalOption, "--interval")
+
+  if (intervalSeconds !== undefined && typeof intervalSeconds !== "number") {
+    return intervalSeconds
   }
 
-  if (subcommand !== "login") {
-    return usage("Expected auth login or auth status")
+  if (intervalSeconds !== undefined && intervalSeconds < minKeepaliveIntervalSeconds) {
+    return usage(`--interval must be at least ${minKeepaliveIntervalSeconds} seconds`)
   }
 
+  const sessionPath = getSessionPath(parsed)
+
+  // getSessionPath parses the path at the edge, where the argument arrives, and
+  // returns a usage error instead of a path when the value is not absolute; the
+  // keepalive command handles that error before it can reach the loop.
+  if (typeof sessionPath !== "string") {
+    return sessionPath
+  }
+
+  const reason = await ports.keepalive({ sessionPath, ...(intervalSeconds === undefined ? {} : { intervalSeconds }) })
+
+  return renderKeepalive(reason)
+}
+
+const runAuthLogin = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
   const timeout =
     parsed.options.get("timeout-ms") === undefined
       ? undefined
@@ -283,6 +327,24 @@ const runAuth = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunRe
   })
 
   return render("auth_login", result, getJsonFlag(parsed))
+}
+
+const runAuth = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {
+  const subcommand = parsed.positionals[1]
+
+  if (subcommand === "status") {
+    return runOperation(ports, "voila_check_session_health", {}, parsed)
+  }
+
+  if (subcommand === "keepalive") {
+    return runKeepalive(ports, parsed)
+  }
+
+  if (subcommand === "login") {
+    return runAuthLogin(ports, parsed)
+  }
+
+  return usage("Expected auth login, auth status, or auth keepalive")
 }
 
 const runSearch = async (ports: CliPorts, parsed: ParsedOptions): Promise<CliRunResult> => {

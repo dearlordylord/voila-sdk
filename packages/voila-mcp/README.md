@@ -13,6 +13,8 @@ The server reads configuration from environment variables:
 - `VOILA_AUTH_SESSION_PATH`: absolute path to an SDK session snapshot JSON file, read and written as one path.
 - `VOILA_GUEST=1`: force guest-session behavior.
 - `VOILA_USER_AGENT`: optional browser identity override. The built-in default works for most users.
+- `VOILA_KEEPALIVE=0`: disable the background session keepalive (enabled by default).
+- `VOILA_KEEPALIVE_INTERVAL_SECONDS`: keepalive interval in seconds (default `86400`, minimum `3600`).
 - `MCP_TRANSPORT`: `stdio` by default, or `http`.
 - `MCP_HTTP_HOST`: HTTP bind host. Defaults to `127.0.0.1`.
 - `MCP_HTTP_PORT` / `PORT`: HTTP port. Defaults to `3000`.
@@ -21,6 +23,8 @@ The server reads configuration from environment variables:
 If a tool runs with a guest, expired, missing, or unreadable account session, the tool result includes `authGuidance` with the CLI command to run. The MCP server does not launch a browser; run the command, log in in Chromium, close the browser window to save, then retry the MCP request. A login that lands while the server is running takes effect on the next tool call, without a restart.
 
 Guest sessions are held in memory and never written to the session file.
+
+The server runs a background keepalive on startup: it periodically re-checks the active session (`GET /sessions/active`), which folds rotated `Set-Cookie` values back into the stored session snapshot and keeps an idle account session warm. Voila has no refresh token, so this cannot outlast an absolute server-side expiry, but it prevents idle-timeout logout for long-lived remote agents. Keepalive is read-only and never mutates the cart; set `VOILA_KEEPALIVE=0` to turn it off. Once a session drops to re-authentication-required, keepalive logs it (to stderr) and the next tool call surfaces `authGuidance`.
 
 ## Client Example
 

@@ -1,4 +1,15 @@
 {
+  "entries": [
+    {
+      "path": "$.cli.help.stdout",
+      "before": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "after": "Usage:\n  voila auth login --session <path> [--profile <dir>] [--timeout-ms <ms>]\n  voila auth status [--session <path>] [--json]\n  voila auth keepalive [--session <path>] [--interval <s>]\n  voila search <query> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila discounts [query] [--min-percent <n>] [--min-amount <n>] [--sort best-percent|best-amount|price-asc] [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila category products <category-id> [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders list [--page-size <n>] [--page-token <token>] [--session <path>] [--json]\n  voila orders details <order-id> [--session <path>] [--json]\n  voila orders items [--from-date <yyyy-mm-dd>] [--to-date <yyyy-mm-dd>] [--page-size <n>] [--page-token <token>] [--max-orders <n>] [--session <path>] [--json]\n  voila cart get [--session <path>] [--json]\n  voila cart add <product-id> --quantity <n> [--session <path>] [--json]\n  voila cart remove <product-id> --quantity <n> [--session <path>] [--json]\n",
+      "evidence": [
+        "https://github.com/dearlordylord/voila-sdk/pull/3"
+      ],
+      "rationale": "Keepalive PR adds the `voila auth keepalive` subcommand to the CLI help text; wire MCP protocol samples remain exact outside explicit entries."
+    }
+  ],
   "version": 1,
-  "entries": []
+  "groups": []
 }
