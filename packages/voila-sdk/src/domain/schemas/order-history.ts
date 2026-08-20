@@ -2,16 +2,14 @@ import { Effect, Schema } from "effect"
 
 import { MoneySchema } from "./money.js"
 
+import { PageTokenSchema } from "./identifiers.js"
+
 import { withUnknownStringFields } from "./unknown-fields.js"
 
 export const MIN_ORDER_PAGE_SIZE = 1
 export const MAX_ORDER_PAGE_SIZE = 50
 export const DEFAULT_ORDER_PAGE_SIZE = 20
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.check(Schema.isTrimmed()),
-  Schema.check(Schema.isMinLength(1))
-)
 const OrderPageSizeSchema = Schema.Number.pipe(
   Schema.check(Schema.isFinite()),
   Schema.check(Schema.isInt()),
@@ -21,7 +19,7 @@ const OrderPageSizeSchema = Schema.Number.pipe(
 
 export const CompletedOrdersInputSchema = Schema.Struct({
   pageSize: OrderPageSizeSchema.pipe(Schema.withDecodingDefaultType(Effect.succeed(DEFAULT_ORDER_PAGE_SIZE))),
-  pageToken: Schema.optionalKey(NonEmptyTrimmedStringSchema)
+  pageToken: Schema.optionalKey(PageTokenSchema)
 })
 
 export type CompletedOrdersInput = Schema.Schema.Type<typeof CompletedOrdersInputSchema>
@@ -132,7 +130,7 @@ export type RawCompletedOrdersGraphqlResponse = Schema.Schema.Type<typeof RawCom
 
 export const CompletedOrdersPaginationSchema = Schema.Struct({
   hasNextPage: Schema.Boolean,
-  nextPageToken: Schema.optionalKey(Schema.String),
+  nextPageToken: Schema.optionalKey(PageTokenSchema),
   retentionPeriod: Schema.optionalKey(Schema.String)
 })
 

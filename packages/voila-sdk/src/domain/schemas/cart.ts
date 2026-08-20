@@ -1,13 +1,7 @@
 import { Schema } from "effect"
 
 import { MoneySchema } from "./money.js"
-
 import { withUnknownStringFields } from "./unknown-fields.js"
-
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.check(Schema.isTrimmed()),
-  Schema.check(Schema.isMinLength(1))
-)
 
 const NonNegativeIntegerSchema = Schema.Number.pipe(
   Schema.check(Schema.isFinite()),
@@ -21,10 +15,13 @@ const CartQuantityDeltaIntegerSchema = Schema.Number.pipe(
   Schema.check(Schema.makeFilter((quantity) => quantity !== 0, { message: "Cart quantity delta must not be zero" }))
 )
 
-const ProductUuidSchema = Schema.String.pipe(
+export const ProductUuidSchema = Schema.String.pipe(
   Schema.check(Schema.isTrimmed()),
-  Schema.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i))
+  Schema.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)),
+  Schema.brand("ProductUuid")
 )
+
+export type ProductUuid = Schema.Schema.Type<typeof ProductUuidSchema>
 
 export const CartQuantityDeltaSchema = Schema.Struct({
   productId: ProductUuidSchema,
@@ -34,7 +31,7 @@ export const CartQuantityDeltaSchema = Schema.Struct({
 export type CartQuantityDelta = Schema.Schema.Type<typeof CartQuantityDeltaSchema>
 
 export const CartItemQuantityInputSchema = Schema.Struct({
-  productId: NonEmptyTrimmedStringSchema,
+  productId: ProductUuidSchema,
   quantity: CartQuantityDeltaIntegerSchema
 })
 
@@ -103,10 +100,23 @@ export const CartUpdateResponseSchema = Schema.Struct({
 
 export type CartUpdateResponse = Schema.Schema.Type<typeof CartUpdateResponseSchema>
 
+const NormalizedLimitedCartItemSchema = Schema.revealCodec(
+  withUnknownStringFields(
+    Schema.Struct({
+      ...CartViewSignalFieldsSchema.fields,
+      productId: ProductUuidSchema,
+      quantity: NonNegativeIntegerSchema,
+      reason: Schema.String
+    })
+  )
+)
+
 export const NormalizedCartMutationResultSchema = Schema.Struct({
   itemCount: NonNegativeIntegerSchema,
-  itemGroups: Schema.Array(CartItemGroupSchema),
-  limitedItems: Schema.Array(LimitedCartItemSchema),
+  itemGroups: Schema.Array(
+    Schema.Struct({ items: Schema.Array(CartItemSchema.pipe(Schema.fieldsAssign({ productId: ProductUuidSchema }))) })
+  ),
+  limitedItems: Schema.Array(NormalizedLimitedCartItemSchema),
   limitedPromotionIds: Schema.Array(Schema.String),
   pricingNotifications: Schema.Array(CartViewSignalSchema),
   totals: CartTotalsSchema,
@@ -191,20 +201,26 @@ export const AnyCartViewResponseSchema = Schema.Union([CartViewResponseSchema, A
 export type AnyCartViewResponse = Schema.Schema.Type<typeof AnyCartViewResponseSchema>
 
 export const NormalizedCartItemSchema = CartViewItemSchema.pipe(
-  Schema.fieldsAssign({ groupName: Schema.optionalKey(Schema.String) })
+  Schema.fieldsAssign({ groupName: Schema.optionalKey(Schema.String), productId: ProductUuidSchema })
 )
 
 export type NormalizedCartItem = Schema.Schema.Type<typeof NormalizedCartItemSchema>
+
+const NormalizedCartViewSignalSchema = Schema.revealCodec(
+  withUnknownStringFields(
+    Schema.Struct({ ...CartViewSignalFieldsSchema.fields, productId: Schema.optionalKey(ProductUuidSchema) })
+  )
+)
 
 export const NormalizedCartViewSchema = Schema.Struct({
   basketId: Schema.String,
   checkoutRestrictions: Schema.Array(CartCheckoutRestrictionSchema),
   itemCount: NonNegativeIntegerSchema,
   items: Schema.Array(NormalizedCartItemSchema),
-  limitedItems: Schema.Array(CartViewSignalSchema),
-  pricingNotifications: Schema.Array(CartViewSignalSchema),
+  limitedItems: Schema.Array(NormalizedCartViewSignalSchema),
+  pricingNotifications: Schema.Array(NormalizedCartViewSignalSchema),
   totals: CartTotalsSchema,
-  unavailableData: Schema.Array(CartViewSignalSchema)
+  unavailableData: Schema.Array(NormalizedCartViewSignalSchema)
 })
 
 export type NormalizedCartView = Schema.Schema.Type<typeof NormalizedCartViewSchema>

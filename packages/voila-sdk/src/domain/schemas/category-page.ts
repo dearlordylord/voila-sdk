@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 
-import { ProductSearchResponseSchema } from "./product.js"
+import { CategoryIdSchema, PageTokenSchema, RetailerCategoryIdSchema } from "./identifiers.js"
+import { NormalizedSearchProductSchema, ProductSearchResponseSchema, SearchPaginationSchema } from "./product.js"
 
 export const MIN_CATEGORY_PAGE_SIZE = 1
 export const MAX_CATEGORY_PAGE_SIZE = 24
@@ -37,11 +38,11 @@ export const CategoryPageFilterInputSchema = Schema.Struct({
 export type CategoryPageFilterInput = Schema.Schema.Type<typeof CategoryPageFilterInputSchema>
 
 export const CategoryPageInputSchema = Schema.Struct({
-  categoryId: Schema.optionalKey(NonEmptyTrimmedStringSchema),
+  categoryId: Schema.optionalKey(CategoryIdSchema),
   filters: Schema.optionalKey(Schema.Array(CategoryPageFilterInputSchema)),
   pageSize: CategoryPageSizeSchema,
-  pageToken: Schema.optionalKey(NonEmptyTrimmedStringSchema),
-  retailerCategoryId: Schema.optionalKey(NonEmptyTrimmedStringSchema)
+  pageToken: Schema.optionalKey(PageTokenSchema),
+  retailerCategoryId: Schema.optionalKey(RetailerCategoryIdSchema)
 }).pipe(
   Schema.check(
     Schema.makeFilter((input) => input.categoryId !== undefined || input.retailerCategoryId !== undefined, {
@@ -86,3 +87,12 @@ export const CategoryProductPageResponseSchema = ProductSearchResponseSchema.pip
 )
 
 export type CategoryProductPageResponse = Schema.Schema.Type<typeof CategoryProductPageResponseSchema>
+
+export const NormalizedCategoryProductsResultSchema = Schema.Struct({
+  category: CategoryPageSummarySchema,
+  filters: Schema.Array(CategoryPageFilterSchema),
+  pagination: SearchPaginationSchema,
+  products: Schema.Array(NormalizedSearchProductSchema)
+})
+
+export type NormalizedCategoryProductsResult = Schema.Schema.Type<typeof NormalizedCategoryProductsResultSchema>

@@ -94,7 +94,10 @@ const makeEnvironment = (transport: Layer.Layer<VoilaTransport>): OperationEnvir
   const initialSession = makeSdkSessionForTest()
 
   return {
-    session: { withSession: (operation) => Effect.map(operation(initialSession), (outcome) => outcome.value) },
+    session: {
+      withAuthenticatedSession: (operation) => Effect.map(operation(initialSession), (outcome) => outcome.value),
+      withSession: (operation) => Effect.map(operation(initialSession), (outcome) => outcome.value)
+    },
     transport
   }
 }

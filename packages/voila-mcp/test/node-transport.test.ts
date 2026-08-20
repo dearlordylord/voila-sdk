@@ -1,12 +1,17 @@
 import { VoilaTransport, type VoilaTransportRequest, type VoilaTransportResponse } from "@firfi/voila-sdk"
 import { it } from "@effect/vitest"
-import { Deferred, Effect, Fiber, Layer } from "effect"
+import { Deferred, Effect, Exit, Fiber, Layer, Result, Schema } from "effect"
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http"
 import { TestClock } from "effect/testing"
 import topDesktopUserAgents from "top-user-agents/desktop"
 import { describe, expect } from "vitest"
 
-import { defaultRequestTimeoutMs, voilaTransportLayer } from "../src/node-transport.js"
+import {
+  defaultRequestTimeoutMs,
+  type RequestTimeoutMs,
+  RequestTimeoutMsSchema,
+  voilaTransportLayer
+} from "../src/node-transport.js"
 
 const requestUrl = new URL("https://voila.ca/api/example")
 const secretCookie = "voila-session=secret-cookie"
@@ -106,7 +111,7 @@ const stallingBodyClient = (started: Deferred.Deferred<void>): Layer.Layer<HttpC
     )
   )
 
-const runTransport = (client: Layer.Layer<HttpClient.HttpClient>, userAgent?: string, timeoutMs?: number) =>
+const runTransport = (client: Layer.Layer<HttpClient.HttpClient>, userAgent?: string, timeoutMs?: RequestTimeoutMs) =>
   runRequest(
     client,
     { headers: { "x-request-context": "preserved" }, method: "GET", url: requestUrl },
@@ -118,13 +123,21 @@ const runRequest = (
   client: Layer.Layer<HttpClient.HttpClient>,
   request: VoilaTransportRequest,
   userAgent?: string,
-  timeoutMs?: number
+  timeoutMs?: RequestTimeoutMs,
+  userAgents: ReadonlyArray<string> = topDesktopUserAgents
 ) =>
   Effect.flatMap(VoilaTransport, (transport) => transport.request(request)).pipe(
-    Effect.provide(Layer.provide(voilaTransportLayer(userAgent, timeoutMs), client))
+    Effect.provide(Layer.provide(voilaTransportLayer(userAgent, timeoutMs, userAgents), client))
   )
 
 describe("Effect-native Voila transport", () => {
+  it.each([-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid request timeout milliseconds: %s",
+    (value) => {
+      expect(Result.isFailure(Schema.decodeUnknownResult(RequestTimeoutMsSchema)(value))).toBe(true)
+    }
+  )
+
   it.effect("uses the first desktop user-agent by default and preserves unrelated headers", () =>
     Effect.gen(function* () {
       const client = recordingClient()
@@ -193,7 +206,9 @@ describe("Effect-native Voila transport", () => {
   it.effect("abandons a response whose body stalls after its headers arrive", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()
-      const pending = yield* Effect.forkChild(Effect.flip(runTransport(stallingBodyClient(started), undefined, 500)))
+      const pending = yield* Effect.forkChild(
+        Effect.flip(runTransport(stallingBodyClient(started), undefined, RequestTimeoutMsSchema.make(500)))
+      )
 
       yield* Deferred.await(started)
       yield* TestClock.adjust("1 second")
@@ -221,11 +236,24 @@ describe("Effect-native Voila transport", () => {
     })
   )
 
+  it.effect("fails fast if the default user-agent source is empty", () =>
+    Effect.gen(function* () {
+      const client = recordingClient()
+      const exit = yield* Effect.exit(
+        runRequest(client.layer, { headers: {}, method: "GET", url: requestUrl }, undefined, undefined, [])
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+    })
+  )
+
   it.effect("abandons a request at its deadline and cancels the underlying request", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>()
       const client = hangingClient(started)
-      const pending = yield* Effect.forkChild(Effect.flip(runTransport(client.layer, undefined, 500)))
+      const pending = yield* Effect.forkChild(
+        Effect.flip(runTransport(client.layer, undefined, RequestTimeoutMsSchema.make(500)))
+      )
 
       yield* Deferred.await(started)
       yield* TestClock.adjust("1 second")

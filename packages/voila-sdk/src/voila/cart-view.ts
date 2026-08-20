@@ -8,7 +8,6 @@ import {
   AnyCartViewResponseSchema,
   type CartViewItemGroup,
   type CartViewResponse,
-  type NormalizedCartItem,
   type NormalizedCartView,
   NormalizedCartViewSchema,
   type SessionSnapshot
@@ -24,7 +23,7 @@ export type CartViewResponseNormalizationError = {
   readonly message: string
 }
 
-export type GetCartError = VoilaSdkError
+export type GetCartError = CartViewResponseNormalizationError | VoilaSdkError
 
 export type GetCartResult = VoilaJsonResult<NormalizedCartView>
 
@@ -33,16 +32,13 @@ const cartViewResponseSchemaMismatch = (): CartViewResponseNormalizationError =>
   message: "Voila cart view response does not match the SDK schema"
 })
 
-const normalizeCartViewItemGroup = (group: CartViewItemGroup): ReadonlyArray<NormalizedCartItem> =>
+const normalizeCartViewItemGroup = (group: CartViewItemGroup) =>
   group.items.map((item) => ({ ...item, ...(group.name === undefined ? {} : { groupName: group.name }) }))
 
-const normalizeLegacyCartViewItemGroups = (
-  itemGroups: ReadonlyArray<CartViewItemGroup> | undefined
-): ReadonlyArray<NormalizedCartItem> => (itemGroups ?? []).flatMap(normalizeCartViewItemGroup)
+const normalizeLegacyCartViewItemGroups = (itemGroups: ReadonlyArray<CartViewItemGroup> | undefined) =>
+  (itemGroups ?? []).flatMap(normalizeCartViewItemGroup)
 
-const normalizeActiveCartViewItemGroups = (
-  checkoutGroups: ReadonlyArray<ActiveCartCheckoutGroup> | undefined
-): ReadonlyArray<NormalizedCartItem> =>
+const normalizeActiveCartViewItemGroups = (checkoutGroups: ReadonlyArray<ActiveCartCheckoutGroup> | undefined) =>
   (checkoutGroups ?? []).flatMap((checkoutGroup) =>
     (checkoutGroup.itemGroups ?? []).flatMap(normalizeCartViewItemGroup)
   )
@@ -55,7 +51,7 @@ const normalizeCheckoutRestrictions = (
 const isActiveCartViewResponse = (response: AnyCartViewResponse): response is ActiveCartViewResponse =>
   "cartId" in response
 
-export const normalizeCartViewResponse = (response: AnyCartViewResponse): NormalizedCartView => {
+const projectCartViewResponse = (response: AnyCartViewResponse) => {
   const items = isActiveCartViewResponse(response)
     ? normalizeActiveCartViewItemGroups(response.checkoutGroups?.assignedCheckoutGroups)
     : normalizeLegacyCartViewItemGroups(response.basket.itemGroups)
@@ -76,23 +72,26 @@ export const normalizeCartViewResponse = (response: AnyCartViewResponse): Normal
   }
 }
 
+export const normalizeCartViewResponse = (
+  response: AnyCartViewResponse
+): Result.Result<NormalizedCartView, CartViewResponseNormalizationError> =>
+  Result.mapError(
+    parseUnknown(NormalizedCartViewSchema, projectCartViewResponse(response)),
+    cartViewResponseSchemaMismatch
+  )
+
 export const parseCartViewResponse = (
   input: unknown
 ): Result.Result<NormalizedCartView, CartViewResponseNormalizationError> =>
   Result.flatMap(
     Result.mapError(parseUnknown(AnyCartViewResponseSchema, input), cartViewResponseSchemaMismatch),
-    (response) =>
-      Result.mapError(
-        parseUnknown(NormalizedCartViewSchema, normalizeCartViewResponse(response)),
-        cartViewResponseSchemaMismatch
-      )
+    normalizeCartViewResponse
   )
 
 export const getCart = (
   session: SessionSnapshot,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<GetCartResult, GetCartError, VoilaTransport> =>
-  Effect.map(requestVoilaJson(AnyCartViewResponseSchema, session, makeCartViewRequest(), cookieJarPort), (result) => ({
-    session: result.session,
-    value: normalizeCartViewResponse(result.value)
-  }))
+  Effect.flatMap(requestVoilaJson(AnyCartViewResponseSchema, session, makeCartViewRequest(), cookieJarPort), (result) =>
+    Effect.map(Effect.fromResult(parseCartViewResponse(result.value)), (value) => ({ session: result.session, value }))
+  )

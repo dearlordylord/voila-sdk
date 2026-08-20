@@ -13,8 +13,8 @@ The server reads configuration from environment variables:
 - `VOILA_AUTH_SESSION_PATH`: absolute path to an SDK session snapshot JSON file, read and written as one path.
 - `VOILA_GUEST=1`: force guest-session behavior.
 - `VOILA_USER_AGENT`: optional browser identity override. The built-in default works for most users.
-- `VOILA_KEEPALIVE=0`: disable the background session keepalive (enabled by default).
-- `VOILA_KEEPALIVE_INTERVAL_SECONDS`: keepalive interval in seconds (default `86400`, minimum `3600`).
+- `VOILA_KEEPALIVE=0`: disable the background authenticated-session keepalive.
+- `VOILA_KEEPALIVE_INTERVAL_SECONDS`: canonical whole-second healthy interval (default `86400`, minimum `3600`). Fractional, non-finite, unsafe, exponent, and below-minimum values fail startup.
 - `MCP_TRANSPORT`: `stdio` by default, or `http`.
 - `MCP_HTTP_HOST`: HTTP bind host. Defaults to `127.0.0.1`.
 - `MCP_HTTP_PORT` / `PORT`: HTTP port. Defaults to `3000`.
@@ -24,7 +24,30 @@ If a tool runs with a guest, expired, missing, or unreadable account session, th
 
 Guest sessions are held in memory and never written to the session file.
 
-The server runs a background keepalive on startup: it periodically re-checks the active session (`GET /sessions/active`), which folds rotated `Set-Cookie` values back into the stored session snapshot and keeps an idle account session warm. Voila has no refresh token, so this cannot outlast an absolute server-side expiry, but it prevents idle-timeout logout for long-lived remote agents. Keepalive is read-only and never mutates the cart; set `VOILA_KEEPALIVE=0` to turn it off. Once a session drops to re-authentication-required, keepalive logs it (to stderr) and the next tool call surfaces `authGuidance`.
+When an explicit `VOILA_AUTH_SESSION_PATH` is configured and `VOILA_GUEST` is
+not `1`, the server runs a background keepalive on startup. It periodically
+re-checks the active session (`GET /sessions/active`), folds rotated
+`Set-Cookie` values back into the stored session snapshot, and keeps an idle
+account session warm. Voila has no refresh token, so this cannot outlast an
+absolute server-side expiry, but it prevents idle-timeout logout for long-lived
+remote agents. Keepalive is read-only and never mutates the cart; set
+`VOILA_KEEPALIVE=0` to turn it off. A missing or guest-shaped configured
+session snapshot stops keepalive as `misconfigured` rather than bootstrapping a
+guest. Once an existing authenticated session drops to re-authentication-required,
+keepalive logs it (to stderr) and the next tool call surfaces `authGuidance`.
+
+Keepalive startup has three explicit states: operator-disabled, ineligible
+(guest mode or no configured session path), and enabled with a validated
+configuration. The background owner uses expiry policy `"continue"`, so an
+expired session is reported and the next tool call provides re-auth guidance;
+the foreground runner uses `"stop"` and returns `"expired"`. Timing values are
+Effect-schema brands, not arbitrary numbers, and are driven by Effect Clock,
+Schedule, and Random so the retry/backoff policy is interruptible and
+deterministically testable.
+
+The foreground runner handles `SIGINT` and `SIGTERM` as cancellation, cleans up
+its listeners, and returns the `cancelled` stop reason. The MCP server's
+supervised scope interrupts its background fiber when the server shuts down.
 
 ## Client Example
 

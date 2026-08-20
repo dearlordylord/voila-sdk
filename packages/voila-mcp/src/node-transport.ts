@@ -9,7 +9,7 @@ import {
   type VoilaTransportResponse
 } from "@firfi/voila-sdk"
 
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Schema } from "effect"
 import { HttpBody as Body, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 
 import topDesktopUserAgents from "top-user-agents/desktop"
@@ -22,12 +22,20 @@ import topDesktopUserAgents from "top-user-agents/desktop"
  * endpoints (decorated order details, large category pages); Node's own
  * defaults are roughly ten times this.
  */
-export const defaultRequestTimeoutMs = 30_000
+const defaultRequestTimeoutMilliseconds = 30_000
+export const RequestTimeoutMsSchema = Schema.Finite.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isGreaterThan(0)),
+  Schema.check(Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER)),
+  Schema.brand("RequestTimeoutMs")
+)
+export type RequestTimeoutMs = Schema.Schema.Type<typeof RequestTimeoutMsSchema>
+export const defaultRequestTimeoutMs: RequestTimeoutMs = RequestTimeoutMsSchema.make(defaultRequestTimeoutMilliseconds)
 
 const contentTypeHeader = "content-type"
 
-const getMostPopularUserAgent = (): string => {
-  const [mostPopularUserAgent] = topDesktopUserAgents
+const getMostPopularUserAgent = (userAgents: ReadonlyArray<string>): string => {
+  const [mostPopularUserAgent] = userAgents
 
   if (mostPopularUserAgent === undefined) {
     throw new Error("top-user-agents/desktop returned an empty list")
@@ -38,11 +46,12 @@ const getMostPopularUserAgent = (): string => {
 
 const withUserAgent = (
   headers: VoilaTransportRequest["headers"],
-  configuredUserAgent?: string
+  configuredUserAgent: string | undefined,
+  userAgents: ReadonlyArray<string>
 ): Readonly<Record<string, string>> =>
   Object.keys(headers).some((name) => name.toLowerCase() === "user-agent")
     ? headers
-    : { ...headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent() }
+    : { ...headers, "user-agent": configuredUserAgent ?? getMostPopularUserAgent(userAgents) }
 
 /**
  * The body carries the content type, because the client applies the body after
@@ -57,11 +66,12 @@ const makeRequestBody = (request: VoilaTransportRequest, body: string): Body.Htt
 
 const makeClientRequest = (
   request: VoilaTransportRequest,
-  configuredUserAgent?: string
+  configuredUserAgent: string | undefined,
+  userAgents: ReadonlyArray<string>
 ): HttpClientRequest.HttpClientRequest =>
   HttpClientRequest.make(request.method)(request.url, {
     ...(request.body === undefined ? {} : { body: makeRequestBody(request, request.body) }),
-    headers: withUserAgent(request.headers, configuredUserAgent)
+    headers: withUserAgent(request.headers, configuredUserAgent, userAgents)
   })
 
 const makeTransportResponse = (
@@ -80,13 +90,14 @@ const makeTransportResponse = (
  */
 export const voilaTransportLayer = (
   configuredUserAgent?: string,
-  timeoutMs: number = defaultRequestTimeoutMs
+  timeoutMs: RequestTimeoutMs = defaultRequestTimeoutMs,
+  userAgents: ReadonlyArray<string> = topDesktopUserAgents
 ): Layer.Layer<VoilaTransport, never, HttpClient.HttpClient> =>
   Layer.effect(
     VoilaTransport,
     Effect.map(HttpClient.HttpClient, (client) => ({
       request: (request: VoilaTransportRequest) =>
-        client.execute(makeClientRequest(request, configuredUserAgent)).pipe(
+        client.execute(makeClientRequest(request, configuredUserAgent, userAgents)).pipe(
           Effect.mapError(connectionFailure),
           Effect.flatMap((response) =>
             Effect.map(Effect.mapError(response.text, responseReadFailure), (body) =>
@@ -104,6 +115,6 @@ export const voilaTransportLayer = (
 
 export const nodeVoilaTransportLayer = (
   configuredUserAgent?: string,
-  timeoutMs?: number
+  timeoutMs?: RequestTimeoutMs
 ): Layer.Layer<VoilaTransport> =>
   Layer.provide(voilaTransportLayer(configuredUserAgent, timeoutMs), NodeHttpClient.layerNodeHttp)

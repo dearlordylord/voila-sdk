@@ -2,16 +2,13 @@ import { Effect, Schema } from "effect"
 
 import { MoneySchema } from "./money.js"
 
+import { IsoDateStringSchema, OrderIdSchema, PageTokenSchema } from "./identifiers.js"
+
 import { withUnknownStringFields } from "./unknown-fields.js"
 
 export const MAX_COMPLETED_ORDER_ITEM_SCAN = 50
 export const DEFAULT_COMPLETED_ORDER_ITEM_SCAN = 20
 
-const NonEmptyTrimmedStringSchema = Schema.String.pipe(
-  Schema.check(Schema.isTrimmed()),
-  Schema.check(Schema.isMinLength(1))
-)
-const IsoDateStringSchema = NonEmptyTrimmedStringSchema.pipe(Schema.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/)))
 const NonNegativeNumberSchema = Schema.Number.pipe(
   Schema.check(Schema.isFinite()),
   Schema.check(Schema.isGreaterThanOrEqualTo(0))
@@ -23,7 +20,7 @@ const PositiveOrderScanSchema = Schema.Number.pipe(
   Schema.check(Schema.isLessThanOrEqualTo(MAX_COMPLETED_ORDER_ITEM_SCAN))
 )
 
-export const OrderDetailsInputSchema = Schema.Struct({ orderId: NonEmptyTrimmedStringSchema })
+export const OrderDetailsInputSchema = Schema.Struct({ orderId: OrderIdSchema })
 
 export type OrderDetailsInput = Schema.Schema.Type<typeof OrderDetailsInputSchema>
 
@@ -33,7 +30,7 @@ export const CompletedOrderItemsInputSchema = Schema.Struct({
     Schema.withDecodingDefaultType(Effect.succeed(DEFAULT_COMPLETED_ORDER_ITEM_SCAN))
   ),
   pageSize: Schema.optionalKey(PositiveOrderScanSchema),
-  pageToken: Schema.optionalKey(NonEmptyTrimmedStringSchema),
+  pageToken: Schema.optionalKey(PageTokenSchema),
   toDate: Schema.optionalKey(IsoDateStringSchema)
 })
 
@@ -236,7 +233,7 @@ export const NormalizedCompletedOrderItemsResultSchema = Schema.Struct({
   ),
   pagination: Schema.Struct({
     hasNextPage: Schema.Boolean,
-    nextPageToken: Schema.optionalKey(Schema.String),
+    nextPageToken: Schema.optionalKey(PageTokenSchema),
     retentionPeriod: Schema.optionalKey(Schema.String)
   })
 })

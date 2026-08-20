@@ -8,12 +8,12 @@ import {
   type SessionFileUpdate,
   StateFileLocks,
   type StateFilePath,
-  StateFilePathSchema,
   updateSessionFileCarrying
 } from "@firfi/voila-session-store"
-import { Effect, type Layer, Option, Ref, Result, Schema, Semaphore } from "effect"
+import { Effect, Match, type Layer, Option, Ref, Result, Schema, Semaphore } from "effect"
 
 import { makeAuthGuidance } from "./auth-guidance.js"
+import { NodeEnvironmentSchema, type NodeEnvironmentConfig } from "./startup-config.js"
 import {
   makeGuestSessionSnapshot,
   type OperationEnvironment,
@@ -27,17 +27,21 @@ import { nodeVoilaTransportLayer } from "./node-transport.js"
 // One configured path, parsed here at the environment boundary: the read path
 // and the write path cannot differ, because a write compared against a file
 // nobody reads guarantees nothing.
-const EnvSchema = Schema.Struct({
-  VOILA_AUTH_SESSION_PATH: Schema.optionalKey(StateFilePathSchema),
-  VOILA_GUEST: Schema.optionalKey(Schema.Literal("1")),
-  VOILA_USER_AGENT: Schema.optionalKey(Schema.Trimmed.check(Schema.isNonEmpty()))
-})
-
-type EnvConfig = Schema.Schema.Type<typeof EnvSchema>
+type EnvConfig = NodeEnvironmentConfig
 
 const envInvalid = (): OperationFailure => ({
   _tag: "VoilaEnvironmentInvalid",
   message: "Voila MCP environment variables are invalid"
+})
+
+const sessionSnapshotMissing = (): OperationFailure => ({
+  _tag: "VoilaSessionSnapshotMissing",
+  message: "Configured authenticated session snapshot is missing or not authenticated"
+})
+
+const sessionSnapshotConflict = (): OperationFailure => ({
+  _tag: "VoilaSessionSnapshotConflict",
+  message: "Authenticated session snapshot changed during keepalive check"
 })
 
 /**
@@ -46,9 +50,12 @@ const envInvalid = (): OperationFailure => ({
  * of an authenticated file.
  */
 const sessionFileUpdateFor = (outcome: SessionOperationOutcome<unknown>): SessionFileUpdate =>
-  outcome.refreshed === undefined || outcome.refreshed.kind === "guest"
-    ? keepSessionFile
-    : persistSession(outcome.refreshed)
+  Match.value(outcome.refreshed).pipe(
+    Match.when(undefined, () => keepSessionFile),
+    Match.when({ kind: "guest" }, () => keepSessionFile),
+    Match.when({ kind: "authenticated" }, persistSession),
+    Match.exhaustive
+  )
 
 // what the cycle reports back: the file decision, and the operation's own
 // result on the carry channel rather than through a captured variable
@@ -56,6 +63,15 @@ const cycleStep = <A>(ran: SessionOperationOutcome<A>): SessionFileCycleStep<Ses
   carried: ran,
   update: sessionFileUpdateFor(ran)
 })
+
+type SessionFileAccess =
+  | { readonly _tag: "ordinary" }
+  | { readonly _tag: "authenticated" }
+  | { readonly _tag: "authenticated-recheck" }
+
+const ordinarySessionAccess: SessionFileAccess = { _tag: "ordinary" }
+const authenticatedSessionAccess: SessionFileAccess = { _tag: "authenticated" }
+const authenticatedRecheckAccess: SessionFileAccess = { _tag: "authenticated-recheck" }
 
 const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
   // The guest session lives for the process's lifetime instead of on disk, and
@@ -100,37 +116,107 @@ const makeSessionPort = (config: EnvConfig): OperationSessionPort => {
 
   const runWithSessionFile = <A>(
     file: StateFilePath,
-    operation: SessionOperation<A>
-  ): Effect.Effect<A, OperationFailure, VoilaTransport> =>
-    Effect.gen(function* () {
-      // A dropped update needs no adoption here: the losing snapshot is never
-      // kept, and the next cycle reads whatever the winner wrote. The
-      // operation's own result comes back on the outcome's carry channel —
-      // on every variant, including a dropped conflict.
-      const outcome: SessionFileCarriedOutcome<SessionOperationOutcome<A>> = yield* updateSessionFileCarrying(
-        file,
-        (current) =>
-          Effect.map(
-            Effect.flatMap(current === undefined ? bootstrapGuest : Effect.succeed(current), operation),
-            cycleStep
-          )
-      )
+    operation: SessionOperation<A>,
+    access: SessionFileAccess
+  ): Effect.Effect<A, OperationFailure, VoilaTransport> => {
+    const runCycle = (): Effect.Effect<A, OperationFailure, VoilaTransport | StateFileLocks> =>
+      Effect.gen(function* () {
+        // A dropped update needs no adoption here: the losing snapshot is never
+        // kept, and the next cycle reads whatever the winner wrote. The
+        // operation's own result comes back on the outcome's carry channel —
+        // on every variant, including a dropped conflict.
+        const outcome: SessionFileCarriedOutcome<SessionOperationOutcome<A>> = yield* updateSessionFileCarrying(
+          file,
+          (current) => {
+            const authenticatedSession = Match.value(current).pipe(
+              Match.when(
+                undefined,
+                (): Effect.Effect<SdkSessionSnapshot, OperationFailure> => Effect.fail(sessionSnapshotMissing())
+              ),
+              Match.when(
+                { kind: "guest" },
+                (): Effect.Effect<SdkSessionSnapshot, OperationFailure> => Effect.fail(sessionSnapshotMissing())
+              ),
+              Match.when(
+                { kind: "authenticated" },
+                (snapshot): Effect.Effect<SdkSessionSnapshot, OperationFailure> => Effect.succeed(snapshot)
+              ),
+              Match.exhaustive
+            )
+            const ordinarySession = Match.value(current).pipe(
+              Match.when(undefined, () => bootstrapGuest),
+              Match.when({ kind: "guest" }, (snapshot): Effect.Effect<SdkSessionSnapshot> => Effect.succeed(snapshot)),
+              Match.when(
+                { kind: "authenticated" },
+                (snapshot): Effect.Effect<SdkSessionSnapshot> => Effect.succeed(snapshot)
+              ),
+              Match.exhaustive
+            )
+            const session = Match.typeTags<SessionFileAccess>()({
+              ordinary: () => ordinarySession,
+              authenticated: () => authenticatedSession,
+              "authenticated-recheck": () => authenticatedSession
+            })(access)
 
-      // A refreshed guest session is kept in memory for the same reason it is
-      // not written: it is the session this process keeps using, and dropping
-      // the refresh would replay a stale bootstrap on every call.
-      const refreshed = outcome.carried.refreshed
+            return Effect.map(Effect.flatMap(session, operation), cycleStep)
+          }
+        )
 
-      if (refreshed?.kind === "guest") {
-        yield* Ref.set(guest, Option.some(refreshed))
-      }
+        const finish = (carried: SessionOperationOutcome<A>): Effect.Effect<A, OperationFailure> =>
+          Effect.gen(function* () {
+            // A refreshed guest session is kept in memory for the same reason it is
+            // not written: it is the session this process keeps using, and dropping
+            // the refresh would replay a stale bootstrap on every call.
+            yield* Match.value(carried.refreshed).pipe(
+              Match.when(undefined, () => Effect.void),
+              Match.when({ kind: "guest" }, (refreshed) => Ref.set(guest, Option.some(refreshed))),
+              Match.when({ kind: "authenticated" }, () => Effect.void),
+              Match.exhaustive
+            )
 
-      return outcome.carried.value
-    }).pipe(Effect.provideService(StateFileLocks, locks))
+            return carried.value
+          })
+
+        return yield* Match.typeTags<SessionFileCarriedOutcome<SessionOperationOutcome<A>>>()({
+          saved: ({ carried }) => finish(carried),
+          unchanged: ({ carried }) => finish(carried),
+          "dropped-conflict": ({ carried, session }) => {
+            const recheck = Match.value(session).pipe(
+              Match.when(undefined, () => Effect.fail(sessionSnapshotMissing())),
+              Match.when({ kind: "guest" }, () => Effect.fail(sessionSnapshotMissing())),
+              Match.when({ kind: "authenticated" }, () =>
+                runWithSessionFile(file, operation, authenticatedRecheckAccess)
+              ),
+              Match.exhaustive
+            )
+            const conflict = Match.value(session).pipe(
+              Match.when(undefined, () => Effect.fail(sessionSnapshotMissing())),
+              Match.when({ kind: "guest" }, () => Effect.fail(sessionSnapshotMissing())),
+              Match.when({ kind: "authenticated" }, () => Effect.fail(sessionSnapshotConflict())),
+              Match.exhaustive
+            )
+
+            return Match.typeTags<SessionFileAccess>()({
+              ordinary: () => finish(carried),
+              authenticated: () => recheck,
+              "authenticated-recheck": () => conflict
+            })(access)
+          }
+        })(outcome)
+      })
+
+    return runCycle().pipe(Effect.provideService(StateFileLocks, locks))
+  }
 
   return {
+    withAuthenticatedSession: (operation) =>
+      sessionFile === undefined
+        ? Effect.fail(sessionSnapshotMissing())
+        : runWithSessionFile(sessionFile, operation, authenticatedSessionAccess),
     withSession: (operation) =>
-      sessionFile === undefined ? runWithGuest(operation) : runWithSessionFile(sessionFile, operation)
+      sessionFile === undefined
+        ? runWithGuest(operation)
+        : runWithSessionFile(sessionFile, operation, ordinarySessionAccess)
   }
 }
 
@@ -138,18 +224,15 @@ export const makeNodeOperationEnvironment = (
   env: Readonly<Record<string, string | undefined>> = process.env,
   transport?: Layer.Layer<VoilaTransport>
 ): Result.Result<OperationEnvironment, OperationFailure> =>
-  Result.map(Result.mapError(Schema.decodeUnknownResult(EnvSchema)(env), envInvalid), (config) => ({
-    ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
-    session: makeSessionPort(config),
-    transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
-  }))
+  Result.map(Result.mapError(Schema.decodeUnknownResult(NodeEnvironmentSchema)(env), envInvalid), (config) =>
+    makeNodeOperationEnvironmentFromConfig(config, transport)
+  )
 
-export const defaultNodeOperationEnvironment = (): OperationEnvironment => {
-  const env = makeNodeOperationEnvironment()
-
-  if (Result.isFailure(env)) {
-    throw new Error(env.failure.message)
-  }
-
-  return env.success
-}
+export const makeNodeOperationEnvironmentFromConfig = (
+  config: EnvConfig,
+  transport?: Layer.Layer<VoilaTransport>
+): OperationEnvironment => ({
+  ...(config.VOILA_GUEST === "1" ? {} : { authGuidance: makeAuthGuidance(config.VOILA_AUTH_SESSION_PATH) }),
+  session: makeSessionPort(config),
+  transport: transport ?? nodeVoilaTransportLayer(config.VOILA_USER_AGENT)
+})

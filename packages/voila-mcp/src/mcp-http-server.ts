@@ -1,5 +1,5 @@
 import { NodeHttpServer } from "@effect/platform-node"
-import { Effect, Layer, Result, Schema } from "effect"
+import { Effect, Layer, Match, Option, Result, Schema } from "effect"
 import { McpSchema } from "effect/unstable/ai"
 import {
   HttpMiddleware,
@@ -15,15 +15,16 @@ import { executeVoilaTool } from "./mcp-tool-registry.js"
 import { type VoilaMcpToolRecord, VoilaOperations, voilaMcpTools } from "./mcp-toolkit.js"
 import { mcpName } from "./operation-descriptors.js"
 import { packageVersion } from "./package-version.js"
+import type { HttpHost, TcpPort } from "./runtime-config.js"
 
 export const defaultHttpPath = "/mcp"
 const forbiddenStatus = 403
 const badRequestStatus = 400
 
 export interface VoilaMcpHttpServerOptions {
-  readonly host: string
+  readonly host: HttpHost
   readonly path?: HttpRouter.PathInput
-  readonly port: number
+  readonly port: TcpPort
 }
 
 const HealthBodySchema = Schema.Struct({ name: Schema.String, status: Schema.Literal("ok") })
@@ -89,7 +90,7 @@ const mediaTypes = (header: string | undefined): ReadonlyArray<string> =>
             return []
           }
         }
-        return [mediaType?.trim().toLowerCase() ?? ""]
+        return [Schema.decodeUnknownSync(Schema.String)(mediaType).trim().toLowerCase()]
       })
 
 const methodNotAllowedResponse = HttpServerResponse.empty({ status: 405, headers: { allow: "POST" } })
@@ -184,7 +185,7 @@ const invalidParams = (id: JsonRpcId, message = "Invalid method parameters"): Ht
 
 const missingArguments = (id: JsonRpcId, params: unknown): HttpServerResponse.HttpServerResponse => {
   const decoded = Schema.decodeUnknownResult(RequiredCallToolPayloadSchema)(params)
-  const defect = Result.isFailure(decoded) ? decoded.failure.message : "Missing required tool arguments"
+  const defect = Option.getOrThrow(Result.getFailure(decoded)).message
   const die = { _tag: "Die", defect }
   return jsonRpcError(id, 0, JSON.stringify(die), { data: die, tag: "Cause" })
 }
@@ -338,16 +339,14 @@ const handleRequest = (
   const baselineResponse = handleBaselineMethod(id, method, params)
   if (baselineResponse !== undefined) return Effect.succeed(baselineResponse)
 
-  switch (method) {
-    case "initialize":
-      return Effect.succeed(handleInitialize(id, params, version))
-    case "tools/list":
-      return Effect.succeed(handleListTools(id, params))
-    case "tools/call":
-      return handleCallTool(id, params, operations)
-    default:
-      return Effect.succeed(jsonRpcError(id, methodNotFoundCode, `Method not found: ${method}`))
-  }
+  return Match.value(method).pipe(
+    Match.when("initialize", () => Effect.succeed(handleInitialize(id, params, version))),
+    Match.when("tools/list", () => Effect.succeed(handleListTools(id, params))),
+    Match.when("tools/call", () => handleCallTool(id, params, operations)),
+    Match.orElse((unknownMethod) =>
+      Effect.succeed(jsonRpcError(id, methodNotFoundCode, `Method not found: ${unknownMethod}`))
+    )
+  )
 }
 
 const handleJsonRpc = (

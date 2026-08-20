@@ -1,5 +1,6 @@
 import {
   connectionFailure,
+  makeAuthenticatedSdkSessionSnapshot,
   makeGuestSdkSessionSnapshot,
   makeSessionSnapshot,
   type SdkSessionSnapshot,
@@ -61,6 +62,16 @@ export const makeSdkSessionForTest = (): SdkSessionSnapshot => {
   return snapshot.success
 }
 
+const makeAuthenticatedSdkSessionForTest = (): SdkSessionSnapshot => {
+  const snapshot = makeAuthenticatedSdkSessionSnapshot(makeSessionSnapshotForTest(), "authenticated")
+
+  if (Result.isFailure(snapshot)) {
+    throw new Error("Expected authenticated SDK session snapshot")
+  }
+
+  return snapshot.success
+}
+
 /**
  * An environment whose session cycle is real — it carries a refreshed snapshot
  * forward the way the file cycle does — over a scripted transport.
@@ -69,7 +80,9 @@ export const makeStubEnvironment = (
   respond: (request: VoilaTransportRequest) => Effect.Effect<VoilaTransportResponse, VoilaTransportError>
 ): { readonly env: OperationEnvironment; readonly saved: () => SdkSessionSnapshot | undefined } => {
   let savedSession: SdkSessionSnapshot | undefined
+  let savedAuthenticatedSession: SdkSessionSnapshot | undefined
   const initialSession = makeSdkSessionForTest()
+  const initialAuthenticatedSession = makeAuthenticatedSdkSessionForTest()
 
   return {
     env: {
@@ -80,6 +93,18 @@ export const makeStubEnvironment = (
 
             if (outcome.refreshed !== undefined) {
               savedSession = outcome.refreshed
+            }
+
+            return outcome.value
+          }),
+        withAuthenticatedSession: <A>(
+          operation: SessionOperation<A>
+        ): Effect.Effect<A, OperationFailure, VoilaTransport> =>
+          Effect.gen(function* () {
+            const outcome = yield* operation(savedAuthenticatedSession ?? initialAuthenticatedSession)
+
+            if (outcome.refreshed !== undefined) {
+              savedAuthenticatedSession = outcome.refreshed
             }
 
             return outcome.value

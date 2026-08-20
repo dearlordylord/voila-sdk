@@ -26,6 +26,7 @@ const fixtureText = readFileSync(new URL("../fixtures/cart-apply-success.json", 
 const csrfToken = "csrf-token"
 const productUuid = "b952bad2-3d09-4b7f-831a-87ad31eaad3f"
 const secondProductUuid = "82683e1a-bd3b-483f-8e2f-53c6f6b9d2f1"
+const fixtureStrawberriesProductUuid = "11111111-1111-4111-8111-111111111111"
 const sampleMetadata = {
   assetVersion: "asset-version",
   clientRouteId: "client-route-id",
@@ -100,7 +101,7 @@ describe("applyCartDeltas", () => {
       expect(request?.headers["X-CSRF-TOKEN"]).toBe(csrfToken)
       expect(request?.headers.cookie).toContain("voila-session=before")
       expect(result.success.value.itemCount).toBe(2)
-      expect(result.success.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.itemGroups[0]?.items[0]?.productId).toBe(fixtureStrawberriesProductUuid)
       expect(result.success.value.totals.itemPriceAfterPromos.amount).toBe("8.88")
       expect(result.success.value.pricingNotifications[0]?.code).toBe("PROMO_APPLIED")
       expect(getSessionCookies(result.success.session)).toContain("fresh-mutation-cookie=after")
@@ -255,7 +256,7 @@ describe("cart item convenience operations", () => {
       expect(request?.body).toBe(
         `[{"productId":"${productUuid}","quantity":-2},{"productId":"${secondProductUuid}","quantity":-1}]`
       )
-      expect(result.success.value.itemGroups[0]?.items[0]?.productId).toBe("sanitized-strawberries-product-id")
+      expect(result.success.value.itemGroups[0]?.items[0]?.productId).toBe(fixtureStrawberriesProductUuid)
     }
   })
 
@@ -269,7 +270,7 @@ describe("cart item convenience operations", () => {
     expect(fake.requests).toHaveLength(0)
 
     if (Result.isFailure(addResult) && Result.isFailure(removeResult)) {
-      expect(addResult.failure._tag).toBe("CartQuantityDeltaInvalid")
+      expect(addResult.failure._tag).toBe("CartItemsInputInvalid")
       expect(removeResult.failure._tag).toBe("CartItemsInputInvalid")
     }
   })

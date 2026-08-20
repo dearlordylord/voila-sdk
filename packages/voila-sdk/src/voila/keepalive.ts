@@ -1,3 +1,5 @@
+import { Match, Schema } from "effect"
+
 import type { SessionHealth } from "../domain/schemas/index.js"
 
 /**
@@ -23,17 +25,19 @@ import type { SessionHealth } from "../domain/schemas/index.js"
 export type SessionHealthStatus = SessionHealth["status"]
 
 /**
- * What one keepalive tick produced. `check-failed` carries a redacted cause so
- * logs show why a retry is happening without leaking cookies or tokens: the
- * message arrives already stripped to a fixed `_tag`/`message` pair by the
- * operation layer's `redactError`.
+ * What one keepalive tick produced. `check-failed` carries one closed,
+ * redacted category so logs can describe a retry without exposing an arbitrary
+ * error tag, cookie, token, or path.
  */
-export type KeepaliveOutcome =
-  | { readonly _tag: "healthy" }
-  | { readonly _tag: "transient" }
-  | { readonly _tag: "schema-changed" }
-  | { readonly _tag: "expired" }
-  | { readonly _tag: "check-failed"; readonly cause?: string }
+export const KeepaliveOutcomeSchema = Schema.TaggedUnion({
+  healthy: {},
+  transient: {},
+  "schema-changed": {},
+  expired: {},
+  "check-failed": { cause: Schema.Literal("VoilaOperationFailed") }
+})
+
+export type KeepaliveOutcome = Schema.Schema.Type<typeof KeepaliveOutcomeSchema>
 
 /**
  * Why the loop stopped. `"expired"` means the session needs re-authentication;
@@ -41,54 +45,39 @@ export type KeepaliveOutcome =
  * `"misconfigured"` means it never started cleanly — the session file is absent
  * or the environment is invalid, neither of which is fixed by re-authenticating.
  */
-export type KeepaliveStopReason = "expired" | "cancelled" | "misconfigured"
+export const KeepaliveStopReasonSchema = Schema.Literals(["expired", "cancelled", "misconfigured"])
 
-const assertNever = (value: never): never => {
-  throw new Error(`Keepalive reached an unexpected state: ${JSON.stringify(value)}`)
-}
+export type KeepaliveStopReason = Schema.Schema.Type<typeof KeepaliveStopReasonSchema>
 
 /**
  * Map a session-health status to a keepalive outcome. This is the schema-drift
- * boundary the project cares about: an exhaustive switch with an `assertNever`
- * default means a future `SessionHealth["status"]` fails to compile here rather
- * than silently returning `undefined` at runtime.
+ * boundary the project cares about: an exhaustive matcher means a future
+ * `SessionHealth["status"]` fails to compile here rather than silently
+ * returning `undefined` at runtime.
  */
-export const classifyHealthStatus = (status: SessionHealthStatus): KeepaliveOutcome => {
-  switch (status) {
-    case "active":
-      return { _tag: "healthy" }
-    case "retry":
-      return { _tag: "transient" }
-    case "schema-changed":
-      return { _tag: "schema-changed" }
-    case "reauth-required":
-    case "unauthorized":
-      return { _tag: "expired" }
-    default:
-      return assertNever(status)
-  }
-}
+const healthyOutcome = (): KeepaliveOutcome => ({ _tag: "healthy" })
+const transientOutcome = (): KeepaliveOutcome => ({ _tag: "transient" })
+const schemaChangedOutcome = (): KeepaliveOutcome => ({ _tag: "schema-changed" })
+const expiredOutcome = (): KeepaliveOutcome => ({ _tag: "expired" })
+
+export const classifyHealthStatus = Match.type<SessionHealthStatus>().pipe(
+  Match.when("active", healthyOutcome),
+  Match.when("retry", transientOutcome),
+  Match.when("schema-changed", schemaChangedOutcome),
+  Match.when("reauth-required", expiredOutcome),
+  Match.when("unauthorized", expiredOutcome),
+  Match.exhaustive
+)
 
 /**
  * Describe a tick outcome for the stderr log. The `check-failed` description
  * folds in the redacted cause when present, so an operator can see why the loop
  * is retrying without the cause having to cross this boundary as a raw error.
  */
-export const describeKeepaliveOutcome = (outcome: KeepaliveOutcome): string => {
-  switch (outcome._tag) {
-    case "healthy":
-      return "session active; cookies refreshed"
-    case "transient":
-      return "transient error during session check; will retry"
-    case "schema-changed":
-      return "active-session endpoint schema changed; session still refreshed"
-    case "expired":
-      return "session requires re-authentication; run `voila auth login`"
-    case "check-failed":
-      return outcome.cause === undefined
-        ? "session keepalive check failed; will retry"
-        : `session keepalive check failed (${outcome.cause}); will retry`
-    default:
-      return assertNever(outcome)
-  }
-}
+export const describeKeepaliveOutcome = KeepaliveOutcomeSchema.match({
+  healthy: () => "session active; cookies refreshed",
+  transient: () => "transient error during session check; will retry",
+  "schema-changed": () => "active-session endpoint schema changed; session still refreshed",
+  expired: () => "session requires re-authentication; run `voila auth login`",
+  "check-failed": ({ cause }) => `session keepalive check failed (${cause}); will retry`
+})

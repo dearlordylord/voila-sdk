@@ -169,6 +169,14 @@ describe("shopping context parsing", () => {
     expect(result).toEqual({ cartImpactWarnings: [], requiresConfirmation: false })
   })
 
+  it("ignores checkout groups that omit product collections", () => {
+    const result = normalizeDeliveryContextPreviewResponse({
+      destinationCartProposition: { assignedCheckoutGroups: [{}] }
+    })
+
+    expect(result).toEqual({ cartImpactWarnings: [], requiresConfirmation: false })
+  })
+
   it("fails preview parsing with redacted schema errors", () => {
     const result = parseDeliveryContextPreviewResponse({ formattedAddress: secretAddress })
 

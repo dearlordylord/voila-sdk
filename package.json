@@ -5,10 +5,6 @@
   "description": "Private workspace for Voila SDK, MCP server, and CLI packages",
   "type": "module",
   "scripts": {
-    "setup:effect-references": "bash scripts/setup-effect-references.sh",
-    "verify:effect-references": "bash scripts/setup-effect-references.sh --check",
-    "oracle:capture": "node scripts/oracle-capture.mjs",
-    "oracle:verify": "node scripts/oracle-verify.mjs && node scripts/oracle-verify-v2.mjs",
     "prepare": "husky",
     "build": "pnpm -r --filter './packages/*' build",
     "typecheck": "pnpm typecheck:tsc && pnpm typecheck:effect",

@@ -3,17 +3,19 @@
  * as every other session write, including the first one, when there is no file
  * yet.
  */
-import type { SdkSessionSnapshot } from "@firfi/voila-sdk"
+import { type SessionHealth } from "@firfi/voila-sdk"
 import {
+  keepSessionFile,
   persistSession,
+  type SessionFileCarriedOutcome,
   type SessionFileError,
   type StateFileLocks,
   type StateFilePath,
-  updateSessionFile
+  updateSessionFileCarrying
 } from "@firfi/voila-session-store"
-import { Effect } from "effect"
+import { Effect, Match } from "effect"
 
-export type LoginSessionSuperseded = { readonly _tag: "VoilaAuthSessionSuperseded"; readonly message: string }
+type LoginSessionSuperseded = { readonly _tag: "VoilaAuthSessionSuperseded"; readonly message: string }
 
 export type LoginSessionWriteError = SessionFileError | LoginSessionSuperseded
 
@@ -23,17 +25,25 @@ const loginSessionSuperseded = (): LoginSessionSuperseded => ({
 })
 
 /**
- * A fresh interactive login is the newest lineage there is, so it persists over
- * whatever the cycle finds on disk. A dropped write means something newer won
- * the file while the login was being saved; retrying this snapshot on top of it
- * would be the revert this whole path exists to prevent, so the drop is
- * reported instead.
+ * Validate a browser capture while the session file's guarded cycle is open.
+ * Only an active validated snapshot is persisted; inactive captures leave the
+ * existing file untouched, and a concurrent write wins the cycle.
  */
-export const persistLoginSession = (
+export const persistValidatedLoginSession = <E, R>(
   path: StateFilePath,
-  snapshot: SdkSessionSnapshot
-): Effect.Effect<void, LoginSessionWriteError, StateFileLocks> =>
+  validation: Effect.Effect<SessionHealth, E, R>
+): Effect.Effect<SessionHealth, LoginSessionWriteError | E, StateFileLocks | R> =>
   Effect.flatMap(
-    updateSessionFile(path, () => Effect.succeed(persistSession(snapshot))),
-    (outcome) => (outcome._tag === "dropped-conflict" ? Effect.fail(loginSessionSuperseded()) : Effect.void)
+    updateSessionFileCarrying(path, () =>
+      Effect.map(validation, (health) => ({
+        carried: health,
+        update: health.status === "active" ? persistSession(health.session) : keepSessionFile
+      }))
+    ),
+    (outcome: SessionFileCarriedOutcome<SessionHealth>) =>
+      Match.typeTags<SessionFileCarriedOutcome<SessionHealth>>()({
+        saved: ({ carried }) => Effect.succeed(carried),
+        unchanged: ({ carried }) => Effect.succeed(carried),
+        "dropped-conflict": () => Effect.fail(loginSessionSuperseded())
+      })(outcome)
   )

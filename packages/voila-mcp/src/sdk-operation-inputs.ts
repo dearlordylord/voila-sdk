@@ -1,3 +1,5 @@
+import { DEFAULT_DISCOUNT_PAGE_SIZE } from "@firfi/voila-sdk"
+import { DEFAULT_PRODUCT_PAGE_SIZE } from "./operation-schemas.js"
 import type {
   ActiveShoppingContextOperationInput,
   CategoryProductsOperationInput,
@@ -10,21 +12,22 @@ import type {
   SlotReservationOperationInput
 } from "./operation-schemas.js"
 
-const defaultPageSize = 12
+const defaultProductPageSize = DEFAULT_PRODUCT_PAGE_SIZE
+const defaultDiscountPageSize = DEFAULT_DISCOUNT_PAGE_SIZE
 const defaultSlotListingDays = 7
 const defaultSlotListingDisplayConfiguration = "DELIVERY_METHOD"
 const defaultSlotListingShippingGroupType = "HOME_DELIVERY"
 const defaultSlotListingViewingLocation = "SLOT_BOOKING"
 
 export const makeSdkSearchInput = (input: ProductListOperationInput) => ({
-  pageSize: input.pageSize ?? defaultPageSize,
+  pageSize: input.pageSize ?? defaultProductPageSize,
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
   query: input.query
 })
 
 export const makeSdkCategoryInput = (input: CategoryProductsOperationInput) => ({
   categoryId: input.categoryId,
-  pageSize: input.pageSize ?? defaultPageSize,
+  pageSize: input.pageSize ?? defaultProductPageSize,
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken })
 })
 
@@ -32,7 +35,7 @@ export const makeSdkDiscountInput = (input: DiscountedProductsOperationInput) =>
   ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
   ...(input.minSavingsAmount === undefined ? {} : { minSavingsAmount: input.minSavingsAmount }),
   ...(input.minSavingsPercent === undefined ? {} : { minSavingsPercent: input.minSavingsPercent }),
-  pageSize: input.pageSize ?? defaultPageSize,
+  pageSize: input.pageSize ?? defaultDiscountPageSize,
   ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
   ...(input.query === undefined ? {} : { query: input.query }),
   ...(input.retailerCategoryId === undefined ? {} : { retailerCategoryId: input.retailerCategoryId }),

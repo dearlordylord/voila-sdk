@@ -111,27 +111,31 @@ describe("completed order history", () => {
     ) {
       const result = normalizeCompletedOrdersResponse(parsed.success.data.completedOrders)
 
-      expect(result.pagination).toEqual({
-        hasNextPage: true,
-        nextPageToken: "sanitized-next-order-cursor",
-        retentionPeriod: "ONE_YEAR"
-      })
-      expect(result.orders[0]).toMatchObject({
-        addressNickName: "Home",
-        carrierId: "sanitized-carrier-id",
-        deliveryMethod: "HOME_DELIVERY",
-        orderId: "sanitized-order-id-1",
-        orderTotals: { totalPrice: { amount: "42.50", currency: "CAD" } },
-        recurringShoppingDefinition: { name: "Weekly staples" },
-        slotType: "STANDARD",
-        status: "DELIVERED"
-      })
-      expect(result.orders[1]).toMatchObject({
-        addressNickName: "Imported order address",
-        deliveryMethod: "HOME_DELIVERY",
-        orderId: "sanitized-order-id-2",
-        slotType: "STANDARD"
-      })
+      expect(Result.isSuccess(result)).toBe(true)
+
+      if (Result.isSuccess(result)) {
+        expect(result.success.pagination).toEqual({
+          hasNextPage: true,
+          nextPageToken: "sanitized-next-order-cursor",
+          retentionPeriod: "ONE_YEAR"
+        })
+        expect(result.success.orders[0]).toMatchObject({
+          addressNickName: "Home",
+          carrierId: "sanitized-carrier-id",
+          deliveryMethod: "HOME_DELIVERY",
+          orderId: "sanitized-order-id-1",
+          orderTotals: { totalPrice: { amount: "42.50", currency: "CAD" } },
+          recurringShoppingDefinition: { name: "Weekly staples" },
+          slotType: "STANDARD",
+          status: "DELIVERED"
+        })
+        expect(result.success.orders[1]).toMatchObject({
+          addressNickName: "Imported order address",
+          deliveryMethod: "HOME_DELIVERY",
+          orderId: "sanitized-order-id-2",
+          slotType: "STANDARD"
+        })
+      }
     }
   })
 
@@ -179,15 +183,19 @@ describe("completed order history", () => {
     ) {
       const result = normalizeCompletedOrdersResponse(parsed.success.data.completedOrders)
 
-      expect(result.orders).toHaveLength(1)
-      expect(result.orders[0]).toMatchObject({
-        externalAddress: { externalCollectionPointId: "sanitized-locker-id" },
-        orderId: "sanitized-order-id-3"
-      })
-      expect(result.orders[0]).not.toHaveProperty("carrierId")
-      expect(result.orders[0]).not.toHaveProperty("recurringShoppingDefinition")
-      expect(result.orders[0]).not.toHaveProperty("shippingGroupType")
-      expect(result.pagination).toEqual({ hasNextPage: false })
+      expect(Result.isSuccess(result)).toBe(true)
+
+      if (Result.isSuccess(result)) {
+        expect(result.success.orders).toHaveLength(1)
+        expect(result.success.orders[0]).toMatchObject({
+          externalAddress: { externalCollectionPointId: "sanitized-locker-id" },
+          orderId: "sanitized-order-id-3"
+        })
+        expect(result.success.orders[0]).not.toHaveProperty("carrierId")
+        expect(result.success.orders[0]).not.toHaveProperty("recurringShoppingDefinition")
+        expect(result.success.orders[0]).not.toHaveProperty("shippingGroupType")
+        expect(result.success.pagination).toEqual({ hasNextPage: false })
+      }
     }
   })
 

@@ -1,145 +1,28 @@
 import { NodeRuntime } from "@effect/platform-node"
-import { type KeepaliveConfig, makeKeepaliveConfig } from "@firfi/voila-mcp"
 import { Cause, Effect, Exit, Fiber, Layer, Result, Schema } from "effect"
-import type { HttpRouter } from "effect/unstable/http"
 import type { ServeError } from "effect/unstable/http/HttpServerError"
 
 import { runKeepaliveLoop } from "./keepalive-runner.js"
 import { voilaHttpServerLayer } from "./mcp-http-server.js"
 import { voilaStdioServerLayer, VoilaOperations } from "./mcp-server.js"
-import { makeNodeOperationEnvironment } from "./node-env.js"
+import { makeNodeOperationEnvironmentFromConfig } from "./node-env.js"
 import { type OperationEnvironment } from "./operations.js"
 import { packageVersion } from "./package-version.js"
+import {
+  keepaliveEligibilityFor,
+  NodeEnvironmentSchema,
+  keepaliveStartupStateFor,
+  KeepaliveStartupStateSchema,
+  type KeepaliveStartupState,
+  type NodeEnvironmentConfig
+} from "./startup-config.js"
+import { makeRuntimeConfig, type RuntimeConfig } from "./runtime-config.js"
+import { type KeepaliveConfig } from "./index.js"
 
-const defaultHttpHost = "127.0.0.1"
-// the router's own path type: a route that does not start with "/" is not a
-// path the server can mount, and that is a startup failure, not a 404
-const HttpPathSchema = Schema.TemplateLiteral(["/", Schema.String])
-const defaultHttpPath: HttpRouter.PathInput = "/mcp"
-const defaultHttpPort = 3000
-const decimalRadix = 10
-const maxTcpPort = 65_535
-const minTcpPort = 1
-const minKeepaliveIntervalSeconds = 3_600
 const millisecondsPerSecond = 1_000
-
-const RuntimeEnvSchema = Schema.Struct({
-  MCP_HTTP_HOST: Schema.Trimmed.check(Schema.isNonEmpty()).pipe(
-    Schema.withDecodingDefaultType(Effect.succeed(defaultHttpHost))
-  ),
-  MCP_HTTP_PATH: HttpPathSchema.pipe(Schema.withDecodingDefaultType(Effect.succeed(defaultHttpPath))),
-  MCP_HTTP_PORT: Schema.optionalKey(Schema.Trimmed.check(Schema.isNonEmpty())),
-  MCP_TRANSPORT: Schema.Literals(["stdio", "http"]).pipe(Schema.withDecodingDefaultType(Effect.succeed("stdio"))),
-  PORT: Schema.optionalKey(Schema.Trimmed.check(Schema.isNonEmpty())),
-  // Keepalive is opt-out: an authenticated session is eligible by default, and
-  // `VOILA_KEEPALIVE=0` disables it. The interval lives at the env boundary so a
-  // misconfiguration is a startup failure rather than a silent default.
-  VOILA_KEEPALIVE: Schema.optionalKey(Schema.Literal("0")),
-  VOILA_KEEPALIVE_INTERVAL_SECONDS: Schema.optionalKey(Schema.Trimmed.check(Schema.isNonEmpty()))
-})
-
-interface RuntimeConfig {
-  readonly httpHost: string
-  readonly httpPath: HttpRouter.PathInput
-  readonly httpPort: number
-  readonly keepaliveDisabled: boolean
-  readonly keepaliveIntervalMs: number | undefined
-  readonly transport: "http" | "stdio"
-}
-
-interface RuntimeConfigFailure {
-  readonly _tag: "VoilaMcpRuntimeEnvironmentInvalid"
-  readonly message: string
-}
-
-const runtimeConfigFailure = (message: string): RuntimeConfigFailure => ({
-  _tag: "VoilaMcpRuntimeEnvironmentInvalid",
-  message
-})
-
-const parsePort = (value: string | undefined): Result.Result<number, RuntimeConfigFailure> => {
-  if (value === undefined) {
-    return Result.succeed(defaultHttpPort)
-  }
-
-  const parsed = Number.parseInt(value, decimalRadix)
-
-  if (!Number.isInteger(parsed) || parsed < minTcpPort || parsed > maxTcpPort || String(parsed) !== value) {
-    return Result.fail(runtimeConfigFailure("MCP_HTTP_PORT or PORT must be an integer TCP port"))
-  }
-
-  return Result.succeed(parsed)
-}
-
-const parseKeepaliveIntervalSeconds = (
-  value: string | undefined
-): Result.Result<number | undefined, RuntimeConfigFailure> => {
-  if (value === undefined) {
-    return Result.succeed(undefined)
-  }
-
-  const parsed = Number.parseInt(value, decimalRadix)
-
-  if (!Number.isInteger(parsed) || parsed < minKeepaliveIntervalSeconds || String(parsed) !== value) {
-    return Result.fail(
-      runtimeConfigFailure(
-        `VOILA_KEEPALIVE_INTERVAL_SECONDS must be an integer of at least ${minKeepaliveIntervalSeconds} seconds`
-      )
-    )
-  }
-
-  return Result.succeed(parsed)
-}
-
-const makeRuntimeConfig = (
-  env: Readonly<Record<string, string | undefined>> = process.env
-): Result.Result<RuntimeConfig, RuntimeConfigFailure> => {
-  const decoded = Result.mapError(Schema.decodeUnknownResult(RuntimeEnvSchema)(env), () =>
-    runtimeConfigFailure("Voila MCP runtime environment variables are invalid")
-  )
-
-  if (Result.isFailure(decoded)) {
-    return Result.fail(decoded.failure)
-  }
-
-  const port = parsePort(decoded.success.MCP_HTTP_PORT ?? decoded.success.PORT)
-
-  if (Result.isFailure(port)) {
-    return Result.fail(port.failure)
-  }
-
-  const intervalSeconds = parseKeepaliveIntervalSeconds(decoded.success.VOILA_KEEPALIVE_INTERVAL_SECONDS)
-
-  if (Result.isFailure(intervalSeconds)) {
-    return Result.fail(intervalSeconds.failure)
-  }
-
-  return Result.succeed({
-    httpHost: decoded.success.MCP_HTTP_HOST,
-    httpPath: decoded.success.MCP_HTTP_PATH,
-    httpPort: port.success,
-    keepaliveDisabled: decoded.success.VOILA_KEEPALIVE === "0",
-    keepaliveIntervalMs:
-      intervalSeconds.success === undefined ? undefined : intervalSeconds.success * millisecondsPerSecond,
-    transport: decoded.success.MCP_TRANSPORT
-  })
-}
 
 const writeStderr = (line: string): void => {
   process.stderr.write(line)
-}
-
-// Keepalive only makes sense for an authenticated session: a guest has no
-// sliding-expiry auth to keep warm. The environment surfaces this as the
-// presence of auth guidance — the same marker the CLI uses to print login help.
-const keepaliveConfigFor = (runtime: RuntimeConfig, env: OperationEnvironment): KeepaliveConfig | undefined => {
-  if (runtime.keepaliveDisabled || env.authGuidance === undefined) {
-    return undefined
-  }
-
-  return makeKeepaliveConfig({
-    ...(runtime.keepaliveIntervalMs === undefined ? {} : { healthyIntervalMs: runtime.keepaliveIntervalMs })
-  })
 }
 
 const makeServerLayer = (runtime: RuntimeConfig): Layer.Layer<never, ServeError, VoilaOperations> =>
@@ -172,17 +55,22 @@ const keepaliveEffect = (env: OperationEnvironment, config: KeepaliveConfig): Ef
  * Shutdown, finalizer ordering, and non-zero exit come from the Effect runtime
  * rather than from hand-rolled signal handlers.
  */
-const runServer = (runtime: RuntimeConfig, env: OperationEnvironment): Effect.Effect<void, ServeError> =>
+const runServer = (
+  runtime: RuntimeConfig,
+  env: OperationEnvironment,
+  startupState: KeepaliveStartupState
+): Effect.Effect<void, ServeError> =>
   Effect.scoped(
     Effect.gen(function* () {
-      const config = keepaliveConfigFor(runtime, env)
-
-      if (config === undefined) {
-        writeStderr("voila keepalive: skipped (no authenticated session or disabled via VOILA_KEEPALIVE=0)\n")
-      } else {
-        writeStderr(`voila keepalive: started (interval: ${config.healthyIntervalMs / millisecondsPerSecond}s)\n`)
-        yield* Effect.forkChild(keepaliveEffect(env, config))
-      }
+      yield* KeepaliveStartupStateSchema.match(startupState, {
+        disabled: () => Effect.sync(() => writeStderr("voila keepalive: skipped (disabled via VOILA_KEEPALIVE=0)\n")),
+        ineligible: ({ reason }) => Effect.sync(() => writeStderr(`voila keepalive: skipped (${reason})\n`)),
+        enabled: ({ config }) =>
+          Effect.gen(function* () {
+            writeStderr(`voila keepalive: started (interval: ${config.healthyIntervalMs / millisecondsPerSecond}s)\n`)
+            yield* Effect.forkChild(keepaliveEffect(env, config))
+          })
+      })
 
       const serverFiber = yield* Effect.forkChild(
         Layer.launch(Layer.provide(makeServerLayer(runtime), Layer.succeed(VoilaOperations, env)))
@@ -197,17 +85,35 @@ const runServer = (runtime: RuntimeConfig, env: OperationEnvironment): Effect.Ef
 
 const main = Effect.gen(function* () {
   const runtime = makeRuntimeConfig()
-  const env = makeNodeOperationEnvironment()
+  const nodeEnvironment = Result.mapError(Schema.decodeUnknownResult(NodeEnvironmentSchema)(process.env), () => ({
+    _tag: "VoilaEnvironmentInvalid",
+    message: "Voila MCP environment variables are invalid"
+  }))
 
   if (Result.isFailure(runtime)) {
     return yield* reportStartupFailure(runtime.failure)
   }
 
-  if (Result.isFailure(env)) {
-    return yield* reportStartupFailure(env.failure)
+  if (Result.isFailure(nodeEnvironment)) {
+    return yield* reportStartupFailure(nodeEnvironment.failure)
   }
 
-  return yield* runServer(runtime.success, env.success)
+  const env: NodeEnvironmentConfig = nodeEnvironment.success
+  const startupInput =
+    runtime.success.keepaliveIntervalMs === undefined
+      ? { mode: runtime.success.keepaliveMode, eligibility: keepaliveEligibilityFor(env) }
+      : {
+          mode: runtime.success.keepaliveMode,
+          eligibility: keepaliveEligibilityFor(env),
+          healthyIntervalMs: runtime.success.keepaliveIntervalMs
+        }
+  const startupState = keepaliveStartupStateFor(startupInput)
+
+  if (Result.isFailure(startupState)) {
+    return yield* reportStartupFailure(startupState.failure)
+  }
+
+  return yield* runServer(runtime.success, makeNodeOperationEnvironmentFromConfig(env), startupState.success)
 })
 
 NodeRuntime.runMain(main)

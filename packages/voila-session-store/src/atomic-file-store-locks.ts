@@ -33,11 +33,12 @@ const evictIdle = (entries: ReadonlyMap<string, LockEntry>, capacity: number): M
 
   const idle = [...entries]
     .filter(([, entry]) => entry.active === 0 && Option.isSome(entry.idleSeq))
-    .sort(
-      ([leftKey, left], [rightKey, right]) =>
-        Option.getOrElse(left.idleSeq, () => 0) - Option.getOrElse(right.idleSeq, () => 0) ||
-        leftKey.localeCompare(rightKey)
-    )
+    .sort(([, left], [, right]) => {
+      const leftIdleSeq = Option.getOrThrow(left.idleSeq)
+      const rightIdleSeq = Option.getOrThrow(right.idleSeq)
+
+      return leftIdleSeq - rightIdleSeq
+    })
 
   const evicted = new Map(entries)
   for (const [key] of idle.slice(0, entries.size - capacity + 1)) {
@@ -70,10 +71,7 @@ export const makeStateFileLocks = (capacity = defaultLocksCapacity): Effect.Effe
 
     const checkin = (key: string) =>
       Ref.update(table, ({ entries, released }) => {
-        const existing = entries.get(key)
-        if (existing === undefined) {
-          return { entries: new Map(entries), released }
-        }
+        const existing = Option.getOrThrow(Option.fromUndefinedOr(entries.get(key)))
 
         const active = existing.active - 1
         const updated: LockEntry = {

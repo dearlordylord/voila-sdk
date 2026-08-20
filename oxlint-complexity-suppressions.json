@@ -1,26 +1,8 @@
 {
   "packages/voila-cli/src/auth-capture.ts": [
     {
-      "complexity": 10,
-      "signature": "async ( page: Page, timeoutMs: number, observer: BrowserCaptureObserver ): Promise<CapturedBrowserSession | OperationExecutionResult> =>"
-    }
-  ],
-  "packages/voila-cli/src/cli-discounts.ts": [
-    {
-      "complexity": 14,
-      "signature": "( parsed: DiscountCliParsedOptions, usage: (message: string) => DiscountCliRunResult, parsePositiveInteger: (value: string | undefined, optionName: string) => number | DiscountCliRunResult ): DiscountsOperationInput | DiscountCliRunResult =>"
-    }
-  ],
-  "packages/voila-cli/src/cli.ts": [
-    {
       "complexity": 9,
-      "signature": "async (args: ReadonlyArray<string>, ports: CliPorts): Promise<CliRunResult> =>"
-    }
-  ],
-  "packages/voila-mcp/src/operations.ts": [
-    {
-      "complexity": 14,
-      "signature": "(name: VoilaOperationName, input: unknown, env: OperationEnvironment): OperationRun =>"
+      "signature": "async ( port: AuthenticatedCapturePollPort, timeoutMs: BrowserLoginTimeoutMs, observer: BrowserCaptureObserver, writeProgress: CliStderrWriter, delay: CliDelay ): Promise<CapturedBrowserSession | AuthFailure> =>"
     }
   ],
   "packages/voila-mcp/src/sdk-operation-inputs.ts": [
@@ -38,7 +20,7 @@
   "packages/voila-sdk/src/voila/cart-view.ts": [
     {
       "complexity": 11,
-      "signature": "(response: AnyCartViewResponse): NormalizedCartView =>"
+      "signature": "(response: AnyCartViewResponse) =>"
     }
   ],
   "packages/voila-sdk/src/voila/checkout-summary.ts": [
@@ -64,7 +46,7 @@
   "packages/voila-sdk/src/voila/discounted-products.ts": [
     {
       "complexity": 14,
-      "signature": "( product: RawPromotionProduct, sourceGroup: PromotionProductsResponse[\"productGroups\"][number], input: DiscountedProductsInput ): NormalizedDiscountProduct | undefined =>"
+      "signature": "( product: RawPromotionProduct, sourceGroup: PromotionProductsResponse[\"productGroups\"][number], input: DiscountedProductsInput ) =>"
     }
   ],
   "packages/voila-sdk/src/voila/initial-state.ts": [

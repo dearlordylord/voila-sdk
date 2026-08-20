@@ -5,6 +5,7 @@ import { parseUnknown } from "../domain/parse.js"
 import {
   type CartItemQuantityInput,
   CartItemQuantityInputSchema,
+  type ProductUuid,
   type CartUpdateResponse,
   CartUpdateResponseSchema,
   type NormalizedCartMutationResult,
@@ -23,7 +24,7 @@ export type CartMutationResponseNormalizationError = {
   readonly message: string
 }
 
-export type ApplyCartDeltasError = CartQuantityRequestError | VoilaSdkError
+export type ApplyCartDeltasError = CartMutationResponseNormalizationError | CartQuantityRequestError | VoilaSdkError
 
 export type ApplyCartDeltasResult = VoilaJsonResult<NormalizedCartMutationResult>
 
@@ -49,7 +50,7 @@ const countCartItems = (response: CartUpdateResponse): number =>
     0
   )
 
-export const normalizeCartMutationResponse = (response: CartUpdateResponse): NormalizedCartMutationResult => ({
+const projectCartMutationResponse = (response: CartUpdateResponse) => ({
   itemCount: countCartItems(response),
   itemGroups: response.basketUpdateResult.itemGroups ?? [],
   limitedItems: response.limitedItems,
@@ -59,16 +60,20 @@ export const normalizeCartMutationResponse = (response: CartUpdateResponse): Nor
   unavailableData: response.unavailableData
 })
 
+export const normalizeCartMutationResponse = (
+  response: CartUpdateResponse
+): Result.Result<NormalizedCartMutationResult, CartMutationResponseNormalizationError> =>
+  Result.mapError(
+    parseUnknown(NormalizedCartMutationResultSchema, projectCartMutationResponse(response)),
+    cartMutationResponseSchemaMismatch
+  )
+
 export const parseCartMutationResponse = (
   input: unknown
 ): Result.Result<NormalizedCartMutationResult, CartMutationResponseNormalizationError> =>
   Result.flatMap(
     Result.mapError(parseUnknown(CartUpdateResponseSchema, input), cartMutationResponseSchemaMismatch),
-    (response) =>
-      Result.mapError(
-        parseUnknown(NormalizedCartMutationResultSchema, normalizeCartMutationResponse(response)),
-        cartMutationResponseSchemaMismatch
-      )
+    normalizeCartMutationResponse
   )
 
 export const applyCartDeltas = (
@@ -77,15 +82,17 @@ export const applyCartDeltas = (
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<ApplyCartDeltasResult, ApplyCartDeltasError, VoilaTransport> =>
   Effect.flatMap(Effect.fromResult(makeApplyQuantityRequest(deltas)), (request) =>
-    Effect.map(requestVoilaJson(CartUpdateResponseSchema, session, request, cookieJarPort), (result) => ({
-      session: result.session,
-      value: normalizeCartMutationResponse(result.value)
-    }))
+    Effect.flatMap(requestVoilaJson(CartUpdateResponseSchema, session, request, cookieJarPort), (result) =>
+      Effect.map(Effect.fromResult(parseCartMutationResponse(result.value)), (value) => ({
+        session: result.session,
+        value
+      }))
+    )
   )
 
 const makeCartDeltas = (
   items: ReadonlyArray<CartItemQuantityInput>,
-  makeDelta: (productId: string, quantity: number) => Result.Result<unknown, CartQuantityDeltaError>
+  makeDelta: (productId: ProductUuid, quantity: number) => Result.Result<unknown, CartQuantityDeltaError>
 ): Result.Result<ReadonlyArray<unknown>, CartQuantityDeltaError> =>
   items.reduce<Result.Result<ReadonlyArray<unknown>, CartQuantityDeltaError>>(
     (deltas, item) =>
@@ -98,7 +105,7 @@ const makeCartDeltas = (
 const applyCartItemOperation = (
   session: SessionSnapshot,
   items: unknown,
-  makeDelta: (productId: string, quantity: number) => Result.Result<unknown, CartQuantityDeltaError>,
+  makeDelta: (productId: ProductUuid, quantity: number) => Result.Result<unknown, CartQuantityDeltaError>,
   cookieJarPort?: CookieJarPort
 ): Effect.Effect<ApplyCartDeltasResult, CartItemsOperationError, VoilaTransport> =>
   Effect.flatMap(

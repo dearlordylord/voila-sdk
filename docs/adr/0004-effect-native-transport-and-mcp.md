@@ -1,5 +1,7 @@
 # An Effect transport port, and an MCP server that is Effect all the way down
 
+Status: Superseded in implementation by the Effect 4 cutover. This record retains the original decision rationale; [`MCP Readiness`](../mcp-readiness.md) documents the current `effect/unstable/ai` surface.
+
 The SDK's transport is an Effect service, not a promise-returning port, and the MCP server is `@effect/ai`'s. The only promise crossing left in the workspace is the CLI's outermost entry point, whose contract is promise-shaped by nature.
 
 Decisions:

@@ -16,14 +16,17 @@ import {
   redactSdkSessionSnapshot,
   removeCartItems,
   reserveSlot,
+  type CheckSessionHealthError,
+  type ProductUuid,
   type SdkSessionSnapshot,
   searchProducts,
+  type SessionHealth,
   type SessionSnapshot,
   type VoilaJsonResult,
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import type { Layer } from "effect"
-import { Effect, Result, Schema } from "effect"
+import { Effect, Match, Result, Schema } from "effect"
 
 import {
   authGuidanceForHealth,
@@ -35,6 +38,7 @@ import { withCsrfRefreshRetry } from "./csrf-retry.js"
 import { type VoilaOperationName } from "./operation-descriptors.js"
 import {
   ActiveShoppingContextOperationInputSchema,
+  type CartQuantity,
   type CartItemOperationInput,
   CartItemOperationInputSchema,
   CategoryProductsOperationInputSchema,
@@ -127,6 +131,16 @@ export type SessionOperation<A> = (
  */
 export interface OperationSessionPort {
   readonly withSession: <A>(operation: SessionOperation<A>) => Effect.Effect<A, OperationFailure, VoilaTransport>
+  /**
+   * Run an operation only against the configured authenticated session
+   * snapshot. Unlike `withSession`, this port never bootstraps a guest when
+   * the snapshot is absent or guest-shaped; keepalive uses it so a deleted or
+   * downgraded state file stops as misconfigured instead of reporting health
+   * for a new guest.
+   */
+  readonly withAuthenticatedSession: <A>(
+    operation: SessionOperation<A>
+  ) => Effect.Effect<A, OperationFailure, VoilaTransport>
 }
 
 /**
@@ -135,8 +149,15 @@ export interface OperationSessionPort {
  * environment, and the process that owns a network stack is the one that says
  * what that stack is.
  */
+export interface OperationHealthPort {
+  readonly check: (
+    snapshot: SdkSessionSnapshot
+  ) => Effect.Effect<SessionHealth, CheckSessionHealthError, VoilaTransport>
+}
+
 export interface OperationEnvironment {
   readonly authGuidance?: OperationAuthGuidance
+  readonly health?: OperationHealthPort
   readonly session: OperationSessionPort
   readonly transport: Layer.Layer<VoilaTransport>
 }
@@ -146,15 +167,17 @@ const inputInvalid = (): OperationFailure => ({
   message: "Tool input does not match the operation schema"
 })
 
+const bootstrapFailed = (failure: OperationFailure): OperationFailure => ({
+  _tag: failure._tag,
+  message: failure.message
+})
+
 const sessionUpdateInvalid = (): OperationFailure => ({
   _tag: "VoilaOperationSessionUpdateInvalid",
   message: "Updated session snapshot could not be encoded"
 })
 
-const bootstrapFailed = (failure: OperationFailure): OperationFailure => ({
-  _tag: failure._tag,
-  message: failure.message
-})
+const operationFailed = (): OperationFailure => ({ _tag: "VoilaOperationFailed", message: "Voila operation failed" })
 
 const success = (value: unknown, authGuidance?: OperationAuthGuidance): OperationExecutionSuccess => ({
   ...(authGuidance === undefined ? {} : { authGuidance }),
@@ -167,25 +190,21 @@ const failure = (error: OperationFailure, authGuidance?: OperationAuthGuidance):
   ok: false
 })
 
-const isTaggedError = (value: unknown): value is OperationFailure =>
-  typeof value === "object" &&
-  value !== null &&
-  "_tag" in value &&
-  typeof value._tag === "string" &&
-  "message" in value &&
-  typeof value.message === "string"
+const RedactableErrorSchema = Schema.Struct({
+  _tag: Schema.String,
+  message: Schema.String,
+  status: Schema.optionalKey(Schema.Number)
+})
 
-const redactError = (error: unknown): OperationFailure => {
-  if (!isTaggedError(error)) {
-    return { _tag: "VoilaOperationFailed", message: "Voila operation failed" }
-  }
-
-  return {
-    _tag: error._tag,
-    message: error.message,
-    ...("status" in error && typeof error.status === "number" ? { status: error.status } : {})
-  }
-}
+const redactError = (error: unknown): OperationFailure =>
+  Result.match(parseUnknown(RedactableErrorSchema, error), {
+    onFailure: operationFailed,
+    onSuccess: (decoded) => ({
+      _tag: decoded._tag,
+      message: decoded.message,
+      ...(decoded.status === undefined ? {} : { status: decoded.status })
+    })
+  })
 
 const parseInput = <S extends Schema.ConstraintDecoder<unknown>>(
   schema: S,
@@ -197,12 +216,13 @@ const updateSdkSession = (
   previous: SdkSessionSnapshot,
   session: SessionSnapshot
 ): Result.Result<SdkSessionSnapshot, OperationFailure> =>
-  previous.kind === "guest"
-    ? Result.mapError(makeGuestSdkSessionSnapshot(session), sessionUpdateInvalid)
-    : Result.mapError(
-        makeAuthenticatedSdkSessionSnapshot(session, previous.state, previous.account),
-        sessionUpdateInvalid
-      )
+  Match.value(previous).pipe(
+    Match.when({ kind: "guest" }, () => Result.mapError(makeGuestSdkSessionSnapshot(session), sessionUpdateInvalid)),
+    Match.when({ kind: "authenticated" }, ({ account, state }) =>
+      Result.mapError(makeAuthenticatedSdkSessionSnapshot(session, state, account), sessionUpdateInvalid)
+    ),
+    Match.exhaustive
+  )
 
 export const makeGuestSessionSnapshot = (): Effect.Effect<SdkSessionSnapshot, OperationFailure, VoilaTransport> =>
   Effect.flatMap(
@@ -231,13 +251,11 @@ const refreshedOutcome = (
   env: OperationEnvironment,
   current: SdkSessionSnapshot,
   result: VoilaJsonResult<unknown>
-): SessionOperationOutcome<OperationExecutionResult> => {
-  const refreshed = updateSdkSession(current, result.session)
-
-  return Result.isFailure(refreshed)
-    ? { value: failure(refreshed.failure) }
-    : { refreshed: refreshed.success, value: success(result.value, authGuidanceForSnapshot(env.authGuidance, current)) }
-}
+): Result.Result<SessionOperationOutcome<OperationExecutionResult>, OperationFailure> =>
+  Result.map(updateSdkSession(current, result.session), (refreshed) => ({
+    refreshed,
+    value: success(result.value, authGuidanceForSnapshot(env.authGuidance, current))
+  }))
 
 /**
  * What every request-shaped operation looks like from here: a session and a
@@ -259,13 +277,14 @@ const runSessionOperation = <S extends Schema.ConstraintDecoder<unknown>>(
 ): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
   Effect.flatMap(parseInput(schema, input), (parsed) =>
     runSessionResult(env, (current) =>
-      Effect.match(
+      Effect.matchEffect(
         withCsrfRefreshRetry(current.session, (session) => execute(session, parsed)),
         {
-          onFailure: (error) => ({
-            value: failure(redactError(error), authGuidanceOnFailure ? env.authGuidance : undefined)
-          }),
-          onSuccess: (result) => refreshedOutcome(env, current, result)
+          onFailure: (error) =>
+            Effect.succeed({
+              value: failure(redactError(error), authGuidanceOnFailure ? env.authGuidance : undefined)
+            }),
+          onSuccess: (result) => Effect.fromResult(refreshedOutcome(env, current, result))
         }
       )
     )
@@ -277,7 +296,7 @@ const runHealth = (
 ): Effect.Effect<OperationExecutionSuccess, OperationExecutionFailure, VoilaTransport> =>
   Effect.flatMap(parseInput(EmptyOperationInputSchema, input), () =>
     runSessionResult(env, (current) =>
-      Effect.match(checkSessionHealth(current), {
+      Effect.match((env.health?.check ?? checkSessionHealth)(current), {
         onFailure: (error) => ({ value: failure(redactError(error)) }),
         onSuccess: (health) => ({
           refreshed: health.session,
@@ -359,39 +378,25 @@ const runCompletedOrderItems = (input: unknown, env: OperationEnvironment): Oper
 const runCartItems = (input: unknown, env: OperationEnvironment, apply: typeof addCartItems): OperationRun =>
   runSessionOperation(CartItemOperationInputSchema, input, env, (session, parsed) => apply(session, parsed.items))
 
-const runOperation = (name: VoilaOperationName, input: unknown, env: OperationEnvironment): OperationRun => {
-  switch (name) {
-    case "voila_add_cart_items":
-      return runCartItems(input, env, addCartItems)
-    case "voila_check_session_health":
-      return runHealth(input, env)
-    case "voila_get_active_shopping_context":
-      return runActiveShoppingContext(input, env)
-    case "voila_get_cart":
-      return runGetCart(input, env)
-    case "voila_get_category_products":
-      return runCategoryProducts(input, env)
-    case "voila_get_discounted_products":
-      return runDiscountedProducts(input, env)
-    case "voila_get_completed_order_items":
-      return runCompletedOrderItems(input, env)
-    case "voila_get_completed_orders":
-      return runCompletedOrders(input, env)
-    case "voila_get_order_details":
-      return runOrderDetails(input, env)
-    case "voila_get_slot_listings":
-      return runSlotListings(input, env)
-    case "voila_remove_cart_items":
-      return runCartItems(input, env, removeCartItems)
-    case "voila_reserve_slot":
-      return runReserveSlot(input, env)
-    case "voila_search_products":
-      return runSearch(input, env)
-  }
-}
+const runOperation = (name: VoilaOperationName, input: unknown, env: OperationEnvironment): OperationRun =>
+  Match.value(name).pipe(
+    Match.when("voila_add_cart_items", () => runCartItems(input, env, addCartItems)),
+    Match.when("voila_check_session_health", () => runHealth(input, env)),
+    Match.when("voila_get_active_shopping_context", () => runActiveShoppingContext(input, env)),
+    Match.when("voila_get_cart", () => runGetCart(input, env)),
+    Match.when("voila_get_category_products", () => runCategoryProducts(input, env)),
+    Match.when("voila_get_discounted_products", () => runDiscountedProducts(input, env)),
+    Match.when("voila_get_completed_order_items", () => runCompletedOrderItems(input, env)),
+    Match.when("voila_get_completed_orders", () => runCompletedOrders(input, env)),
+    Match.when("voila_get_order_details", () => runOrderDetails(input, env)),
+    Match.when("voila_get_slot_listings", () => runSlotListings(input, env)),
+    Match.when("voila_remove_cart_items", () => runCartItems(input, env, removeCartItems)),
+    Match.when("voila_reserve_slot", () => runReserveSlot(input, env)),
+    Match.when("voila_search_products", () => runSearch(input, env)),
+    Match.exhaustive
+  )
 
-const operationDefect = (): OperationExecutionFailure =>
-  failure({ _tag: "VoilaOperationFailed", message: "Voila operation failed" })
+const operationDefect = (): OperationExecutionFailure => failure(operationFailed())
 
 /**
  * The registry's one entry point. The transport layer is provided here rather
@@ -414,6 +419,6 @@ export const runVoilaOperation = (
     Effect.fail(operationDefect())
   )
 
-export const normalizeCliCartInput = (productId: string, quantity: number): CartItemOperationInput => ({
+export const normalizeCliCartInput = (productId: ProductUuid, quantity: CartQuantity): CartItemOperationInput => ({
   items: [{ productId, quantity }]
 })

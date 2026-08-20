@@ -1,54 +1,107 @@
 import { type OperationExecutionResult } from "@firfi/voila-mcp"
 import {
-  type BrowserLoginBrowserCookie,
   BrowserLoginBrowserCookieArraySchema,
+  type BrowserLoginTimeoutMs,
   extractInitialStatePayload,
-  parseUnknown,
-  type SessionMetadata,
+  SessionMetadataSchema,
   VOILA_BASE_URL
 } from "@firfi/voila-sdk"
-import { Result } from "effect"
-import { randomUUID } from "node:crypto"
-import { type Page } from "playwright"
+import { Result, Schema } from "effect"
+
+import { BrowserPollDelayMsSchema, type BrowserPollDelayMs, type CliDelay, type CliStderrWriter } from "./cli-model.js"
 
 const authenticatedCookieName = "userEmail"
-const pollIntervalMs = 2_000
+const browserPollDelayMilliseconds = 2_000
+const pollIntervalMs: BrowserPollDelayMs = BrowserPollDelayMsSchema.make(browserPollDelayMilliseconds)
 const progressEveryAttempts = 5
 
-interface CapturedSessionMaterial {
-  readonly csrfToken?: string
-  readonly metadata: SessionMetadata
-}
+const NonEmptyCaptureStringSchema = Schema.String.check(
+  Schema.makeFilter((value) => value.trim().length > 0, { message: "Capture string must not be empty" })
+)
 
-export interface CapturedBrowserSession {
-  readonly cookies: ReadonlyArray<BrowserLoginBrowserCookie>
-  readonly material: CapturedSessionMaterial
-}
+const CapturedMetadataSourceSchema = Schema.Struct({
+  assetVersion: NonEmptyCaptureStringSchema,
+  clientRouteId: Schema.optionalKey(NonEmptyCaptureStringSchema),
+  pageViewId: Schema.optionalKey(NonEmptyCaptureStringSchema),
+  regionId: Schema.optionalKey(NonEmptyCaptureStringSchema)
+})
+
+const CapturedPayloadSchema = Schema.Struct({
+  csrf: Schema.optionalKey(Schema.Struct({ token: NonEmptyCaptureStringSchema })),
+  data: Schema.optionalKey(
+    Schema.Struct({ basket: Schema.optionalKey(Schema.Struct({ regionId: NonEmptyCaptureStringSchema })) })
+  ),
+  session: Schema.Struct({
+    csrf: Schema.optionalKey(Schema.Struct({ token: NonEmptyCaptureStringSchema })),
+    metadata: CapturedMetadataSourceSchema
+  })
+})
+type CapturedPayload = Schema.Schema.Type<typeof CapturedPayloadSchema>
+
+const CapturedSessionMaterialSchema = Schema.Struct({
+  csrfToken: Schema.optionalKey(NonEmptyCaptureStringSchema),
+  metadata: SessionMetadataSchema
+})
+
+type CapturedSessionMaterial = Schema.Schema.Type<typeof CapturedSessionMaterialSchema>
+
+const CapturedBrowserSessionSchema = Schema.Struct({
+  cookies: BrowserLoginBrowserCookieArraySchema,
+  material: CapturedSessionMaterialSchema
+})
+
+export type CapturedBrowserSession = Schema.Schema.Type<typeof CapturedBrowserSessionSchema>
 
 interface BrowserCaptureObserver {
   readonly getMaterial: () => CapturedSessionMaterial | undefined
   readonly hasPayload: () => boolean
 }
 
-const failure = (tag: string, message: string): OperationExecutionResult => ({
-  error: { _tag: tag, message },
-  ok: false
-})
+interface BrowserTrafficRequest {
+  readonly headers: () => Readonly<Record<string, string>>
+  readonly url: () => string
+}
 
-const delay = (milliseconds: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, milliseconds)
-  })
+interface BrowserTrafficResponse {
+  readonly headers: () => Readonly<Record<string, string>>
+  readonly responseText: () => Promise<string>
+  readonly url: () => string
+}
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null
+interface BrowserTrafficPort {
+  readonly onRequest: (listener: (request: BrowserTrafficRequest) => void) => void
+  readonly onResponse: (listener: (response: BrowserTrafficResponse) => Promise<void>) => void
+}
 
-const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0
+interface BrowserMaterialPort {
+  readonly fetchedHtml: () => Promise<string>
+  readonly html: () => Promise<string>
+  readonly runtimeState: () => Promise<unknown>
+}
 
-const cookiesSayAuthenticated = (cookies: ReadonlyArray<BrowserLoginBrowserCookie>): boolean =>
-  cookies.some((cookie) => cookie.name === authenticatedCookieName)
+interface BrowserSessionPort {
+  readonly cookies: () => Promise<unknown>
+  readonly isClosed: () => boolean
+  readonly material: () => Promise<CapturedSessionMaterial | undefined>
+}
 
-const pageIsClosed = (page: Page): boolean => {
+interface BrowserSessionPagePort {
+  readonly cookies: () => Promise<unknown>
+  readonly fetchedHtml: () => Promise<string>
+  readonly html: () => Promise<string>
+  readonly isClosed: () => boolean
+  readonly runtimeState: () => Promise<unknown>
+}
+
+export type SessionIdGenerator = () => string
+type AuthFailure = Extract<OperationExecutionResult, { readonly ok: false }>
+
+const failure = (tag: string, message: string): AuthFailure => ({ error: { _tag: tag, message }, ok: false })
+
+export const capturedSessionIsAuthenticated = (capture: CapturedBrowserSession): boolean =>
+  capture.cookies.some((cookie) => cookie.name === authenticatedCookieName && cookie.value.trim().length > 0)
+
+const pageIsClosed = (page: BrowserSessionPagePort): boolean => {
   try {
     return page.isClosed()
   } catch {
@@ -56,126 +109,96 @@ const pageIsClosed = (page: Page): boolean => {
   }
 }
 
-const readNested = (value: unknown, path: ReadonlyArray<string>): unknown => {
-  let current = value
+const capturedId = (observed: string | undefined, generateSessionId: SessionIdGenerator): string =>
+  observed ?? generateSessionId()
 
-  for (const key of path) {
-    if (!isRecord(current)) {
-      return undefined
-    }
-
-    current = current[key]
-  }
-
-  return current
-}
-
-const pickString = (...values: ReadonlyArray<unknown>): string | undefined => {
-  for (const value of values) {
-    if (typeof value === "string") {
-      return value
-    }
-  }
-
-  return undefined
-}
-
-const normalizeMetadata = (payload: unknown): SessionMetadata | undefined => {
-  const rawMetadata = readNested(payload, ["session", "metadata"])
-  const basketRegionId = readNested(payload, ["data", "basket", "regionId"])
-
-  if (!isRecord(rawMetadata)) {
-    return undefined
-  }
-
-  const assetVersion = pickString(rawMetadata.assetVersion)
-  const regionId = pickString(rawMetadata.regionId, basketRegionId)
-
-  if (!isNonEmptyString(assetVersion) || !isNonEmptyString(regionId)) {
-    return undefined
-  }
-
-  return {
-    assetVersion,
-    clientRouteId: pickString(rawMetadata.clientRouteId) ?? randomUUID(),
-    pageViewId: pickString(rawMetadata.pageViewId) ?? randomUUID(),
-    regionId
-  }
-}
-
-const readCsrfToken = (payload: unknown): string | undefined =>
-  pickString(readNested(payload, ["csrf", "token"]), readNested(payload, ["session", "csrf", "token"]))
-
-const captureSessionMaterial = (payload: unknown): CapturedSessionMaterial | undefined => {
-  const metadata = normalizeMetadata(payload)
-
-  if (metadata === undefined) {
-    return undefined
-  }
-
-  const csrfToken = readCsrfToken(payload)
-
-  return { ...(isNonEmptyString(csrfToken) ? { csrfToken } : {}), metadata }
-}
-
-const readMaterialFromRuntime = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
-  const runtimeState: unknown = await page.evaluate("window.__INITIAL_STATE__")
-
-  if (runtimeState === undefined || runtimeState === null) {
-    return undefined
-  }
-
-  return captureSessionMaterial(runtimeState)
-}
-
-const readMaterialFromHtml = (html: string): CapturedSessionMaterial | undefined => {
-  const payload = extractInitialStatePayload(html)
-
-  return Result.isSuccess(payload) ? captureSessionMaterial(payload.success) : undefined
-}
-
-const readMaterialFromFetchedHtml = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
-  const html = await page.evaluate(async () => {
-    const response = await fetch("/", { credentials: "include" })
-
-    return response.text()
+const makeCapturedSessionMaterial = (
+  source: CapturedPayload,
+  generateSessionId: SessionIdGenerator,
+  regionId: string
+): CapturedSessionMaterial | undefined => {
+  const csrfToken = source.csrf?.token ?? source.session.csrf?.token
+  const material = Schema.decodeUnknownResult(CapturedSessionMaterialSchema)({
+    metadata: {
+      assetVersion: source.session.metadata.assetVersion,
+      clientRouteId: capturedId(source.session.metadata.clientRouteId, generateSessionId),
+      pageViewId: capturedId(source.session.metadata.pageViewId, generateSessionId),
+      regionId
+    },
+    ...(csrfToken === undefined ? {} : { csrfToken })
   })
 
-  return readMaterialFromHtml(html)
+  return Result.isSuccess(material) ? material.success : undefined
 }
 
-const readSessionMaterialFromBrowser = async (page: Page): Promise<CapturedSessionMaterial | undefined> => {
-  const runtimeState = await readMaterialFromRuntime(page)
+export const parseCapturedSessionMaterialWithIdGenerator = (
+  payload: unknown,
+  generateSessionId: SessionIdGenerator
+): CapturedSessionMaterial | undefined => {
+  const decoded = Schema.decodeUnknownResult(CapturedPayloadSchema)(payload)
 
-  if (runtimeState !== undefined) {
-    return runtimeState
-  }
-
-  const pageHtmlState = readMaterialFromHtml(await page.content())
-
-  if (pageHtmlState !== undefined) {
-    return pageHtmlState
-  }
-
-  return readMaterialFromFetchedHtml(page)
-}
-
-const captureBrowserSession = async (
-  page: Page,
-  observedMaterial?: CapturedSessionMaterial
-): Promise<CapturedBrowserSession | undefined> => {
-  if (pageIsClosed(page)) {
+  if (Result.isFailure(decoded)) {
     return undefined
   }
 
-  const material = observedMaterial ?? (await readSessionMaterialFromBrowser(page))
+  const source = decoded.success
+  const regionId = source.session.metadata.regionId ?? source.data?.basket?.regionId
+
+  if (regionId === undefined) {
+    return undefined
+  }
+
+  return makeCapturedSessionMaterial(source, generateSessionId, regionId)
+}
+
+export const parseCapturedSessionMaterial = parseCapturedSessionMaterialWithIdGenerator
+
+export const parseCapturedSessionHtml = (
+  html: string,
+  generateSessionId: SessionIdGenerator
+): CapturedSessionMaterial | undefined => {
+  const payload = extractInitialStatePayload(html)
+
+  return Result.isSuccess(payload) ? parseCapturedSessionMaterial(payload.success, generateSessionId) : undefined
+}
+
+export const readSessionMaterialFromPort = async (
+  port: BrowserMaterialPort,
+  generateSessionId: SessionIdGenerator
+): Promise<CapturedSessionMaterial | undefined> => {
+  const runtimeState = await port.runtimeState()
+
+  if (runtimeState !== undefined && runtimeState !== null) {
+    const runtimeMaterial = parseCapturedSessionMaterial(runtimeState, generateSessionId)
+
+    if (runtimeMaterial !== undefined) {
+      return runtimeMaterial
+    }
+  }
+
+  const pageHtmlState = parseCapturedSessionHtml(await port.html(), generateSessionId)
+
+  return pageHtmlState === undefined
+    ? parseCapturedSessionHtml(await port.fetchedHtml(), generateSessionId)
+    : pageHtmlState
+}
+
+export const captureBrowserSessionFromPort = async (
+  port: BrowserSessionPort,
+  observedMaterial?: CapturedSessionMaterial
+): Promise<CapturedBrowserSession | undefined> => {
+  if (port.isClosed()) {
+    return undefined
+  }
+
+  const material = observedMaterial ?? (await port.material())
 
   if (material === undefined) {
     return undefined
   }
 
   const cookies = Result.mapError(
-    parseUnknown(BrowserLoginBrowserCookieArraySchema, await page.context().cookies(VOILA_BASE_URL)),
+    Schema.decodeUnknownResult(BrowserLoginBrowserCookieArraySchema)(await port.cookies()),
     () => failure("VoilaAuthCookieCaptureFailed", "Voila browser cookies could not be captured")
   )
 
@@ -183,10 +206,29 @@ const captureBrowserSession = async (
     return undefined
   }
 
-  return { cookies: cookies.success, material }
+  const captured = Schema.decodeUnknownResult(CapturedBrowserSessionSchema)({ cookies: cookies.success, material })
+
+  return Result.isSuccess(captured) ? captured.success : undefined
 }
 
-export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver => {
+const captureBrowserSession = async (
+  page: BrowserSessionPagePort,
+  generateSessionId: SessionIdGenerator,
+  observedMaterial?: CapturedSessionMaterial
+): Promise<CapturedBrowserSession | undefined> =>
+  captureBrowserSessionFromPort(
+    {
+      cookies: page.cookies,
+      isClosed: () => pageIsClosed(page),
+      material: () => readSessionMaterialFromPort(page, generateSessionId)
+    },
+    observedMaterial
+  )
+
+export const observeBrowserTraffic = (
+  port: BrowserTrafficPort,
+  generateSessionId: SessionIdGenerator
+): BrowserCaptureObserver => {
   let latestCsrfToken: string | undefined
   let latestMaterial: CapturedSessionMaterial | undefined
   let payloadObserved = false
@@ -202,14 +244,14 @@ export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver =
   const recordPayload = (payload: unknown): void => {
     payloadObserved = true
 
-    const material = captureSessionMaterial(payload)
+    const material = parseCapturedSessionMaterial(payload, generateSessionId)
 
     if (material !== undefined) {
       recordMaterial(material)
     }
   }
 
-  page.on("request", (request) => {
+  port.onRequest((request) => {
     try {
       const url = new URL(request.url())
 
@@ -219,11 +261,13 @@ export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver =
 
       const csrfToken = request.headers()["x-csrf-token"]
 
-      if (isNonEmptyString(csrfToken)) {
-        latestCsrfToken = csrfToken
+      const decodedCsrfToken = Schema.decodeUnknownResult(NonEmptyCaptureStringSchema)(csrfToken)
+
+      if (Result.isSuccess(decodedCsrfToken)) {
+        latestCsrfToken = decodedCsrfToken.success
 
         if (latestMaterial !== undefined && latestMaterial.csrfToken === undefined) {
-          latestMaterial = { ...latestMaterial, csrfToken }
+          latestMaterial = { ...latestMaterial, csrfToken: decodedCsrfToken.success }
         }
       }
     } catch {
@@ -231,46 +275,61 @@ export const observeVoilaBrowserTraffic = (page: Page): BrowserCaptureObserver =
     }
   })
 
-  page.on("response", (response) => {
-    void (async () => {
-      try {
-        const url = new URL(response.url())
-        const contentType = response.headers()["content-type"] ?? ""
+  port.onResponse(async (response) => {
+    try {
+      const url = new URL(response.url())
+      const contentType = response.headers()["content-type"] ?? ""
 
-        if (url.origin !== voilaOrigin || !contentType.includes("text/html")) {
-          return
-        }
-
-        const payload = extractInitialStatePayload(await response.text())
-
-        if (Result.isSuccess(payload)) {
-          recordPayload(payload.success)
-        }
-      } catch {
+      if (url.origin !== voilaOrigin || !contentType.includes("text/html")) {
         return
       }
-    })()
+
+      const payload = extractInitialStatePayload(await response.responseText())
+
+      if (Result.isSuccess(payload)) {
+        recordPayload(payload.success)
+      }
+    } catch {
+      return
+    }
   })
 
   return { getMaterial: () => latestMaterial, hasPayload: () => payloadObserved }
 }
 
-export const waitForAuthenticatedCapture = async (
-  page: Page,
-  timeoutMs: number,
-  observer: BrowserCaptureObserver
-): Promise<CapturedBrowserSession | OperationExecutionResult> => {
+export const observeVoilaBrowserTraffic = observeBrowserTraffic
+
+interface AuthenticatedCapturePollPort {
+  readonly capture: () => Promise<CapturedBrowserSession | undefined>
+  readonly isClosed: () => boolean
+}
+
+const closeCapture = (capture: CapturedBrowserSession | undefined): CapturedBrowserSession | AuthFailure => {
+  if (capture === undefined) {
+    return failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
+  }
+
+  return capturedSessionIsAuthenticated(capture)
+    ? capture
+    : failure("VoilaAuthNotAuthenticated", "Voila authenticated cookie was not captured")
+}
+
+export const pollAuthenticatedCapture = async (
+  port: AuthenticatedCapturePollPort,
+  timeoutMs: BrowserLoginTimeoutMs,
+  observer: BrowserCaptureObserver,
+  writeProgress: CliStderrWriter,
+  delay: CliDelay
+): Promise<CapturedBrowserSession | AuthFailure> => {
   const attempts = Math.max(1, Math.ceil(timeoutMs / pollIntervalMs))
   let latestCapture: CapturedBrowserSession | undefined
 
   for (let remaining = attempts; remaining > 0; remaining -= 1) {
-    if (pageIsClosed(page)) {
-      return latestCapture === undefined
-        ? failure("VoilaAuthInitialStateCaptureFailed", "Voila authenticated homepage state could not be captured")
-        : latestCapture
+    if (port.isClosed()) {
+      return closeCapture(latestCapture)
     }
 
-    const capture = await captureBrowserSession(page, observer.getMaterial())
+    const capture = await port.capture()
 
     if (capture !== undefined) {
       latestCapture = capture
@@ -278,19 +337,19 @@ export const waitForAuthenticatedCapture = async (
 
     if ((attempts - remaining) % progressEveryAttempts === 0) {
       if (latestCapture !== undefined) {
-        const authStatus = cookiesSayAuthenticated(latestCapture.cookies)
+        const authStatus = capturedSessionIsAuthenticated(latestCapture)
           ? "Authenticated cookie observed."
-          : "Authenticated cookie not observed; saved session will be verified after close."
+          : "Authenticated cookie not observed; finish login before closing the browser."
         const csrfStatus =
           latestCapture.material.csrfToken === undefined ? "CSRF token not observed." : "CSRF token observed."
 
-        process.stdout.write(
+        writeProgress(
           `Voila session material observed. ${authStatus} ${csrfStatus} Close the browser window to save.\n`
         )
       } else if (observer.hasPayload()) {
-        process.stdout.write("Voila page state observed; waiting for session metadata and cookies.\n")
+        writeProgress("Voila page state observed; waiting for session metadata and cookies.\n")
       } else {
-        process.stdout.write("Waiting for Voila page state. Finish login in the browser, then close it to save.\n")
+        writeProgress("Waiting for Voila page state. Finish login in the browser, then close it to save.\n")
       }
     }
 
@@ -299,3 +358,22 @@ export const waitForAuthenticatedCapture = async (
 
   return failure("VoilaAuthTimedOut", "Interactive browser login timed out")
 }
+
+export const waitForAuthenticatedCapture = async (
+  page: BrowserSessionPagePort,
+  timeoutMs: BrowserLoginTimeoutMs,
+  observer: BrowserCaptureObserver,
+  writeProgress: CliStderrWriter,
+  delay: CliDelay,
+  generateSessionId: SessionIdGenerator
+): Promise<CapturedBrowserSession | AuthFailure> =>
+  pollAuthenticatedCapture(
+    {
+      capture: () => captureBrowserSession(page, generateSessionId, observer.getMaterial()),
+      isClosed: () => pageIsClosed(page)
+    },
+    timeoutMs,
+    observer,
+    writeProgress,
+    delay
+  )

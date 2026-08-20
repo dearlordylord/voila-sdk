@@ -1,17 +1,21 @@
 import {
+  makeAuthenticatedSdkSessionSnapshot,
   connectionFailure,
+  ProductUuidSchema,
   requestDeadlineExceeded,
   type SdkSessionSnapshot,
   type VoilaTransport
 } from "@firfi/voila-sdk"
 import { StateFilePathSchema } from "@firfi/voila-session-store"
-import { Effect, Result } from "effect"
+import { Effect, Result, Schema } from "effect"
 import { readFile } from "node:fs/promises"
 import { describe, expect, it } from "vitest"
 
-import { makeAuthGuidance } from "../src/auth-guidance.js"
+import { authGuidanceForHealth, authGuidanceForSnapshot, makeAuthGuidance } from "../src/auth-guidance.js"
+import { CartQuantitySchema } from "../src/operation-schemas.js"
 import {
   makeSdkSessionForTest,
+  makeSessionSnapshotForTest,
   makeStubEnvironment,
   runOperation,
   stubTransportLayer,
@@ -20,11 +24,13 @@ import {
 import { makeNodeOperationEnvironment } from "../src/node-env.js"
 import {
   mcpName,
+  makeGuestSessionSnapshot,
   type OperationEnvironment,
   type OperationFailure,
   type SessionOperation,
   voilaOperationDescriptors,
-  type VoilaOperationName
+  type VoilaOperationName,
+  normalizeCliCartInput
 } from "../src/operations.js"
 
 const secretTimeoutMs = 30_000
@@ -70,7 +76,7 @@ const discountedProductsResponse = JSON.stringify({
           maxQuantityReached: false,
           name: "Discounted milk",
           price: { amount: "5.00", currency: "CAD" },
-          productId: "sanitized-discount-product-id",
+          productId: "33333333-3333-4333-8333-333333333333",
           promoPrice: { amount: "4.00", currency: "CAD" },
           promotions: [{ label: "Member price", promotionId: "sanitized-promotion-id" }],
           quantityInBasket: 0,
@@ -137,6 +143,11 @@ const trackingSessionPort = (initialSession: SdkSessionSnapshot, ran: { current:
     ran.current = true
 
     return Effect.map(operation(initialSession), (outcome) => outcome.value)
+  },
+  withAuthenticatedSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure, VoilaTransport> => {
+    ran.current = true
+
+    return Effect.map(operation(initialSession), (outcome) => outcome.value)
   }
 })
 
@@ -173,6 +184,26 @@ describe("Voila MCP operations", () => {
     ).toContain("prefer checking slots first")
   })
 
+  it("only adds login guidance for guest or unhealthy account states", () => {
+    const guidance = makeAuthGuidance()
+    const guest = makeSdkSessionForTest()
+    const authenticated = makeAuthenticatedSdkSessionSnapshot(makeSessionSnapshotForTest(), "authenticated")
+
+    expect(Result.isSuccess(authenticated)).toBe(true)
+
+    if (Result.isSuccess(authenticated)) {
+      expect(authGuidanceForSnapshot(guidance, guest)).toEqual(guidance)
+      expect(authGuidanceForSnapshot(guidance, authenticated.success)).toBeUndefined()
+      expect(authGuidanceForHealth(guidance, { session: authenticated.success, status: "ok" })).toBeUndefined()
+      expect(authGuidanceForHealth(guidance, { session: authenticated.success, status: "unauthorized" })).toEqual(
+        guidance
+      )
+    }
+
+    expect(authGuidanceForHealth(guidance, { session: guest, status: "ok" })).toEqual(guidance)
+    expect(authGuidanceForHealth(guidance, { session: guest, status: "retry" })).toEqual(guidance)
+  })
+
   it("validates input before loading a session", async () => {
     const ran = { current: false }
     const env: OperationEnvironment = {
@@ -188,6 +219,15 @@ describe("Voila MCP operations", () => {
     if (!result.ok) {
       expect(result.error._tag).toBe("VoilaOperationInputInvalid")
     }
+  })
+
+  it("runs a valid product search through the SDK operation", async () => {
+    const response = await fixture("search-response-milk.json")
+    const fake = makeStubEnvironment(() => Effect.succeed({ body: response, headers: {}, status: 200 }))
+
+    const result = await runOperation("voila_search_products", { query: "milk" }, fake.env)
+
+    expect(result.ok).toBe(true)
   })
 
   it("rejects invalid discounted product operation inputs before loading a session", async () => {
@@ -263,6 +303,44 @@ describe("Voila MCP operations", () => {
     }
   })
 
+  it("redacts a guest bootstrap failure through the typed operation channel", async () => {
+    const result = await Effect.runPromise(
+      Effect.result(Effect.provide(makeGuestSessionSnapshot(), unusedTransportLayer))
+    )
+
+    expect(Result.isFailure(result)).toBe(true)
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("VoilaConnectionFailure")
+      expect(result.failure.message).toBe("Voila request could not reach the server")
+    }
+  })
+
+  it("updates an authenticated SDK snapshot after a successful operation", async () => {
+    const cart = await fixture("cart-view-non-empty.json")
+    const authenticated = makeAuthenticatedSdkSessionSnapshot(makeSessionSnapshotForTest(), "authenticated")
+
+    expect(Result.isSuccess(authenticated)).toBe(true)
+    if (Result.isFailure(authenticated)) {
+      throw new Error("Expected an authenticated test session")
+    }
+
+    const env: OperationEnvironment = {
+      session: {
+        withSession: <A>(operation: SessionOperation<A>): Effect.Effect<A, OperationFailure, VoilaTransport> =>
+          Effect.map(operation(authenticated.success), (outcome) => outcome.value),
+        withAuthenticatedSession: <A>(
+          operation: SessionOperation<A>
+        ): Effect.Effect<A, OperationFailure, VoilaTransport> =>
+          Effect.map(operation(authenticated.success), (outcome) => outcome.value)
+      },
+      transport: stubTransportLayer(() => Effect.succeed({ body: cart, headers: {}, status: 200 }))
+    }
+
+    const result = await runOperation("voila_get_cart", {}, env)
+
+    expect(result.ok).toBe(true)
+  })
+
   it("returns CLI login guidance for guest session health", async () => {
     const fake = makeStubEnvironment(() =>
       Effect.succeed({ body: JSON.stringify({ authenticated: false }), headers: {}, status: 200 })
@@ -279,11 +357,24 @@ describe("Voila MCP operations", () => {
     }
   })
 
+  it("reports the health retry reason when Voila returns a server error", async () => {
+    const fake = makeStubEnvironment(() => Effect.succeed({ body: "{}", headers: {}, status: 503 }))
+
+    const result = await runOperation("voila_check_session_health", {}, fake.env)
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value).toMatchObject({ reason: "server", status: "retry" })
+    }
+  })
+
   it("returns CLI login guidance when the session cycle fails", async () => {
     const env: OperationEnvironment = {
       authGuidance: makeAuthGuidance(sessionPath),
       session: {
         withSession: () =>
+          Effect.fail({ _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" }),
+        withAuthenticatedSession: () =>
           Effect.fail({ _tag: "SessionFileReadFailure", message: "Session snapshot could not be read" })
       },
       transport: unusedTransportLayer
@@ -296,6 +387,29 @@ describe("Voila MCP operations", () => {
     if (!result.ok) {
       expect(result.error.authGuidance?.command).toBe(`npx -y @firfi/voila-cli auth login --session ${sessionPath}`)
       expect(result.error.authGuidance?.instructions).toContain("retry the MCP request")
+    }
+  })
+
+  it("reports a typed health-check failure without leaking its detail", async () => {
+    const fake = makeStubEnvironment(() => Effect.succeed({ body: "{}", headers: {}, status: 200 }))
+    const env: OperationEnvironment = {
+      ...fake.env,
+      health: {
+        check: () =>
+          Effect.fail({
+            _tag: "SessionHealthSnapshotInvalid",
+            message: "Session health could not build a typed SDK session snapshot"
+          })
+      }
+    }
+
+    const result = await runOperation("voila_check_session_health", {}, env)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error._tag).toBe("SessionHealthSnapshotInvalid")
+      expect(result.error.message).toBe("Session health could not build a typed SDK session snapshot")
+      expect(JSON.stringify(result)).not.toContain("private snapshot detail")
     }
   })
 
@@ -364,7 +478,7 @@ describe("Voila MCP operations", () => {
         products: [
           {
             discountPrice: { amount: "4.00" },
-            productId: "sanitized-discount-product-id",
+            productId: "33333333-3333-4333-8333-333333333333",
             promotionSummary: "Member price",
             savingsAmount: 1,
             savingsPercent: 20
@@ -373,6 +487,30 @@ describe("Voila MCP operations", () => {
         scan: { pagesScanned: 1 }
       })
     }
+  })
+
+  it("dispatches category reads, cart removals, and branded CLI quantities", async () => {
+    const categoryProducts = await fixture("category-products-produce.json")
+    const category = makeStubEnvironment(() => Effect.succeed({ body: categoryProducts, headers: {}, status: 200 }))
+    const categoryResult = await runOperation(
+      "voila_get_category_products",
+      { categoryId: "sanitized-category-produce" },
+      category.env
+    )
+
+    const cartApply = await fixture("cart-apply-success.json")
+    const removal = makeStubEnvironment(() => Effect.succeed({ body: cartApply, headers: {}, status: 200 }))
+    const removalResult = await runOperation(
+      "voila_remove_cart_items",
+      { items: [{ productId: "11111111-1111-4111-8111-111111111111", quantity: 1 }] },
+      removal.env
+    )
+    const quantity = Schema.decodeUnknownSync(CartQuantitySchema)(2)
+    const normalized = normalizeCliCartInput(ProductUuidSchema.make("11111111-1111-4111-8111-111111111111"), quantity)
+
+    expect(categoryResult.ok).toBe(true)
+    expect(removalResult.ok).toBe(true)
+    expect(normalized).toEqual({ items: [{ productId: "11111111-1111-4111-8111-111111111111", quantity: 2 }] })
   })
 
   it("returns active shopping context through the SDK path and persists the updated session", async () => {

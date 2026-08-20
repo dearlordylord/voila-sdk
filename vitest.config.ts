@@ -29,8 +29,6 @@ export default defineConfig({
         "scripts/",
         "**/dist/**",
         "packages/*/test/",
-        "packages/voila-cli/src/**",
-        "packages/voila-mcp/src/**",
         "**/*.test.ts",
         "**/*.config.ts",
         "packages/*/src/index.ts",

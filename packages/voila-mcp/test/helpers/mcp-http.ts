@@ -69,6 +69,53 @@ export const jsonRpcTextResponse = (
       )
   )
 
+export const rawMcpResponse = (
+  body: string,
+  headers: Readonly<Record<string, string>> = {},
+  contentType = "application/json"
+): Effect.Effect<{ readonly body: string; readonly status: number }, unknown, HttpClient.HttpClient> =>
+  Effect.flatMap(HttpClient.HttpClient, (client) =>
+    client
+      .execute(
+        HttpClientRequest.post(mcpPath, {
+          body: HttpBody.text(body, contentType),
+          headers: { accept: "application/json, text/event-stream", ...headers }
+        })
+      )
+      .pipe(
+        Effect.flatMap((response) =>
+          Effect.map(response.text, (bodyText) => ({ body: bodyText, status: response.status }))
+        ),
+        Effect.scoped
+      )
+  )
+
+export const emptyMcpResponse = (): Effect.Effect<
+  { readonly body: string; readonly status: number },
+  unknown,
+  HttpClient.HttpClient
+> =>
+  Effect.flatMap(HttpClient.HttpClient, (client) =>
+    client
+      .execute(HttpClientRequest.post(mcpPath, { headers: { accept: "application/json, text/event-stream" } }))
+      .pipe(
+        Effect.flatMap((response) => Effect.map(response.text, (body) => ({ body, status: response.status }))),
+        Effect.scoped
+      )
+  )
+
+export const unsupportedMethodResponse = (
+  method: "DELETE" | "GET" | "OPTIONS" | "PATCH" | "PUT"
+): Effect.Effect<{ readonly body: string; readonly status: number }, unknown, HttpClient.HttpClient> =>
+  Effect.flatMap(HttpClient.HttpClient, (client) =>
+    client
+      .execute(HttpClientRequest.make(method)(mcpPath, { headers: { accept: "application/json, text/event-stream" } }))
+      .pipe(
+        Effect.flatMap((response) => Effect.map(response.text, (body) => ({ body, status: response.status }))),
+        Effect.scoped
+      )
+  )
+
 export const getJson = (
   path: string
 ): Effect.Effect<{ readonly body: unknown; readonly status: number }, unknown, HttpClient.HttpClient> =>

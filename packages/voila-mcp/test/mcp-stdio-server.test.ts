@@ -10,7 +10,10 @@ const testSessionFailure = "Session is unavailable in this protocol test"
 const negotiatedProtocolVersion = "2025-06-18"
 
 const inertEnvironment: OperationEnvironment = {
-  session: { withSession: () => Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: testSessionFailure }) },
+  session: {
+    withAuthenticatedSession: () => Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: testSessionFailure }),
+    withSession: () => Effect.fail({ _tag: "VoilaTestSessionUnavailable", message: testSessionFailure })
+  },
   transport: unusedTransportLayer
 }
 
